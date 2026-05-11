@@ -1,0 +1,7 @@
+INFO:     Started server process [20928]
+INFO:     Waiting for application startup.
+INFO:pronunciation_coach:Loading Whisper ASR model 'base'...
+INFO:pronunciation_coach:Loading pronunciation scorer for 'eng-Latn'...
+INFO:pronunciation_coach:Models loaded successfully.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)

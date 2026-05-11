@@ -1,0 +1,44 @@
+Open PowerShell in:
+
+```powershell
+cd C:\Users\Dell\OneDrive\Desktop\pronunciation-coach
+```
+
+Install dependencies if needed:
+
+```powershell
+.\backend\venv\Scripts\python.exe -m pip install -r backend\requirements.txt
+```
+
+Run the app:
+
+```powershell
+.\backend\venv\Scripts\python.exe -m uvicorn backend.main:app --host 0.0.0.0 --port 8000
+```
+
+Then open this in your browser:
+
+```text
+http://localhost:8000
+```
+
+API docs are here:
+
+```text
+http://localhost:8000/docs
+```
+
+Heads up: first startup may take a while because Whisper loads/downloads the `base` model.
+
+To run without loading Whisper immediately, useful just to check the UI:
+
+```powershell
+$env:PRONUNCIATION_COACH_LOAD_MODELS_ON_STARTUP="0"
+.\backend\venv\Scripts\python.exe -m uvicorn backend.main:app --host 0.0.0.0 --port 8000
+```
+
+Tests:
+
+```powershell
+.\backend\venv\Scripts\python.exe -m pytest -q
+```

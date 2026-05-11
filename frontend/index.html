@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Pronunciation Coach - Enhanced</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎤 AI Pronunciation Coach</h1>
+            <p class="subtitle">Master English pronunciation with AI-powered feedback & voice guidance</p>
+        </header>
+
+        <main>
+            <!-- Difficulty Level Selection -->
+            <section class="level-section">
+                <h2>📚 Choose Your Level</h2>
+                <div class="level-buttons">
+                    <button type="button" class="level-btn active" data-level="beginner" aria-pressed="true">🌱 Beginner</button>
+                    <button type="button" class="level-btn" data-level="intermediate" aria-pressed="false">📖 Intermediate</button>
+                    <button type="button" class="level-btn" data-level="professional" aria-pressed="false">💼 Professional</button>
+                    <button type="button" class="level-btn" data-level="custom" aria-pressed="false">✏️ Custom</button>
+                </div>
+            </section>
+
+            <!-- Preset Sentences -->
+            <section class="preset-section">
+                <h3>📝 Select a Sentence to Practice</h3>
+                <div id="sentenceList" class="sentence-list">
+                    <!-- Dynamically populated -->
+                </div>
+            </section>
+
+            <!-- Text Input Section -->
+            <section class="input-section" id="customSection" style="display: none;">
+                <label for="targetText">Enter your custom text:</label>
+                <textarea 
+                    id="targetText" 
+                    rows="3" 
+                    placeholder="Type the text you want to practice..."
+                ></textarea>
+            </section>
+
+            <!-- Current Practice Text Display -->
+            <section class="current-text-section">
+                <div class="current-text-card">
+                    <h3>🎯 Practice This:</h3>
+                    <p id="currentText" class="current-text">Select a sentence to begin</p>
+                    <button type="button" id="listenBtn" class="btn btn-listen" disabled>
+                        <span class="icon">🔊</span>
+                        Listen to Teacher
+                    </button>
+                </div>
+            </section>
+
+            <!-- Recording Section -->
+            <section class="recording-section">
+                <h3>🎙️ Your Turn - Record Your Voice</h3>
+                <div class="controls">
+                    <button type="button" id="recordBtn" class="btn btn-primary">
+                        <span class="icon">🎙️</span>
+                        Start Recording
+                    </button>
+                    <button type="button" id="stopBtn" class="btn btn-secondary" disabled>
+                        <span class="icon">⏹️</span>
+                        Stop Recording
+                    </button>
+                </div>
+                
+                <div id="recordingStatus" class="status hidden" role="status" aria-live="polite">
+                    <span class="pulse"></span>
+                    <span class="status-text">Recording...</span>
+                </div>
+
+                <div id="audioPlayback" class="audio-playback hidden">
+                    <p>Your Recording:</p>
+                    <audio id="audioPlayer" controls></audio>
+                </div>
+            </section>
+
+            <!-- Evaluate Button -->
+            <section class="evaluate-section">
+                <button type="button" id="evaluateBtn" class="btn btn-success" disabled>
+                    <span class="icon">✨</span>
+                    Get Detailed Feedback
+                </button>
+            </section>
+
+            <!-- Loading Indicator -->
+            <div id="loading" class="loading hidden" role="status" aria-live="polite">
+                <div class="spinner"></div>
+                <p>Analyzing your pronunciation...</p>
+            </div>
+
+            <!-- Results Section -->
+            <section id="results" class="results hidden">
+                <h2>📊 Your Results</h2>
+                
+                <div class="score-card">
+                    <div class="score-circle">
+                        <svg width="200" height="200">
+                            <circle cx="100" cy="100" r="90" class="score-bg"></circle>
+                            <circle id="scoreCircle" cx="100" cy="100" r="90" class="score-fill"></circle>
+                        </svg>
+                        <div class="score-text">
+                            <span id="scoreValue" class="score-value">0</span>
+                            <span class="score-label">Overall Score</span>
+                        </div>
+                    </div>
+                    
+                    <div class="score-breakdown">
+                        <div class="breakdown-item">
+                            <span class="breakdown-label">Accuracy</span>
+                            <div class="breakdown-bar">
+                                <div id="accuracyBar" class="breakdown-fill" style="width: 0%"></div>
+                            </div>
+                            <span id="accuracyText" class="breakdown-value">0%</span>
+                        </div>
+                        <div class="breakdown-item">
+                            <span class="breakdown-label">Pronunciation</span>
+                            <div class="breakdown-bar">
+                                <div id="pronunciationBar" class="breakdown-fill" style="width: 0%"></div>
+                            </div>
+                            <span id="pronunciationText" class="breakdown-value">0%</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="comparison-box">
+                    <div class="comparison-item">
+                        <h3>📖 Expected:</h3>
+                        <p id="expectedText" class="comparison-text"></p>
+                    </div>
+                    <div class="comparison-item">
+                        <h3>🗣️ You Said:</h3>
+                        <p id="transcription" class="comparison-text"></p>
+                    </div>
+                </div>
+
+                <div class="feedback-box detailed">
+                    <h3>💡 Detailed Feedback & Improvement Tips</h3>
+                    <div id="feedback" class="feedback"></div>
+                </div>
+
+                <div class="phoneme-analysis">
+                    <h3>🔬 Phoneme-Level Analysis</h3>
+                    <div id="phonemeComparison" class="phoneme-grid"></div>
+                </div>
+
+                <div class="word-analysis">
+                    <h3>📝 Word-by-Word Breakdown</h3>
+                    <div id="wordScores" class="word-scores"></div>
+                </div>
+
+                <div class="improvement-section">
+                    <h3>🎯 What to Work On</h3>
+                    <ul id="improvementList" class="improvement-list"></ul>
+                </div>
+
+                <div class="action-buttons">
+                    <button type="button" id="practiceAgainBtn" class="btn btn-primary">
+                        <span class="icon">🔄</span>
+                        Practice This Again
+                    </button>
+                    <button type="button" id="nextSentenceBtn" class="btn btn-info">
+                        <span class="icon">➡️</span>
+                        Next Sentence
+                    </button>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <p>Powered by OpenAI Whisper, Epitran & FastAPI | 100% Free & Open Source</p>
+        </footer>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
