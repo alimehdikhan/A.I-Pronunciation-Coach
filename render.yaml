@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: ai-pronunciation-coach
+    runtime: python
+    buildCommand: bash build.sh
+    startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: WHISPER_MODEL_SIZE
+        value: tiny
+      - key: PRONUNCIATION_LANGUAGE
+        value: eng-Latn
