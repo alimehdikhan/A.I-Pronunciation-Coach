@@ -36,6 +36,7 @@ jobs:
       - name: Run tests
         env:
           PRONUNCIATION_COACH_LOAD_MODELS_ON_STARTUP: "0"
+          PYTHONPATH: "."
         run: |
           pytest -q
 
