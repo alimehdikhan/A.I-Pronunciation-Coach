@@ -17,7 +17,7 @@ A full-stack intelligent learning platform designed to help users understand, vi
 
 Traditional language apps provide a simple "pass/fail" score when you speak. **AI Pronunciation Tutor** goes deeper by identifying exactly *how* you mispronounced a sound, providing physical articulation instructions, and generating personalized learning paths to fix it.
 
-**Live Demo:** [Hugging Face Space](https://huggingface.co/spaces/Alimehdi973/ai-pronunciation-coach)  
+**Live Demo:** [Hugging Face Space](https://alimehdi973-ai-pronunciation-coach.hf.space)  
 *(Optional: Insert a link to a Loom Walkthrough video here)*
 
 <p align="center">
