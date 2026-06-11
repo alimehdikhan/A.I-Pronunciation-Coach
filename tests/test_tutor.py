@@ -1,4 +1,3 @@
-import pytest
 from backend.tutor import generate_tutor_card, get_personalized_practice
 
 def test_generate_tutor_card_known_phoneme():

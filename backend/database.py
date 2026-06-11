@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, ForeignKey, Text
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 from pydantic import BaseModel, ConfigDict
-from typing import List, Optional
+from typing import List
 
 logger = logging.getLogger("pronunciation_coach.database")
 
@@ -61,7 +61,7 @@ class PhonemeMistake(Base):
 def init_db():
     try:
         Base.metadata.create_all(bind=engine)
-        logger.info(f"Database initialized. Tables created.")
+        logger.info("Database initialized. Tables created.")
     except Exception as e:
         logger.error(f"Error initializing database: {e}")
 

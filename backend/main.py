@@ -18,7 +18,7 @@ try:
     os.environ["PATH"] += os.pathsep + os.path.dirname(imageio_ffmpeg.get_ffmpeg_exe())
 except ImportError:
     pass
-from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, List
+from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile, Depends
 from fastapi.concurrency import run_in_threadpool
@@ -417,7 +417,7 @@ async def get_tutor_card(word: str, expected: str, actual: str):
     """Generate an educational tutor card for a specific mispronunciation."""
     try:
         return generate_tutor_card(word, expected, actual)
-    except Exception as e:
+    except Exception:
         logger.exception("Error generating tutor card")
         raise HTTPException(status_code=500, detail="Error generating tutor card")
 
