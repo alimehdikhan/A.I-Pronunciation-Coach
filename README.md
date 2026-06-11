@@ -135,7 +135,7 @@ All configuration is done via environment variables. See [`.env.example`](.env.e
 
 | Variable | Default | Description |
 |---|---|---|
-| `DATABASE_URL` | `sqlite:///./pronunciation_coach.db` | PostgreSQL connection string (e.g. Neon) or local SQLite path |
+| `NEON_DATABASE_URL` | `sqlite:///./pronunciation_coach.db` | PostgreSQL connection string (e.g. Neon) or local SQLite path |
 | `WHISPER_MODEL_SIZE` | `base` | Whisper model size (`tiny`, `base`, `small`, `medium`, `large`) |
 | `PRONUNCIATION_LANGUAGE` | `eng-Latn` | Epitran language code for phoneme generation |
 | `PRONUNCIATION_COACH_LOAD_MODELS_ON_STARTUP` | `1` | Set to `0` to skip loading models at startup |
