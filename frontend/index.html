@@ -3,180 +3,328 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Pronunciation Coach - Enhanced</title>
+    <title>AI Pronunciation Coach</title>
+    <!-- Preload fonts for performance -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
+    
+    <script>
+        // Prevent FOUC by setting theme early
+        try {
+            const savedTheme = localStorage.getItem('theme');
+            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            if (savedTheme === 'dark' || (!savedTheme && prefersDark)) {
+                document.documentElement.setAttribute('data-theme', 'dark');
+            } else {
+                document.documentElement.setAttribute('data-theme', 'light');
+            }
+        } catch (e) {}
+    </script>
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1>🎤 AI Pronunciation Coach</h1>
-            <p class="subtitle">Master English pronunciation with AI-powered feedback & voice guidance</p>
+    <!-- Hidden SVG Definitions for Gradients -->
+    <svg width="0" height="0" class="hidden">
+      <defs>
+        <linearGradient id="gradient" x1="0%" y1="100%" x2="100%" y2="0%">
+          <stop offset="0%" stop-color="var(--primary)" />
+          <stop offset="100%" stop-color="var(--success)" />
+        </linearGradient>
+      </defs>
+    </svg>
+
+    <!-- Toast Notifications Container -->
+    <div id="toastContainer" class="toast-container" aria-live="polite"></div>
+
+    <div class="app-container">
+        <!-- Header -->
+        <header class="app-header">
+            <div class="logo">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path>
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                    <line x1="12" y1="19" x2="12" y2="22"></line>
+                </svg>
+                <h1>Pronunciation Coach</h1>
+            </div>
+            <button id="themeToggle" class="icon-btn" aria-label="Toggle Theme">
+                <svg class="sun-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="5"></circle>
+                    <line x1="12" y1="1" x2="12" y2="3"></line>
+                    <line x1="12" y1="21" x2="12" y2="23"></line>
+                    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                    <line x1="1" y1="12" x2="3" y2="12"></line>
+                    <line x1="21" y1="12" x2="23" y2="12"></line>
+                    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                    <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                </svg>
+                <svg class="moon-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                </svg>
+            </button>
+            <div class="user-profile">
+                <input type="text" id="usernameInput" placeholder="Enter Username" class="form-input" style="padding: 0.5rem; border-radius: var(--radius-sm); border: 1px solid var(--border-strong); background: var(--bg-input); color: var(--text-primary); width: 150px;" />
+            </div>
         </header>
 
-        <main>
-            <!-- Difficulty Level Selection -->
-            <section class="level-section">
-                <h2>📚 Choose Your Level</h2>
-                <div class="level-buttons">
-                    <button type="button" class="level-btn active" data-level="beginner" aria-pressed="true">🌱 Beginner</button>
-                    <button type="button" class="level-btn" data-level="intermediate" aria-pressed="false">📖 Intermediate</button>
-                    <button type="button" class="level-btn" data-level="professional" aria-pressed="false">💼 Professional</button>
-                    <button type="button" class="level-btn" data-level="custom" aria-pressed="false">✏️ Custom</button>
-                </div>
-            </section>
+        <!-- Navigation Tabs -->
+        <nav class="app-tabs">
+            <button class="tab-btn active" data-tab="practice">Practice</button>
+            <button class="tab-btn" data-tab="personalized">Targeted Practice</button>
+            <button class="tab-btn" data-tab="history">History</button>
+            <button class="tab-btn" data-tab="analytics">Analytics</button>
+        </nav>
 
-            <!-- Preset Sentences -->
-            <section class="preset-section">
-                <h3>📝 Select a Sentence to Practice</h3>
-                <div id="sentenceList" class="sentence-list">
-                    <!-- Dynamically populated -->
-                </div>
-            </section>
+        <!-- Hero Section -->
+        <section class="hero">
+            <h2>Perfect your pronunciation.</h2>
+            <p class="subtitle">Get real-time, AI-powered phonetic analysis to speak with clarity and confidence.</p>
+        </section>
 
-            <!-- Text Input Section -->
-            <section class="input-section" id="customSection" style="display: none;">
-                <label for="targetText">Enter your custom text:</label>
-                <textarea 
-                    id="targetText" 
-                    rows="3" 
-                    placeholder="Type the text you want to practice..."
-                ></textarea>
-            </section>
-
-            <!-- Current Practice Text Display -->
-            <section class="current-text-section">
-                <div class="current-text-card">
-                    <h3>🎯 Practice This:</h3>
-                    <p id="currentText" class="current-text">Select a sentence to begin</p>
-                    <button type="button" id="listenBtn" class="btn btn-listen" disabled>
-                        <span class="icon">🔊</span>
-                        Listen to Teacher
-                    </button>
-                </div>
-            </section>
-
-            <!-- Recording Section -->
-            <section class="recording-section">
-                <h3>🎙️ Your Turn - Record Your Voice</h3>
-                <div class="controls">
-                    <button type="button" id="recordBtn" class="btn btn-primary">
-                        <span class="icon">🎙️</span>
-                        Start Recording
-                    </button>
-                    <button type="button" id="stopBtn" class="btn btn-secondary" disabled>
-                        <span class="icon">⏹️</span>
-                        Stop Recording
-                    </button>
-                </div>
-                
-                <div id="recordingStatus" class="status hidden" role="status" aria-live="polite">
-                    <span class="pulse"></span>
-                    <span class="status-text">Recording...</span>
-                </div>
-
-                <div id="audioPlayback" class="audio-playback hidden">
-                    <p>Your Recording:</p>
-                    <audio id="audioPlayer" controls></audio>
-                </div>
-            </section>
-
-            <!-- Evaluate Button -->
-            <section class="evaluate-section">
-                <button type="button" id="evaluateBtn" class="btn btn-success" disabled>
-                    <span class="icon">✨</span>
-                    Get Detailed Feedback
-                </button>
-            </section>
-
-            <!-- Loading Indicator -->
-            <div id="loading" class="loading hidden" role="status" aria-live="polite">
-                <div class="spinner"></div>
-                <p>Analyzing your pronunciation...</p>
-            </div>
-
-            <!-- Results Section -->
-            <section id="results" class="results hidden">
-                <h2>📊 Your Results</h2>
-                
-                <div class="score-card">
-                    <div class="score-circle">
-                        <svg width="200" height="200">
-                            <circle cx="100" cy="100" r="90" class="score-bg"></circle>
-                            <circle id="scoreCircle" cx="100" cy="100" r="90" class="score-fill"></circle>
-                        </svg>
-                        <div class="score-text">
-                            <span id="scoreValue" class="score-value">0</span>
-                            <span class="score-label">Overall Score</span>
-                        </div>
+        <!-- Main Interface -->
+        <main class="card-glass tab-content layout-grid" id="practiceTab" style="padding: 1.5rem;">
+            <!-- Left Sidebar (Selection) -->
+            <aside class="left-panel">
+                <div class="panel-section">
+                    <div class="section-header">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>
+                        <h3>Difficulty</h3>
                     </div>
+                    <div class="level-buttons">
+                        <button type="button" class="level-btn active" data-level="beginner">Beginner</button>
+                        <button type="button" class="level-btn" data-level="intermediate">Intermediate</button>
+                        <button type="button" class="level-btn" data-level="professional">Professional</button>
+                        <button type="button" class="level-btn" data-level="custom">Custom Text</button>
+                    </div>
+                </div>
+
+                <div class="panel-section" id="presetSection">
+                    <div class="section-header">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
+                        <h3>Select Phrase</h3>
+                    </div>
+                    <div id="sentenceList" class="sentence-list">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+
+                <div class="panel-section hidden" id="customSection">
+                    <label for="targetText" class="form-label">Type your custom text</label>
+                    <textarea 
+                        id="targetText" 
+                        class="form-textarea"
+                        rows="5" 
+                        placeholder="E.g. The quick brown fox jumps over the lazy dog."
+                    ></textarea>
+                </div>
+            </aside>
+
+            <!-- Right Workspace (Action & Results) -->
+            <section class="right-panel">
+                
+                <!-- Target Phrase Box -->
+                <div class="panel-section current-text-display">
+                    <div class="card-header-flex">
+                        <h3>Target Phrase</h3>
+                        <button type="button" id="listenBtn" class="btn-icon-text" disabled>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
+                            Listen
+                        </button>
+                    </div>
+                    <p id="currentText" class="current-text empty-state">Select a phrase from the left menu to start.</p>
+                </div>
+
+                <!-- Recording Controls -->
+                <div class="panel-section">
+                    <div class="section-header">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="22"></line></svg>
+                        <h3>Record Voice</h3>
+                    </div>
+
+                    <div class="recording-controls">
+                        <button type="button" id="recordBtn" class="btn btn-primary btn-large">
+                            Start Recording
+                        </button>
+                        <button type="button" id="stopBtn" class="btn btn-danger btn-large" disabled>
+                            Stop
+                        </button>
+                    </div>
+
+                    <div id="recordingStatus" class="status-indicator hidden">
+                        <span class="recording-dot"></span>
+                        Recording audio...
+                    </div>
+
+                    <div id="audioPlayback" class="audio-playback hidden">
+                        <div class="playback-header">Playback</div>
+                        <audio id="audioPlayer" controls class="custom-audio"></audio>
+                    </div>
+
+                    <div style="margin-top: 1.5rem;">
+                        <button type="button" id="evaluateBtn" class="btn btn-secondary btn-full btn-large" disabled>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                            Analyze Pronunciation
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Analysis Results Dashboard -->
+                <div id="results" class="results-section hidden">
                     
-                    <div class="score-breakdown">
-                        <div class="breakdown-item">
-                            <span class="breakdown-label">Accuracy</span>
-                            <div class="breakdown-bar">
-                                <div id="accuracyBar" class="breakdown-fill" style="width: 0%"></div>
+                    <div class="dashboard-grid">
+                        
+                        <!-- Premium Score Card -->
+                        <div class="score-card panel-section">
+                            <div class="score-circle-container">
+                                <svg width="140" height="140" class="circular-chart">
+                                    <circle class="circle-bg" cx="70" cy="70" r="60"></circle>
+                                    <circle id="scoreCircle" class="circle-progress" cx="70" cy="70" r="60"></circle>
+                                </svg>
+                                <div class="score-content">
+                                    <span id="scoreValue" class="score-number">0</span>
+                                    <span class="score-label">Score</span>
+                                </div>
                             </div>
-                            <span id="accuracyText" class="breakdown-value">0%</span>
-                        </div>
-                        <div class="breakdown-item">
-                            <span class="breakdown-label">Pronunciation</span>
-                            <div class="breakdown-bar">
-                                <div id="pronunciationBar" class="breakdown-fill" style="width: 0%"></div>
+                            
+                            <div class="score-metrics">
+                                <div class="metric-group">
+                                    <div class="metric-label">
+                                        <span>Word Accuracy</span>
+                                        <span id="accuracyText">0%</span>
+                                    </div>
+                                    <div class="metric-track">
+                                        <div id="accuracyBar" class="metric-fill accuracy-fill" style="width: 0%"></div>
+                                    </div>
+                                </div>
+                                <div class="metric-group">
+                                    <div class="metric-label">
+                                        <span>Pronunciation</span>
+                                        <span id="pronunciationText">0%</span>
+                                    </div>
+                                    <div class="metric-track">
+                                        <div id="pronunciationBar" class="metric-fill pronunciation-fill" style="width: 0%"></div>
+                                    </div>
+                                </div>
                             </div>
-                            <span id="pronunciationText" class="breakdown-value">0%</span>
+                        </div>
+
+                        <!-- Feedback Banner -->
+                        <div id="feedbackBanner" class="feedback-banner">
+                            <!-- Populated via JS -->
+                        </div>
+
+                        <!-- Comparison -->
+                        <div class="comparison-grid">
+                            <div class="text-box expected">
+                                <h4>Expected Text</h4>
+                                <p id="expectedText"></p>
+                            </div>
+                            <div class="text-box actual">
+                                <h4>Transcription</h4>
+                                <p id="transcription"></p>
+                            </div>
+                        </div>
+
+                        <!-- Deep Analysis Details -->
+                        <div class="analysis-cards">
+                            <div class="analysis-card">
+                                <h4>
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                                    Phonetic Breakdown
+                                </h4>
+                                <div id="phonemeComparison"></div>
+                            </div>
+
+                            <div class="analysis-card">
+                                <h4>
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+                                    Actionable Tips
+                                </h4>
+                                <ul id="improvementList" class="improvement-list"></ul>
+                            </div>
+                        </div>
+
+                        <!-- Word by Word Breakdown -->
+                        <div class="panel-section">
+                            <div class="section-header">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="9" x2="20" y2="9"></line><line x1="4" y1="15" x2="20" y2="15"></line><line x1="10" y1="3" x2="8" y2="21"></line><line x1="16" y1="3" x2="14" y2="21"></line></svg>
+                                <h3>Word-by-Word Analysis <span style="font-size: 0.8em; font-weight: normal; color: var(--text-muted);">(Click incorrect words for a Tutor Guide)</span></h3>
+                            </div>
+                            <div id="wordScores" class="word-scores-grid"></div>
+                        </div>
+
+                        <div class="action-footer">
+                            <button type="button" id="practiceAgainBtn" class="btn btn-secondary">
+                                Retry Phrase
+                            </button>
+                            <button type="button" id="nextSentenceBtn" class="btn btn-primary">
+                                Next Phrase
+                            </button>
                         </div>
                     </div>
                 </div>
 
-                <div class="comparison-box">
-                    <div class="comparison-item">
-                        <h3>📖 Expected:</h3>
-                        <p id="expectedText" class="comparison-text"></p>
-                    </div>
-                    <div class="comparison-item">
-                        <h3>🗣️ You Said:</h3>
-                        <p id="transcription" class="comparison-text"></p>
-                    </div>
-                </div>
-
-                <div class="feedback-box detailed">
-                    <h3>💡 Detailed Feedback & Improvement Tips</h3>
-                    <div id="feedback" class="feedback"></div>
-                </div>
-
-                <div class="phoneme-analysis">
-                    <h3>🔬 Phoneme-Level Analysis</h3>
-                    <div id="phonemeComparison" class="phoneme-grid"></div>
-                </div>
-
-                <div class="word-analysis">
-                    <h3>📝 Word-by-Word Breakdown</h3>
-                    <div id="wordScores" class="word-scores"></div>
-                </div>
-
-                <div class="improvement-section">
-                    <h3>🎯 What to Work On</h3>
-                    <ul id="improvementList" class="improvement-list"></ul>
-                </div>
-
-                <div class="action-buttons">
-                    <button type="button" id="practiceAgainBtn" class="btn btn-primary">
-                        <span class="icon">🔄</span>
-                        Practice This Again
-                    </button>
-                    <button type="button" id="nextSentenceBtn" class="btn btn-info">
-                        <span class="icon">➡️</span>
-                        Next Sentence
-                    </button>
-                </div>
             </section>
         </main>
 
-        <footer>
-            <p>Powered by OpenAI Whisper, Epitran & FastAPI | 100% Free & Open Source</p>
-        </footer>
+        <!-- History Tab -->
+        <main class="card-glass tab-content hidden" id="historyTab" style="padding: 1.5rem;">
+            <h2>Practice History</h2>
+            <div id="historyContainer" class="history-list"></div>
+        </main>
+
+        <!-- Personalized Practice Tab -->
+        <main class="card-glass tab-content hidden" id="personalizedTab" style="padding: 1.5rem;">
+            <div class="card-header-flex">
+                <h2>Targeted Practice</h2>
+                <button type="button" id="refreshPracticeBtn" class="btn btn-secondary">Refresh List</button>
+            </div>
+            <p class="subtitle" style="margin-bottom: 1.5rem;">Sentences dynamically chosen based on your recent mistakes.</p>
+            <div id="personalizedContainer" class="history-list"></div>
+        </main>
+
+        <!-- Analytics Tab -->
+        <main class="card-glass tab-content hidden" id="analyticsTab" style="padding: 1.5rem;">
+            <h2>Your Analytics</h2>
+            <div class="analytics-grid">
+                <div class="panel-section">
+                    <h3>Score Trend</h3>
+                    <canvas id="scoreChart"></canvas>
+                </div>
+                <div class="panel-section">
+                    <h3>Top Phoneme Weaknesses</h3>
+                    <ul id="weaknessesList" class="improvement-list"></ul>
+                </div>
+            </div>
+        </main>
     </div>
 
+    <!-- Processing Overlay -->
+    <div id="loading" class="loading-overlay hidden">
+        <div class="spinner-container">
+            <div class="spinner"></div>
+            <p>Analyzing speech patterns...</p>
+        </div>
+    </div>
+
+    <!-- Tutor Card Modal -->
+    <div id="tutorModal" class="modal-overlay hidden">
+        <div class="modal-content card-glass">
+            <button id="closeTutorBtn" class="close-modal">&times;</button>
+            <div class="tutor-header">
+                <h2>Pronunciation Tutor</h2>
+                <button id="tutorAudioBtn" class="btn-icon-text">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
+                    Listen
+                </button>
+            </div>
+            <div id="tutorContent"></div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="script.js"></script>
 </body>
 </html>

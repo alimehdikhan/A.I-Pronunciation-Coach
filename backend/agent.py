@@ -86,7 +86,7 @@ class CodeFlowAgent:
                     if isinstance(b, ast.Pass):
                         is_unimplemented = True
                     if isinstance(b, ast.Expr) and isinstance(b.value, ast.Constant) and isinstance(b.value.value, str):
-                        if "TODO" in b.value.value or "todo" in b.value.value.lower():
+                        if "todo" in b.value.value.lower():
                             has_todo = True
 
                 # Collect calls made inside the function
@@ -120,7 +120,7 @@ class CodeFlowAgent:
         top_todos: List[int] = []
         for node in tree.body:
             if isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
-                if "TODO" in node.value.value or "todo" in node.value.value.lower():
+                if "todo" in node.value.value.lower():
                     top_todos.append(getattr(node, 'lineno', None))
 
         result: Dict[str, Any] = {
@@ -146,7 +146,12 @@ class CodeFlowAgent:
 
 if __name__ == "__main__":
     import json
+    import logging as _logging
+
+    _logging.basicConfig(level=_logging.INFO)
+    _logger = _logging.getLogger(__name__)
+
     root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     agent = CodeFlowAgent(root=root)
     r = agent.analyze_project()
-    print(json.dumps(r, indent=2))
+    _logger.info(json.dumps(r, indent=2))

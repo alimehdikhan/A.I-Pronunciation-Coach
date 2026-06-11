@@ -1,3 +1,5 @@
+"""Tests for the pronunciation scoring engine."""
+
 from backend.pronunciation import PronunciationScorer
 
 
@@ -11,6 +13,7 @@ def make_fallback_scorer():
     scorer.language = "eng-Latn"
     scorer.epi = FailingEpitran()
     scorer.phoneme_backend = "epitran"
+    scorer._phoneme_cache = {}
     return scorer
 
 
@@ -42,3 +45,23 @@ def test_empty_reference_returns_zero_score():
     assert result["score"] == 0.0
     assert result["accuracy"] == 0.0
     assert result["word_level_scores"] == []
+
+
+def test_text_to_phonemes_returns_tuple():
+    """Verify text_to_phonemes returns (phonemes, backend) tuple."""
+    scorer = make_fallback_scorer()
+
+    phonemes, backend = scorer.text_to_phonemes("hello")
+
+    assert isinstance(phonemes, str)
+    assert len(phonemes) > 0
+    assert backend == "text-fallback"
+
+
+def test_identical_text_scores_100():
+    scorer = make_fallback_scorer()
+
+    result = scorer.score_pronunciation("hello", "hello")
+
+    assert result["score"] == 100.0
+    assert result["accuracy"] == 100.0

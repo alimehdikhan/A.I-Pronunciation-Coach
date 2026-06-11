@@ -33,29 +33,36 @@ class PronunciationScorer:
         self.language = language
         self.epi = epitran.Epitran(language)
         self.phoneme_backend = "epitran"
+        self._phoneme_cache = {}
 
-    def text_to_phonemes(self, text: str) -> str:
-        """Convert text to a phoneme representation with a safe fallback."""
+    def text_to_phonemes(self, text: str) -> tuple[str, str]:
+        """Convert text to a phoneme representation with a safe fallback.
+
+        Returns:
+            A tuple of (phonemes, backend_used) where backend_used is
+            either ``"epitran"`` or ``"text-fallback"``.
+        """
         normalized_text = self.normalize_text(text)
         if not normalized_text:
-            return ""
+            return "", self.phoneme_backend
+
+        if normalized_text in self._phoneme_cache:
+            return self._phoneme_cache[normalized_text], self.phoneme_backend
 
         try:
             phonemes = self.epi.transliterate(normalized_text)
+            if phonemes:
+                self._phoneme_cache[normalized_text] = phonemes
+                return phonemes, "epitran"
         except Exception:
             logger.warning(
                 "Epitran transliteration failed for language '%s'; using text fallback.",
                 self.language,
                 exc_info=True,
             )
-            self.phoneme_backend = "text-fallback"
-            return self.fallback_phonemes(normalized_text)
+            return self.fallback_phonemes(normalized_text), "text-fallback"
 
-        if not phonemes:
-            self.phoneme_backend = "text-fallback"
-            return self.fallback_phonemes(normalized_text)
-
-        return phonemes
+        return self.fallback_phonemes(normalized_text), "text-fallback"
 
     @staticmethod
     def normalize_text(text: str) -> str:
@@ -93,9 +100,16 @@ class PronunciationScorer:
         distance = Levenshtein.distance(ref_phonemes, trans_phonemes)
         return max(0.0, min(1.0, 1 - (distance / max_len)))
 
-    def get_word_level_scores(self, reference_words: List[str], transcribed_words: List[str]) -> List[Dict[str, Any]]:
-        """Calculate pronunciation scores for individual words."""
+    def get_word_level_scores(
+        self, reference_words: List[str], transcribed_words: List[str]
+    ) -> tuple[List[Dict[str, Any]], str]:
+        """Calculate pronunciation scores for individual words.
+
+        Returns:
+            A tuple of (word_scores_list, backend_used).
+        """
         word_scores = []
+        backend_used = self.phoneme_backend
         max_len = max(len(reference_words), len(transcribed_words))
 
         for index in range(max_len):
@@ -105,9 +119,23 @@ class PronunciationScorer:
             if not ref_word and not trans_word:
                 continue
 
-            ref_phonemes = self.text_to_phonemes(ref_word)
-            trans_phonemes = self.text_to_phonemes(trans_word)
+            ref_phonemes, ref_backend = self.text_to_phonemes(ref_word)
+            trans_phonemes, trans_backend = self.text_to_phonemes(trans_word)
+            if ref_backend == "text-fallback" or trans_backend == "text-fallback":
+                backend_used = "text-fallback"
             similarity = self.calculate_similarity(ref_phonemes, trans_phonemes)
+
+            error_details = []
+            if ref_phonemes and trans_phonemes:
+                ops = Levenshtein.editops(ref_phonemes, trans_phonemes)
+                for op, ref_idx, trans_idx in ops:
+                    error_details.append({
+                        "type": op,
+                        "expected": ref_phonemes[ref_idx] if op in ('replace', 'delete') else "",
+                        "actual": trans_phonemes[trans_idx] if op in ('replace', 'insert') else "",
+                        "ref_index": ref_idx,
+                        "trans_index": trans_idx
+                    })
 
             word_scores.append(
                 {
@@ -117,12 +145,15 @@ class PronunciationScorer:
                     "reference_phonemes": ref_phonemes,
                     "transcribed_phonemes": trans_phonemes,
                     "match": ref_word == trans_word,
+                    "error_details": error_details,
                 }
             )
 
-        return word_scores
+        return word_scores, backend_used
 
-    def generate_feedback(self, score: float, accuracy: float, word_scores: List[Dict[str, Any]]) -> str:
+    def generate_feedback(
+        self, score: float, accuracy: float, word_scores: List[Dict[str, Any]], backend: str
+    ) -> str:
         """Generate human-readable feedback based on scores."""
         feedback_parts = []
 
@@ -143,14 +174,20 @@ class PronunciationScorer:
         if accuracy < 100:
             feedback_parts.append(f"Word accuracy: {accuracy}% - Try to pronounce all words clearly.")
 
-        if self.phoneme_backend == "text-fallback":
+        if backend == "text-fallback":
             feedback_parts.append(
                 "Phoneme scoring is using a text fallback because the IPA transliteration backend is unavailable."
             )
 
         return "\n\n".join(feedback_parts)
 
-    def score_pronunciation(self, reference_text: str, transcribed_text: str) -> Dict[str, Any]:
+    # Scoring weights: phoneme similarity and word accuracy are blended
+    # into a single 0–100 score.  Both components are normalised to
+    # percentages (0–100) before the weighted sum.
+    PHONEME_WEIGHT = 0.70
+    WORD_WEIGHT = 0.30
+
+    def score_pronunciation(self, reference_text: str, transcribed_text: str, difficulty: str = "Intermediate") -> Dict[str, Any]:
         """
         Compare reference and transcribed text and return scoring details.
         """
@@ -158,33 +195,63 @@ class PronunciationScorer:
         transcribed_text = self.normalize_text(transcribed_text)
 
         if not reference_text:
+            trans_phonemes, backend = self.text_to_phonemes(transcribed_text)
             return {
                 "score": 0.0,
                 "accuracy": 0.0,
                 "phoneme_analysis": {
                     "reference_phonemes": "",
-                    "transcribed_phonemes": self.text_to_phonemes(transcribed_text),
+                    "transcribed_phonemes": trans_phonemes,
                     "phoneme_similarity": 0.0,
-                    "backend": self.phoneme_backend,
+                    "backend": backend,
                 },
                 "word_level_scores": [],
                 "feedback": "No reference text was provided for pronunciation scoring.",
             }
 
-        ref_phonemes = self.text_to_phonemes(reference_text)
-        trans_phonemes = self.text_to_phonemes(transcribed_text)
+        ref_phonemes, ref_backend = self.text_to_phonemes(reference_text)
+        trans_phonemes, trans_backend = self.text_to_phonemes(transcribed_text)
+        backend = "text-fallback" if "text-fallback" in (ref_backend, trans_backend) else "epitran"
         phoneme_score = self.calculate_similarity(ref_phonemes, trans_phonemes)
 
         ref_words = self.split_words(reference_text)
         trans_words = self.split_words(transcribed_text)
-        word_scores = self.get_word_level_scores(ref_words, trans_words)
+        word_scores, word_backend = self.get_word_level_scores(ref_words, trans_words)
+        if word_backend == "text-fallback":
+            backend = "text-fallback"
 
         correct_words = sum(1 for word in word_scores if word["match"])
         total_words = len(ref_words)
+        # word_accuracy uses reference word count as denominator; extra
+        # transcribed words do not inflate accuracy.
         word_accuracy = (correct_words / total_words * 100) if total_words else 0.0
 
-        final_score = (phoneme_score * 70) + (word_accuracy * 0.30)
-        final_score = max(0.0, min(100.0, round(final_score, 2)))
+        # Both phoneme_score (0-1 ratio → percentage) and word_accuracy
+        # (already 0-100) are normalised to 0-100 before weighting.
+        phoneme_pct = phoneme_score * 100
+        final_score = (phoneme_pct * self.PHONEME_WEIGHT) + (word_accuracy * self.WORD_WEIGHT)
+        
+        # Difficulty Scaling
+        # Beginner: more lenient (+10%)
+        # Intermediate: standard
+        # Advanced: stricter (-10%)
+        if difficulty.lower() == "beginner":
+            final_score = final_score * 1.10
+        elif difficulty.lower() == "advanced":
+            final_score = final_score * 0.90
+
+        final_score = round(max(0.0, min(100.0, final_score)), 2)
+
+        # Aggregate weaknesses
+        weaknesses_count = {}
+        for word in word_scores:
+            for error in word.get("error_details", []):
+                if error["type"] in ("replace", "delete") and error["expected"].strip():
+                    ph = error["expected"]
+                    weaknesses_count[ph] = weaknesses_count.get(ph, 0) + 1
+        
+        sorted_weaknesses = sorted(weaknesses_count.items(), key=lambda x: x[1], reverse=True)
+        phoneme_weaknesses = [ph for ph, count in sorted_weaknesses][:3]
 
         return {
             "score": final_score,
@@ -193,8 +260,9 @@ class PronunciationScorer:
                 "reference_phonemes": ref_phonemes,
                 "transcribed_phonemes": trans_phonemes,
                 "phoneme_similarity": round(phoneme_score * 100, 2),
-                "backend": self.phoneme_backend,
+                "backend": backend,
+                "phoneme_weaknesses": phoneme_weaknesses,
             },
             "word_level_scores": word_scores,
-            "feedback": self.generate_feedback(final_score, word_accuracy, word_scores),
+            "feedback": self.generate_feedback(final_score, word_accuracy, word_scores, backend),
         }

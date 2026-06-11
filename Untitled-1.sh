@@ -1,1 +1,0 @@
-curl -v -F "audio=@C:/full/path/to/sample.wav" -F "target_text=Today is a beautiful day." http://localhost:8000/api/evaluate

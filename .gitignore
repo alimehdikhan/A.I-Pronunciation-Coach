@@ -8,3 +8,11 @@ screenshots/
 .env
 .env.*
 !.env.example
+logs/
+*.wav
+.cache/
+htmlcov/
+.coverage
+.ruff_cache/
+.mypy_cache/
+*.db

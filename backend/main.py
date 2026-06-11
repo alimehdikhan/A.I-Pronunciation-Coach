@@ -5,24 +5,42 @@ The API accepts short browser-recorded audio clips, transcribes them with
 Whisper, and compares the result against a target sentence.
 """
 
+from __future__ import annotations
+
 from contextlib import asynccontextmanager
 import logging
 import os
-from threading import Lock
 import tempfile
-from typing import Any, Dict, Optional, Tuple
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+# Ensure ffmpeg is available for Whisper
+try:
+    import imageio_ffmpeg
+    os.environ["PATH"] += os.pathsep + os.path.dirname(imageio_ffmpeg.get_ffmpeg_exe())
+except ImportError:
+    pass
+from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, List
+
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile, Depends
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy.orm import Session
+from backend.database import init_db, get_db, User, PronunciationRecord, PhonemeMistake, UserHistoryResponse, AnalyticsResponse
+from backend.tutor import generate_tutor_card, get_personalized_practice
+from sqlalchemy import func
 
-from backend.agent import CodeFlowAgent
+if TYPE_CHECKING:
+    from backend.models import WhisperASR
+    from backend.pronunciation import PronunciationScorer
 
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("pronunciation_coach")
+
+# ---------------------------------------------------------------------------
+# Configuration
+# ---------------------------------------------------------------------------
 
 DEFAULT_CORS_ORIGINS = [
     "http://localhost:3000",
@@ -46,7 +64,6 @@ ALLOWED_AUDIO_EXTENSIONS = {
     ".webm",
 }
 ALLOWED_AUDIO_CONTENT_TYPES = {
-    "application/octet-stream",
     "audio/flac",
     "audio/m4a",
     "audio/mp3",
@@ -70,10 +87,20 @@ LOAD_MODELS_ON_STARTUP = os.getenv("PRONUNCIATION_COACH_LOAD_MODELS_ON_STARTUP",
     "false",
     "no",
 }
+ENABLE_AGENT_ENDPOINT = os.getenv("PRONUNCIATION_COACH_ENABLE_AGENT", "0").lower() in {
+    "1",
+    "true",
+    "yes",
+}
 
-asr_model: Optional[Any] = None
-pronunciation_scorer: Optional[Any] = None
-model_lock = Lock()
+frontend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend"))
+
+# ---------------------------------------------------------------------------
+# Module-level model singletons (lazily loaded via load_models)
+# ---------------------------------------------------------------------------
+
+asr_model: WhisperASR | None = None
+pronunciation_scorer: PronunciationScorer | None = None
 
 
 def parse_cors_origins() -> list[str]:
@@ -112,6 +139,7 @@ async def lifespan(app: FastAPI):
         await run_in_threadpool(load_models)
     else:
         logger.warning("Model startup loading is disabled by environment configuration.")
+    init_db()
     yield
 
 
@@ -131,6 +159,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
 def get_models() -> Tuple[Any, Any]:
     """Return loaded models or report a clear service-unavailable response."""
@@ -199,17 +231,9 @@ def remove_temp_file(path: Optional[str]) -> None:
         logger.warning("Failed to remove temporary upload file: %s", path, exc_info=True)
 
 
-def transcribe_file(model: Any, audio_path: str) -> Dict[str, Any]:
-    """Run Whisper behind a lock to avoid unsafe concurrent model access."""
-    with model_lock:
-        return model.transcribe(audio_path)
-
-
-@app.get("/")
-async def root() -> FileResponse:
-    """Serve the frontend application at the site root."""
-    return FileResponse(os.path.join(frontend_dir, "index.html"))
-
+# ---------------------------------------------------------------------------
+# Routes
+# ---------------------------------------------------------------------------
 
 @app.get("/health")
 async def health_check() -> Dict[str, Any]:
@@ -223,23 +247,32 @@ async def health_check() -> Dict[str, Any]:
     }
 
 
-@app.get("/api/agent/analyze")
-async def analyze_codebase() -> JSONResponse:
-    """Run a conservative code-flow analysis and return findings."""
-    try:
-        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-        agent = CodeFlowAgent(root=project_root)
-        report = await run_in_threadpool(agent.analyze_project)
-        return JSONResponse(content={"success": True, "report": report})
-    except Exception as exc:
-        logger.exception("Agent analysis failed")
-        raise HTTPException(status_code=500, detail=f"Agent analysis failed: {exc}") from exc
+# The agent endpoint exposes internal source code details (file paths,
+# function names, line numbers).  It is disabled by default and can be
+# enabled via PRONUNCIATION_COACH_ENABLE_AGENT=1 for local development.
+if ENABLE_AGENT_ENDPOINT:
+    from backend.agent import CodeFlowAgent
+
+    @app.get("/api/agent/analyze")
+    async def analyze_codebase() -> JSONResponse:
+        """Run a conservative code-flow analysis and return findings."""
+        try:
+            project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+            agent = CodeFlowAgent(root=project_root)
+            report = await run_in_threadpool(agent.analyze_project)
+            return JSONResponse(content={"success": True, "report": report})
+        except Exception as exc:
+            logger.exception("Agent analysis failed")
+            raise HTTPException(status_code=500, detail=f"Agent analysis failed: {exc}") from exc
 
 
 @app.post("/api/evaluate")
 async def evaluate_pronunciation(
     audio: UploadFile = File(...),
     target_text: Optional[str] = Form(None),
+    username: Optional[str] = Form(None),
+    difficulty: Optional[str] = Form("Intermediate"),
+    db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
     """
     Evaluate pronunciation from an audio file against a required target text.
@@ -253,14 +286,48 @@ async def evaluate_pronunciation(
         asr, scorer = get_models()
         tmp_file_path = await save_upload_to_temp(audio)
 
-        transcription_result = await run_in_threadpool(transcribe_file, asr, tmp_file_path)
+        transcription_result = await run_in_threadpool(asr.transcribe, tmp_file_path)
         transcribed_text = str(transcription_result.get("text", "")).strip()
 
         score_result = await run_in_threadpool(
             scorer.score_pronunciation,
             reference_text,
             transcribed_text,
+            difficulty
         )
+
+        # Save to database if username is provided
+        if username:
+            user = db.query(User).filter(User.username == username).first()
+            if not user:
+                user = User(username=username)
+                db.add(user)
+                db.commit()
+                db.refresh(user)
+
+            record = PronunciationRecord(
+                user_id=user.id,
+                target_text=reference_text,
+                transcribed_text=transcribed_text,
+                score=score_result["score"],
+                accuracy=score_result["accuracy"],
+                difficulty=difficulty
+            )
+            db.add(record)
+            db.flush() # To get record.id
+
+            for word_score in score_result.get("word_level_scores", []):
+                for err in word_score.get("error_details", []):
+                    if err["type"] in ("replace", "delete") and err["expected"]:
+                        mistake = PhonemeMistake(
+                            record_id=record.id,
+                            word=word_score["reference_word"],
+                            expected_phoneme=err["expected"],
+                            actual_phoneme=err["actual"]
+                        )
+                        db.add(mistake)
+            
+            db.commit()
 
         return {
             "success": True,
@@ -289,7 +356,7 @@ async def transcribe_audio(audio: UploadFile = File(...)) -> Dict[str, Any]:
         asr, _ = get_models()
         tmp_file_path = await save_upload_to_temp(audio)
 
-        result = await run_in_threadpool(transcribe_file, asr, tmp_file_path)
+        result = await run_in_threadpool(asr.transcribe, tmp_file_path)
         return {
             "success": True,
             "transcription": str(result.get("text", "")).strip(),
@@ -304,14 +371,83 @@ async def transcribe_audio(audio: UploadFile = File(...)) -> Dict[str, Any]:
         remove_temp_file(tmp_file_path)
 
 
-frontend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend"))
+@app.get("/api/history/{username}", response_model=UserHistoryResponse)
+async def get_history(username: str, db: Session = Depends(get_db)):
+    """Fetch past pronunciation records for a user."""
+    user = db.query(User).filter(User.username == username).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    records = db.query(PronunciationRecord).filter(PronunciationRecord.user_id == user.id).order_by(PronunciationRecord.created_at.desc()).all()
+    return {"username": username, "records": records}
+
+
+@app.get("/api/analytics/{username}", response_model=AnalyticsResponse)
+async def get_analytics(username: str, db: Session = Depends(get_db)):
+    """Fetch aggregated score trends and frequent phoneme mistakes."""
+    user = db.query(User).filter(User.username == username).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    records = db.query(PronunciationRecord).filter(PronunciationRecord.user_id == user.id).order_by(PronunciationRecord.created_at.asc()).all()
+    
+    total_sessions = len(records)
+    avg_score = sum(r.score for r in records) / total_sessions if total_sessions > 0 else 0.0
+    
+    score_trend = [{"date": r.created_at.isoformat(), "score": r.score} for r in records]
+    
+    mistakes = db.query(PhonemeMistake.expected_phoneme, func.count(PhonemeMistake.id).label('count'))\
+        .join(PronunciationRecord)\
+        .filter(PronunciationRecord.user_id == user.id)\
+        .group_by(PhonemeMistake.expected_phoneme)\
+        .order_by(func.count(PhonemeMistake.id).desc())\
+        .limit(5).all()
+        
+    top_weaknesses = [{"phoneme": m.expected_phoneme, "count": m.count} for m in mistakes]
+    
+    return {
+        "average_score": round(avg_score, 2),
+        "total_practice_sessions": total_sessions,
+        "score_trend": score_trend,
+        "top_weaknesses": top_weaknesses
+    }
+
+@app.get("/api/tutor/card")
+async def get_tutor_card(word: str, expected: str, actual: str):
+    """Generate an educational tutor card for a specific mispronunciation."""
+    try:
+        return generate_tutor_card(word, expected, actual)
+    except Exception as e:
+        logger.exception("Error generating tutor card")
+        raise HTTPException(status_code=500, detail="Error generating tutor card")
+
+@app.get("/api/tutor/personalized-practice/{username}")
+async def get_personalized_practice_endpoint(username: str, db: Session = Depends(get_db)):
+    """Fetch personalized practice sentences based on weak phonemes."""
+    user = db.query(User).filter(User.username == username).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    mistakes = db.query(PhonemeMistake.expected_phoneme)\
+        .join(PronunciationRecord)\
+        .filter(PronunciationRecord.user_id == user.id)\
+        .group_by(PhonemeMistake.expected_phoneme)\
+        .order_by(func.count(PhonemeMistake.id).desc())\
+        .limit(3).all()
+        
+    weaknesses = [m.expected_phoneme for m in mistakes]
+    practice = get_personalized_practice(weaknesses)
+    return {"username": username, "practices": practice}
+
+# Serve the static frontend at the site root.  StaticFiles with html=True
+# automatically serves index.html for ``/``.
 app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="frontend")
 
 
 if __name__ == "__main__":
     import uvicorn
 
-    print("Starting AI Pronunciation Coach API...")
-    print("Server will be available at: http://localhost:8000")
-    print("API documentation at: http://localhost:8000/docs")
+    logger.info("Starting AI Pronunciation Coach API...")
+    logger.info("Server will be available at: http://localhost:8000")
+    logger.info("API documentation at: http://localhost:8000/docs")
     uvicorn.run(app, host="0.0.0.0", port=8000)
