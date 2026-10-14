@@ -3,193 +3,127 @@ Educational Tutor Engine
 Provides step-by-step guidance, mouth placement, and personalized practice for phoneme mistakes.
 """
 
-import nltk
-from typing import Dict, List, Any
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
-# Ensure cmudict is available
-try:
-    nltk.data.find('corpora/cmudict')
-except LookupError:
-    nltk.download('cmudict')
+from backend import phonetics
+from backend.phoneme_kb import PHONEMES, deletion_tip, get_phoneme, list_phonemes, substitution_tip
 
-try:
-    cmu_dict = nltk.corpus.cmudict.dict()
-except Exception:
-    cmu_dict = {}
-
-# Hardcoded Phoneme Knowledge Base (Abridged for commonly confused English sounds)
-PHONEME_KB = {
-    "v": {
-        "name": "Voiced labiodental fricative",
-        "placement": "Gently bite your lower lip with your top teeth. Blow air while using your vocal cords (make it vibrate).",
-        "common_substitutions": ["w", "b", "f"],
-        "why_wrong": "You might be rounding your lips like /w/ or fully closing them like /b/ instead of biting the lower lip.",
-        "minimal_pairs": [("vet", "wet"), ("vow", "wow"), ("vest", "west")],
-        "easier_words": ["van", "vote", "cave"],
-        "practice_sentence": "Victor's vibrant violet van vanished."
-    },
-    "w": {
-        "name": "Voiced labial-velar approximant",
-        "placement": "Round your lips tightly into an 'O' shape and push air out without your teeth touching your lips.",
-        "common_substitutions": ["v"],
-        "why_wrong": "Your top teeth are probably touching your bottom lip (like /v/). Keep your teeth away from your lips.",
-        "minimal_pairs": [("wet", "vet"), ("wine", "vine")],
-        "easier_words": ["we", "water", "win"],
-        "practice_sentence": "We watched the white whale swim away."
-    },
-    "r": {
-        "name": "Alveolar approximant",
-        "placement": "Pull your tongue back slightly, curl the tip up without touching the roof of your mouth. Round your lips slightly.",
-        "common_substitutions": ["l", "w"],
-        "why_wrong": "If it sounds like /l/, your tongue tip is touching the roof of your mouth behind your teeth. It shouldn't touch anywhere.",
-        "minimal_pairs": [("right", "light"), ("read", "lead"), ("row", "low")],
-        "easier_words": ["red", "run", "car"],
-        "practice_sentence": "The red rabbit ran right round the rock."
-    },
-    "l": {
-        "name": "Alveolar lateral approximant",
-        "placement": "Press the tip of your tongue firmly against the bumpy ridge just behind your top front teeth. Let air flow around the sides.",
-        "common_substitutions": ["r"],
-        "why_wrong": "Your tongue tip is likely pulled back and not making firm contact with the roof of your mouth.",
-        "minimal_pairs": [("light", "right"), ("lead", "read")],
-        "easier_words": ["lip", "log", "tall"],
-        "practice_sentence": "Little lucky ladybugs landed on the leaf."
-    },
-    "θ": {
-        "name": "Voiceless dental fricative (Unvoiced 'th')",
-        "placement": "Place the tip of your tongue slightly between your upper and lower front teeth. Blow air gently. Do NOT use your voice.",
-        "common_substitutions": ["s", "t", "f"],
-        "why_wrong": "You might be pulling your tongue behind your teeth (making an /s/ or /t/) or biting your lip (making an /f/).",
-        "minimal_pairs": [("think", "sink"), ("three", "tree"), ("thought", "fought")],
-        "easier_words": ["thumb", "math", "bath"],
-        "practice_sentence": "I think the three thieves threw the things."
-    },
-    "ð": {
-        "name": "Voiced dental fricative (Voiced 'th')",
-        "placement": "Place the tip of your tongue between your teeth and blow air, but THIS TIME vibrate your vocal cords (make a buzzing sound).",
-        "common_substitutions": ["d", "z", "v"],
-        "why_wrong": "You are either completely stopping the air behind your teeth (making a /d/) or biting your lip (/v/).",
-        "minimal_pairs": [("then", "den"), ("breathe", "breed"), ("they", "day")],
-        "easier_words": ["the", "this", "mother"],
-        "practice_sentence": "This and that, those and these are there."
-    },
-    "ʃ": {
-        "name": "Voiceless postalveolar fricative ('sh')",
-        "placement": "Round your lips, raise the blade of your tongue toward the roof of your mouth (further back than /s/) and blow a steady stream of air.",
-        "common_substitutions": ["s", "tʃ"],
-        "why_wrong": "Your tongue is too far forward and lips aren't rounded (making /s/), or you are stopping the air first (making /ch/).",
-        "minimal_pairs": [("ship", "sip"), ("shoe", "sue"), ("shell", "sell")],
-        "easier_words": ["she", "fish", "shop"],
-        "practice_sentence": "She sells shiny sea shells on the ship."
-    },
-    "s": {
-        "name": "Voiceless alveolar fricative",
-        "placement": "Keep your lips relaxed, tongue tip behind your top teeth (or resting behind bottom teeth), push air through the narrow gap.",
-        "common_substitutions": ["ʃ", "θ"],
-        "why_wrong": "You might be sticking your tongue out (/th/) or rounding your lips too much (/sh/).",
-        "minimal_pairs": [("sip", "ship"), ("sue", "shoe")],
-        "easier_words": ["sun", "bus", "sat"],
-        "practice_sentence": "Sam saw seven small silver snakes."
-    },
-    "p": {
-        "name": "Voiceless bilabial plosive",
-        "placement": "Press both lips together firmly to stop the air. Then release it with a sudden puff of air (no voice).",
-        "common_substitutions": ["b", "f"],
-        "why_wrong": "You are vibrating your vocal cords (making /b/) or not closing your lips fully (making /f/).",
-        "minimal_pairs": [("pig", "big"), ("pear", "bear")],
-        "easier_words": ["pop", "pen", "cup"],
-        "practice_sentence": "Peter Piper picked a peck of pickled peppers."
-    },
-    "b": {
-        "name": "Voiced bilabial plosive",
-        "placement": "Press both lips together firmly to stop the air. Vibrate your vocal cords as you release the air.",
-        "common_substitutions": ["p", "v"],
-        "why_wrong": "You are forgetting to use your voice (/p/) or not closing your lips fully (/v/).",
-        "minimal_pairs": [("big", "pig"), ("bear", "pear")],
-        "easier_words": ["boy", "cab", "rub"],
-        "practice_sentence": "A big black bear bit a big black bug."
-    }
-}
+# Sounds that are hard for most learners; suggested before any history exists.
+DEFAULT_FOCUS = ["θ", "ð", "r", "v", "æ"]
 
 GENERIC_PHONEME = {
-    "name": "Unknown Phoneme",
-    "placement": "Listen carefully to the reference audio and try to mimic the exact mouth shape.",
+    "symbol": "",
+    "name": "Unrecognised sound",
+    "label": "",
+    "category": "unknown",
+    "group": "",
+    "placement": "Listen carefully to the reference audio and mimic the exact mouth shape.",
+    "steps": [
+        "Play the word slowly and listen for each sound.",
+        "Say it in slow motion, exaggerating every sound.",
+        "Speed up gradually until it feels natural.",
+    ],
     "common_substitutions": [],
-    "why_wrong": "Your articulation didn't quite match the native sound. Try slowing down.",
+    "why_wrong": "Your articulation didn't quite match the expected sound. Try slowing down.",
     "minimal_pairs": [],
-    "easier_words": [],
-    "practice_sentence": "Practice makes perfect."
+    "examples": [],
+    "practice_sentence": "Practice makes perfect.",
 }
 
+
 def get_syllable_breakdown(word: str) -> Dict[str, Any]:
-    """Retrieve syllable breakdown and stress using CMUDict."""
-    word = word.lower().strip()
-    if word not in cmu_dict:
-        return {"word": word, "syllable_count": 0, "stress_index": -1, "cmu_phonemes": []}
-    
-    pronunciation = cmu_dict[word][0]
-    vowels = [ph for ph in pronunciation if ph[-1].isdigit()]
-    syllable_count = len(vowels)
-    
-    stress_index = -1
-    for i, v in enumerate(vowels):
-        if v.endswith('1'):
-            stress_index = i
-            break
-            
+    """Syllables, stress and IPA for a word (CMUDict when available)."""
+    tokens = phonetics.tokenize(word)
+    if not tokens:
+        return {"word": word, "syllable_count": 0, "stress_index": 0, "ipa": "", "syllables": [], "phonemes": []}
+    info = phonetics.describe_word(tokens[0])
+    info["word"] = word.lower().strip()
+    return info
+
+
+def phoneme_details(symbol: str) -> Dict[str, Any]:
+    """Full knowledge-base entry formatted for the API."""
+    entry = get_phoneme(symbol) or {**GENERIC_PHONEME, "symbol": symbol}
     return {
-        "word": word,
-        "syllable_count": syllable_count,
-        "stress_index": stress_index + 1 if stress_index != -1 else 0,
-        "cmu_phonemes": pronunciation
+        **{key: value for key, value in entry.items() if key != "minimal_pairs"},
+        "minimal_pairs": [{"correct": a, "incorrect": b} for a, b in entry.get("minimal_pairs", [])],
     }
+
+
+def explain_mistake(expected: str, actual: str) -> str:
+    """The most specific explanation available for an expected→actual slip."""
+    entry = get_phoneme(expected) or GENERIC_PHONEME
+    if actual in ("", "-"):
+        return deletion_tip(expected) or f"The /{expected}/ sound was dropped. {entry['why_wrong']}"
+    return substitution_tip(expected, actual) or entry["why_wrong"]
+
 
 def generate_tutor_card(word: str, expected_phoneme: str, actual_phoneme: str) -> Dict[str, Any]:
     """Generate the full educational payload for a mispronounced word."""
-    kb_data = GENERIC_PHONEME
-    for key, data in PHONEME_KB.items():
-        if key in expected_phoneme.lower() or expected_phoneme.lower() in key:
-            kb_data = data
-            break
-
-    syllable_info = get_syllable_breakdown(word)
+    details = phoneme_details(expected_phoneme)
+    actual_details = get_phoneme(actual_phoneme)
 
     return {
         "word": word,
         "expected_phoneme": expected_phoneme,
         "actual_phoneme": actual_phoneme,
+        "phoneme": details,
+        "actual": {"symbol": actual_phoneme, "name": actual_details["name"], "label": actual_details["label"]}
+        if actual_details else None,
         "tutor_data": {
-            "name": kb_data["name"],
-            "placement_guide": kb_data["placement"],
-            "why_wrong": kb_data["why_wrong"].replace("actual", actual_phoneme),
-            "common_substitutions": kb_data["common_substitutions"],
-            "minimal_pairs": [{"correct": c, "incorrect": i} for c, i in kb_data["minimal_pairs"]],
-            "easier_words": kb_data["easier_words"],
-            "practice_sentence": kb_data["practice_sentence"]
+            "name": details["name"],
+            "label": details.get("label", ""),
+            "placement_guide": details["placement"],
+            "steps": details.get("steps", []),
+            "why_wrong": explain_mistake(expected_phoneme, actual_phoneme),
+            "common_substitutions": details.get("common_substitutions", []),
+            "minimal_pairs": details["minimal_pairs"],
+            "easier_words": details.get("examples", []),
+            "practice_sentence": details["practice_sentence"],
         },
-        "syllable_info": syllable_info
+        "syllable_info": get_syllable_breakdown(word),
     }
 
-def get_personalized_practice(weaknesses: List[str]) -> List[Dict[str, str]]:
-    """Return practice sentences targeting the specific weak phonemes."""
+
+WeaknessInput = Union[str, Tuple[str, int]]
+
+
+def get_personalized_practice(weaknesses: Sequence[WeaknessInput]) -> List[Dict[str, Any]]:
+    """Build drills for weak phonemes (symbols, or (symbol, mistake_count) pairs)."""
+    items: List[Tuple[str, Optional[int]]] = [
+        (w, None) if isinstance(w, str) else (w[0], w[1]) for w in weaknesses
+    ]
+    personalised = any(get_phoneme(symbol) for symbol, _ in items)
+    if not personalised:
+        items = [(symbol, None) for symbol in DEFAULT_FOCUS]
+
     practice = []
-    for weak in weaknesses:
-        for key, data in PHONEME_KB.items():
-            if key in weak.lower() or weak.lower() in key:
-                practice.append({
-                    "target_phoneme": weak,
-                    "focus": key,
-                    "sentence": data["practice_sentence"],
-                    "minimal_pairs": data["minimal_pairs"]
-                })
-                break
-    
-    if not practice:
+    for symbol, count in items:
+        entry = get_phoneme(symbol)
+        if not entry:
+            continue
         practice.append({
-            "target_phoneme": "General",
-            "focus": "Clear Speech",
-            "sentence": "The quick brown fox jumps over the lazy dog.",
-            "minimal_pairs": []
+            "target_phoneme": symbol,
+            "focus": entry["label"],
+            "name": entry["name"],
+            "category": entry["category"],
+            "mistake_count": count,
+            "personalized": personalised,
+            "sentence": entry["practice_sentence"],
+            "minimal_pairs": [list(pair) for pair in entry["minimal_pairs"]],
+            "examples": entry["examples"],
+            "placement": entry["placement"],
+            "steps": entry["steps"],
         })
-        
     return practice
+
+
+__all__ = [
+    "PHONEMES",
+    "explain_mistake",
+    "generate_tutor_card",
+    "get_personalized_practice",
+    "get_syllable_breakdown",
+    "list_phonemes",
+    "phoneme_details",
+]
