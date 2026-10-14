@@ -128,11 +128,13 @@ docker build -t pronunciation-coach .
 docker run -p 7860:7860 -e NEON_DATABASE_URL="postgresql://…" pronunciation-coach
 ```
 
-The image builds the frontend in a Node stage, installs the Python dependencies (no PyTorch: faster-whisper runs on CTranslate2), bakes in CMUDict, the Whisper weights and the coach's voice for fast cold starts, logs JSON, and runs as a non-root user. Use `--build-arg PRELOAD_WHISPER=` to skip baking the model, or set `WHISPER_MODEL_SIZE` to change it. Without `NEON_DATABASE_URL`, history is stored in SQLite inside the container and is lost when it's replaced.
+The image builds the frontend in a Node stage, installs the Python dependencies (no PyTorch: faster-whisper runs on CTranslate2), bakes in CMUDict, the Whisper weights and the coach's voice for fast cold starts, logs JSON, and runs as a non-root user. The baked model follows `WHISPER_MODEL_SIZE` (also accepted as a build arg; Hugging Face passes Space variables as build args); use `--build-arg PRELOAD_WHISPER=none` to skip baking it. Without `NEON_DATABASE_URL`, history is stored in SQLite inside the container and is lost when it's replaced.
 
 ### Hugging Face Spaces
 
 The front matter at the top of this README configures a Docker Space on port 7860. Push to your Space remote and add `NEON_DATABASE_URL` as a secret to keep history across restarts.
+
+Free Spaces sleep after 48 hours without traffic. The `Keep Space awake` workflow (`.github/workflows/keep-alive.yml`) pings the Space every 6 hours and, if it was asleep, waits until it's serving again. GitHub pauses scheduled workflows after 60 days without repository activity; re-enable it from the Actions tab if that happens.
 
 ### Render
 
