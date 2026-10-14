@@ -8,7 +8,7 @@ it reports findings and suggestions but does not modify source files.
 """
 import ast
 import os
-from typing import Dict, List, Any
+from typing import Any, Dict, List
 
 
 class CodeFlowAgent:
