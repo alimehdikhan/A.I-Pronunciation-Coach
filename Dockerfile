@@ -15,6 +15,10 @@ RUN npm run build
 # ---------------------------------------------------------------------------
 FROM python:3.11-slim AS runtime
 
+# Hugging Face passes Space variables as build args, so a WHISPER_MODEL_SIZE
+# variable set on the Space is baked into the image (no download per restart).
+ARG WHISPER_MODEL_SIZE=base
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
@@ -24,7 +28,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PRONUNCIATION_COACH_TTS_DIR=/app/.cache/piper \
     PRONUNCIATION_COACH_ASR_DIR=/app/.cache/whisper \
     PRONUNCIATION_COACH_LOG_FORMAT=json \
-    WHISPER_MODEL_SIZE=base \
+    WHISPER_MODEL_SIZE=${WHISPER_MODEL_SIZE} \
     PRONUNCIATION_LANGUAGE=eng-Latn \
     PORT=7860
 
@@ -42,12 +46,14 @@ RUN pip install --upgrade pip \
     && pip install -r backend/requirements.txt
 
 # Bake CMUDict, the Whisper weights and the coach's neural voice into the
-# image for fast cold starts. Pass an empty build arg to skip a download.
-ARG PRELOAD_WHISPER=base
+# image for fast cold starts. PRELOAD_WHISPER defaults to WHISPER_MODEL_SIZE;
+# pass PRELOAD_WHISPER=none or an empty PRELOAD_VOICE to skip a download.
+ARG PRELOAD_WHISPER=
 ARG PRELOAD_VOICE=en_US-lessac-medium
 RUN python -m nltk.downloader -q -d "$NLTK_DATA" cmudict \
-    && if [ -n "$PRELOAD_WHISPER" ]; then \
-         HF_HUB_DISABLE_XET=1 python -c "from faster_whisper.utils import download_model; download_model('$PRELOAD_WHISPER', cache_dir='$PRONUNCIATION_COACH_ASR_DIR')"; \
+    && model="${PRELOAD_WHISPER:-$WHISPER_MODEL_SIZE}" \
+    && if [ "$model" != "none" ]; then \
+         HF_HUB_DISABLE_XET=1 python -c "from faster_whisper.utils import download_model; download_model('$model', cache_dir='$PRONUNCIATION_COACH_ASR_DIR')"; \
        fi \
     && if [ -n "$PRELOAD_VOICE" ]; then \
          mkdir -p "$PRONUNCIATION_COACH_TTS_DIR" \
