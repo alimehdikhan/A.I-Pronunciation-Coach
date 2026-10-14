@@ -1,0 +1,12 @@
+target-version = "py311"
+line-length = 120
+extend-exclude = ["frontend"]
+
+[lint]
+# Explicit selection so new ruff releases don't silently change what CI enforces.
+select = ["E4", "E7", "E9", "F", "I", "B"]
+# FastAPI's dependency injection (Depends/File/Query defaults) is the documented pattern.
+ignore = ["B008"]
+
+[lint.isort]
+known-first-party = ["backend", "tests"]
