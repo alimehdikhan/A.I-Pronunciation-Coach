@@ -1,0 +1,168 @@
+"""Speech endpoints: evaluate, transcribe and the coach's voice."""
+
+from __future__ import annotations
+
+import logging
+from typing import Any
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile
+from fastapi.concurrency import run_in_threadpool
+from sqlalchemy.orm import Session
+
+from backend import phonetics
+from backend.api.deps import profile_key, require_models
+from backend.audio import decode_audio, normalize_loudness, read_upload, validate_upload
+from backend.config import settings
+from backend.database import get_db
+from backend.observability import StageTimer
+from backend.repositories import ProfileLocked, save_attempt
+from backend.runtime import runtime
+from backend.security import RateLimiter, clean_username, client_key
+from backend.tts import MAX_RATE, MIN_RATE
+
+logger = logging.getLogger("pronunciation_coach.api.speech")
+router = APIRouter()
+
+audio_rate_limiter = RateLimiter(settings.rate_limit_per_minute, name="audio")
+# Speech is cheap to serve (cached) and requested often by listen buttons.
+tts_rate_limiter = RateLimiter(settings.rate_limit_per_minute * 4, name="tts")
+
+
+def _prepare(data: bytes, suffix: str):
+    samples = decode_audio(data, suffix, settings.max_audio_seconds)
+    return normalize_loudness(samples)
+
+
+async def transcribe_upload(audio: UploadFile, asr, timer: StageTimer) -> dict[str, Any]:
+    """Read, decode, level and transcribe an upload inside the ASR work gate."""
+    suffix = validate_upload(audio)
+    async with runtime.asr_gate.slot():
+        with timer.stage("upload"):
+            data = await read_upload(audio, settings.max_upload_bytes)
+        with timer.stage("decode"):
+            samples, gain_db = await run_in_threadpool(_prepare, data, suffix)
+        with timer.stage("asr"):
+            result = await run_in_threadpool(asr.transcribe, samples)
+    result["input_gain_db"] = gain_db
+    return result
+
+
+@router.post("/api/evaluate")
+async def evaluate_pronunciation(
+    request: Request,
+    response: Response,
+    audio: UploadFile = File(...),
+    target_text: str | None = Form(None),
+    username: str | None = Form(None),
+    difficulty: str | None = Form("intermediate"),
+    key: str | None = Depends(profile_key),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Evaluate pronunciation from an audio file against a required target text."""
+    reference_text = (target_text or "").strip()
+    if not reference_text:
+        raise HTTPException(status_code=400, detail="target_text is required for pronunciation evaluation.")
+    if len(reference_text) > settings.max_target_chars:
+        raise HTTPException(status_code=400, detail=f"target_text must be at most {settings.max_target_chars} characters.")
+    if not phonetics.tokenize(reference_text):
+        raise HTTPException(status_code=400, detail="target_text must contain at least one word.")
+    name = clean_username(username)
+
+    audio_rate_limiter.check(client_key(request))
+    asr, scorer = require_models()
+    timer = StageTimer()
+    try:
+        transcription = await transcribe_upload(audio, asr, timer)
+        text = str(transcription.get("text", "")).strip()
+        with timer.stage("score"):
+            score_result = await run_in_threadpool(
+                scorer.score_pronunciation,
+                reference_text,
+                text,
+                difficulty,
+                transcription.get("words"),
+                transcription.get("duration"),
+            )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Error processing audio in /api/evaluate")
+        raise HTTPException(status_code=500, detail="Error processing audio. See server logs for details.") from exc
+
+    record_id: int | None = None
+    save_error: str | None = None
+    # Silent or unintelligible clips aren't attempts; keep them out of history.
+    if name and text:
+        with timer.stage("save"):
+            try:
+                record_id = await run_in_threadpool(save_attempt, db, name, key, reference_text, text, score_result)
+            except ProfileLocked:
+                db.rollback()
+                save_error = "profile_locked"
+            except Exception:
+                # Feedback is still useful when history can't be stored.
+                db.rollback()
+                save_error = "storage_error"
+                logger.exception("Failed to save attempt for user %r", name)
+
+    response.headers["Server-Timing"] = timer.header()
+    body: dict[str, Any] = {
+        "success": True,
+        "transcription": text,
+        "reference_text": reference_text,
+        "record_id": record_id,
+        "saved": record_id is not None,
+        **score_result,
+    }
+    if save_error:
+        body["save_error"] = save_error
+    return body
+
+
+@router.post("/api/transcribe")
+async def transcribe_audio(request: Request, response: Response, audio: UploadFile = File(...)) -> dict[str, Any]:
+    """Transcribe an audio file without pronunciation evaluation."""
+    audio_rate_limiter.check(client_key(request))
+    asr, _ = require_models()
+    timer = StageTimer()
+    try:
+        result = await transcribe_upload(audio, asr, timer)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Error in /api/transcribe")
+        raise HTTPException(status_code=500, detail="Error transcribing audio. See server logs for details.") from exc
+    response.headers["Server-Timing"] = timer.header()
+    return {
+        "success": True,
+        "transcription": str(result.get("text", "")).strip(),
+        "language": result.get("language", "en"),
+        "words": result.get("words", []),
+        "duration": result.get("duration"),
+    }
+
+
+@router.get("/api/tts")
+async def text_to_speech(
+    request: Request,
+    text: str = Query(..., min_length=1, max_length=settings.max_tts_chars),
+    rate: float = Query(1.0, ge=MIN_RATE, le=MAX_RATE),
+) -> Response:
+    """The coach's voice as real audio (WAV), so the UI can analyse what it plays."""
+    voice = runtime.voice
+    if voice is None:
+        raise HTTPException(status_code=503, detail="The neural voice is not available.")
+    clean = " ".join(text.split())
+    if not phonetics.tokenize(clean):
+        raise HTTPException(status_code=400, detail="text must contain at least one word.")
+    tts_rate_limiter.check(client_key(request))
+    try:
+        audio = await run_in_threadpool(voice.synthesize, clean, rate)
+    except Exception as exc:
+        logger.exception("Speech synthesis failed")
+        raise HTTPException(status_code=500, detail="Speech synthesis failed.") from exc
+    return Response(
+        content=audio,
+        media_type="audio/wav",
+        headers={"Cache-Control": "public, max-age=604800, immutable"},
+    )
