@@ -1,264 +1,116 @@
 """
-FastAPI Backend for AI Pronunciation Coach.
+FastAPI application for the AI Pronunciation Coach.
 
-The API accepts short browser-recorded audio clips, transcribes them with
-Whisper, and compares the result against a target sentence.
+The API accepts short browser recordings, transcribes them with Whisper
+(faster-whisper), and compares the result against a target sentence. It also
+serves the built React frontend (``frontend/dist``) as a single-page app.
+
+Layout:
+    config          settings from the environment
+    observability   logging, request IDs, metrics, Server-Timing
+    security        rate limiting, profile keys, security headers, body limits
+    runtime         loaded models and the transcription work gate
+    audio / asr     decoding, loudness normalisation, speech recognition
+    repositories    database queries
+    api/*           HTTP routes
+    spa             the React app shell
 """
 
 from __future__ import annotations
 
-from contextlib import asynccontextmanager
+import asyncio
+import contextlib
 import logging
 import os
-import tempfile
+from contextlib import asynccontextmanager
+from typing import Any
 
-# Ensure ffmpeg is available for Whisper
-try:
-    import imageio_ffmpeg
-    os.environ["PATH"] += os.pathsep + os.path.dirname(imageio_ffmpeg.get_ffmpeg_exe())
-except ImportError:
-    pass
-from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
-
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile, Depends
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
-from sqlalchemy.orm import Session
-from backend.database import init_db, get_db, User, PronunciationRecord, PhonemeMistake, UserHistoryResponse, AnalyticsResponse
-from backend.tutor import generate_tutor_card, get_personalized_practice
-from sqlalchemy import func
 
-if TYPE_CHECKING:
-    from backend.models import WhisperASR
-    from backend.pronunciation import PronunciationScorer
+from backend.api import routers
+from backend.config import PROJECT_ROOT, settings
+from backend.database import init_db
+from backend.observability import RequestContextMiddleware, configure_logging
+from backend.repositories import ProfileLocked
+from backend.runtime import load_all, runtime
+from backend.security import BodySizeLimitMiddleware, SecurityHeadersMiddleware
+from backend.spa import SPAStaticFiles
 
-
-logging.basicConfig(level=logging.INFO)
+configure_logging(settings.log_level, settings.log_format)
 logger = logging.getLogger("pronunciation_coach")
 
-# ---------------------------------------------------------------------------
-# Configuration
-# ---------------------------------------------------------------------------
-
-DEFAULT_CORS_ORIGINS = [
-    "http://localhost:3000",
-    "http://localhost:8000",
-    "http://localhost:5500",
-    "http://127.0.0.1:3000",
-    "http://127.0.0.1:8000",
-    "http://127.0.0.1:5500",
-]
-ALLOWED_AUDIO_EXTENSIONS = {
-    ".flac",
-    ".m4a",
-    ".mp3",
-    ".mp4",
-    ".mpeg",
-    ".mpga",
-    ".oga",
-    ".ogg",
-    ".opus",
-    ".wav",
-    ".webm",
-}
-ALLOWED_AUDIO_CONTENT_TYPES = {
-    "audio/flac",
-    "audio/m4a",
-    "audio/mp3",
-    "audio/mp4",
-    "audio/mpeg",
-    "audio/ogg",
-    "audio/opus",
-    "audio/wav",
-    "audio/wave",
-    "audio/webm",
-    "video/mp4",
-    "video/webm",
-    "x-audio/wav",
-}
-CHUNK_SIZE = 1024 * 1024
-MAX_UPLOAD_BYTES = int(os.getenv("PRONUNCIATION_COACH_MAX_UPLOAD_BYTES", str(25 * 1024 * 1024)))
-WHISPER_MODEL_SIZE = os.getenv("WHISPER_MODEL_SIZE", "base")
-PRONUNCIATION_LANGUAGE = os.getenv("PRONUNCIATION_LANGUAGE", "eng-Latn")
-LOAD_MODELS_ON_STARTUP = os.getenv("PRONUNCIATION_COACH_LOAD_MODELS_ON_STARTUP", "1").lower() not in {
-    "0",
-    "false",
-    "no",
-}
-ENABLE_AGENT_ENDPOINT = os.getenv("PRONUNCIATION_COACH_ENABLE_AGENT", "0").lower() in {
-    "1",
-    "true",
-    "yes",
-}
-
-frontend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend"))
-
-# ---------------------------------------------------------------------------
-# Module-level model singletons (lazily loaded via load_models)
-# ---------------------------------------------------------------------------
-
-asr_model: WhisperASR | None = None
-pronunciation_scorer: PronunciationScorer | None = None
-
-
-def parse_cors_origins() -> list[str]:
-    """Read comma-separated CORS origins from the environment."""
-    raw_origins = os.getenv("PRONUNCIATION_COACH_CORS_ORIGINS")
-    if not raw_origins:
-        return DEFAULT_CORS_ORIGINS
-
-    origins = [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
-    return origins or DEFAULT_CORS_ORIGINS
-
-
-def load_models() -> None:
-    """Load heavy model dependencies lazily so imports and tests stay lightweight."""
-    global asr_model, pronunciation_scorer
-
-    if asr_model is None:
-        from backend.models import WhisperASR
-
-        logger.info("Loading Whisper ASR model '%s'...", WHISPER_MODEL_SIZE)
-        asr_model = WhisperASR(model_size=WHISPER_MODEL_SIZE)
-
-    if pronunciation_scorer is None:
-        from backend.pronunciation import PronunciationScorer
-
-        logger.info("Loading pronunciation scorer for '%s'...", PRONUNCIATION_LANGUAGE)
-        pronunciation_scorer = PronunciationScorer(language=PRONUNCIATION_LANGUAGE)
-
-    logger.info("Models loaded successfully.")
+frontend_dir = os.path.abspath(settings.frontend_dir)
+# Multipart framing adds a little on top of the audio file itself.
+MAX_REQUEST_BYTES = settings.max_upload_bytes + 256 * 1024
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Initialize optional heavyweight resources during application startup."""
-    if LOAD_MODELS_ON_STARTUP:
-        await run_in_threadpool(load_models)
+    runtime.db_ready = await run_in_threadpool(init_db)
+    loader: asyncio.Task | None = None
+    if settings.load_models_on_startup:
+        # Serve the app (and /health) immediately; models warm up in the
+        # background and speech endpoints return 503 until they're ready.
+        loader = asyncio.create_task(load_all())
     else:
         logger.warning("Model startup loading is disabled by environment configuration.")
-    init_db()
     yield
+    if loader and not loader.done():
+        loader.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await loader
 
 
 app = FastAPI(
     title="AI Pronunciation Coach API",
-    description="Real-time pronunciation feedback using Whisper ASR",
-    version="1.0.0",
+    description="Phoneme-level pronunciation feedback using Whisper ASR and CMUDict",
+    version="2.1.0",
     lifespan=lifespan,
 )
 
-origins = parse_cors_origins()
+# Middleware runs outermost-first in reverse order of registration:
+# CORS -> request context -> security headers -> gzip -> body size limit -> app.
+app.add_middleware(BodySizeLimitMiddleware, max_bytes=MAX_REQUEST_BYTES)
+app.add_middleware(GZipMiddleware, minimum_size=1024, exclude_content_types=("text/event-stream", "audio/wav"))
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(RequestContextMiddleware)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials="*" not in origins,
+    allow_origins=settings.cors_origins,
+    allow_credentials="*" not in settings.cors_origins,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Request-ID", "Server-Timing", "Retry-After"],
 )
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-def get_models() -> Tuple[Any, Any]:
-    """Return loaded models or report a clear service-unavailable response."""
-    if asr_model is None or pronunciation_scorer is None:
-        raise HTTPException(status_code=503, detail="Speech models are still loading. Please try again shortly.")
-    return asr_model, pronunciation_scorer
+@app.exception_handler(ProfileLocked)
+async def profile_locked_handler(request: Request, exc: ProfileLocked) -> JSONResponse:
+    return JSONResponse(
+        {"detail": "This name is in use on another device. Choose a different name in Settings.", "code": "profile_locked"},
+        status_code=403,
+    )
 
 
-def get_upload_suffix(audio: UploadFile) -> str:
-    """Validate an uploaded audio file and return a safe suffix for temp storage."""
-    if not audio.filename:
-        raise HTTPException(status_code=400, detail="No audio file provided.")
-
-    suffix = os.path.splitext(audio.filename)[1].lower()
-    if suffix not in ALLOWED_AUDIO_EXTENSIONS:
-        allowed = ", ".join(sorted(ALLOWED_AUDIO_EXTENSIONS))
-        raise HTTPException(status_code=400, detail=f"Unsupported audio file type. Allowed extensions: {allowed}.")
-
-    content_type = (audio.content_type or "").lower()
-    if content_type and content_type not in ALLOWED_AUDIO_CONTENT_TYPES and not content_type.startswith("audio/"):
-        raise HTTPException(status_code=400, detail=f"Unsupported audio content type: {content_type}.")
-
-    return suffix
-
-
-async def save_upload_to_temp(audio: UploadFile) -> str:
-    """Stream an UploadFile to a temp file with size and empty-file validation."""
-    suffix = get_upload_suffix(audio)
-    tmp_file_path: Optional[str] = None
-    total_size = 0
-
-    try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp_file:
-            tmp_file_path = tmp_file.name
-            while True:
-                chunk = await audio.read(CHUNK_SIZE)
-                if not chunk:
-                    break
-
-                total_size += len(chunk)
-                if total_size > MAX_UPLOAD_BYTES:
-                    raise HTTPException(status_code=413, detail="Audio file is too large.")
-
-                tmp_file.write(chunk)
-
-        if total_size == 0:
-            raise HTTPException(status_code=400, detail="Uploaded audio file is empty.")
-
-        return tmp_file_path
-    except Exception:
-        remove_temp_file(tmp_file_path)
-        raise
-    finally:
-        await audio.close()
-
-
-def remove_temp_file(path: Optional[str]) -> None:
-    """Best-effort cleanup for uploaded temp files."""
-    if not path:
-        return
-
-    try:
-        if os.path.exists(path):
-            os.unlink(path)
-    except OSError:
-        logger.warning("Failed to remove temporary upload file: %s", path, exc_info=True)
-
-
-# ---------------------------------------------------------------------------
-# Routes
-# ---------------------------------------------------------------------------
-
-@app.get("/health")
-async def health_check() -> Dict[str, Any]:
-    """Check whether speech models are ready."""
-    models_loaded = asr_model is not None and pronunciation_scorer is not None
-    return {
-        "status": "healthy" if models_loaded else "loading",
-        "models_loaded": models_loaded,
-        "model_size": WHISPER_MODEL_SIZE,
-        "language": PRONUNCIATION_LANGUAGE,
-    }
+for router in routers:
+    app.include_router(router)
 
 
 # The agent endpoint exposes internal source code details (file paths,
 # function names, line numbers).  It is disabled by default and can be
 # enabled via PRONUNCIATION_COACH_ENABLE_AGENT=1 for local development.
-if ENABLE_AGENT_ENDPOINT:
+if settings.enable_agent:
     from backend.agent import CodeFlowAgent
 
     @app.get("/api/agent/analyze")
     async def analyze_codebase() -> JSONResponse:
         """Run a conservative code-flow analysis and return findings."""
         try:
-            project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-            agent = CodeFlowAgent(root=project_root)
+            agent = CodeFlowAgent(root=str(PROJECT_ROOT))
             report = await run_in_threadpool(agent.analyze_project)
             return JSONResponse(content={"success": True, "report": report})
         except Exception as exc:
@@ -266,188 +118,38 @@ if ENABLE_AGENT_ENDPOINT:
             raise HTTPException(status_code=500, detail=f"Agent analysis failed: {exc}") from exc
 
 
-@app.post("/api/evaluate")
-async def evaluate_pronunciation(
-    audio: UploadFile = File(...),
-    target_text: Optional[str] = Form(None),
-    username: Optional[str] = Form(None),
-    difficulty: Optional[str] = Form("Intermediate"),
-    db: Session = Depends(get_db)
-) -> Dict[str, Any]:
-    """
-    Evaluate pronunciation from an audio file against a required target text.
-    """
-    tmp_file_path: Optional[str] = None
-    try:
-        reference_text = (target_text or "").strip()
-        if not reference_text:
-            raise HTTPException(status_code=400, detail="target_text is required for pronunciation evaluation.")
+@app.api_route("/api/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"], include_in_schema=False)
+async def api_not_found(path: str):
+    """Unknown API routes return JSON 404s instead of the SPA shell."""
+    raise HTTPException(status_code=404, detail="Not found")
 
-        asr, scorer = get_models()
-        tmp_file_path = await save_upload_to_temp(audio)
 
-        transcription_result = await run_in_threadpool(asr.transcribe, tmp_file_path)
-        transcribed_text = str(transcription_result.get("text", "")).strip()
+# ---------------------------------------------------------------------------
+# Frontend (React single-page app)
+# ---------------------------------------------------------------------------
 
-        score_result = await run_in_threadpool(
-            scorer.score_pronunciation,
-            reference_text,
-            transcribed_text,
-            difficulty
-        )
+if os.path.isfile(os.path.join(frontend_dir, "index.html")):
+    app.mount(
+        "/",
+        SPAStaticFiles(directory=frontend_dir, html=True, frame_ancestors=settings.frame_ancestors),
+        name="frontend",
+    )
+else:
+    logger.warning("Frontend build not found at %s. Run `npm run build` in frontend/.", frontend_dir)
 
-        # Save to database if username is provided
-        if username:
-            user = db.query(User).filter(User.username == username).first()
-            if not user:
-                user = User(username=username)
-                db.add(user)
-                db.commit()
-                db.refresh(user)
-
-            record = PronunciationRecord(
-                user_id=user.id,
-                target_text=reference_text,
-                transcribed_text=transcribed_text,
-                score=score_result["score"],
-                accuracy=score_result["accuracy"],
-                difficulty=difficulty
-            )
-            db.add(record)
-            db.flush() # To get record.id
-
-            for word_score in score_result.get("word_level_scores", []):
-                for err in word_score.get("error_details", []):
-                    if err["type"] in ("replace", "delete") and err["expected"]:
-                        mistake = PhonemeMistake(
-                            record_id=record.id,
-                            word=word_score["reference_word"],
-                            expected_phoneme=err["expected"],
-                            actual_phoneme=err["actual"]
-                        )
-                        db.add(mistake)
-            
-            db.commit()
-
+    @app.get("/", include_in_schema=False)
+    async def frontend_missing() -> dict[str, Any]:
         return {
-            "success": True,
-            "transcription": transcribed_text,
-            "reference_text": reference_text,
-            "score": score_result["score"],
-            "accuracy": score_result["accuracy"],
-            "feedback": score_result["feedback"],
-            "phoneme_analysis": score_result.get("phoneme_analysis", {}),
-            "word_level_scores": score_result.get("word_level_scores", []),
+            "message": "AI Pronunciation Coach API is running. Build the frontend with `cd frontend && npm ci && npm run build`.",
+            "docs": "/docs",
         }
-    except HTTPException:
-        raise
-    except Exception as exc:
-        logger.exception("Error processing audio in /api/evaluate")
-        raise HTTPException(status_code=500, detail="Error processing audio. See server logs for details.") from exc
-    finally:
-        remove_temp_file(tmp_file_path)
 
 
-@app.post("/api/transcribe")
-async def transcribe_audio(audio: UploadFile = File(...)) -> Dict[str, Any]:
-    """Transcribe an audio file without pronunciation evaluation."""
-    tmp_file_path: Optional[str] = None
-    try:
-        asr, _ = get_models()
-        tmp_file_path = await save_upload_to_temp(audio)
-
-        result = await run_in_threadpool(asr.transcribe, tmp_file_path)
-        return {
-            "success": True,
-            "transcription": str(result.get("text", "")).strip(),
-            "language": result.get("language", "en"),
-        }
-    except HTTPException:
-        raise
-    except Exception as exc:
-        logger.exception("Error in /api/transcribe")
-        raise HTTPException(status_code=500, detail="Error transcribing audio. See server logs for details.") from exc
-    finally:
-        remove_temp_file(tmp_file_path)
-
-
-@app.get("/api/history/{username}", response_model=UserHistoryResponse)
-async def get_history(username: str, db: Session = Depends(get_db)):
-    """Fetch past pronunciation records for a user."""
-    user = db.query(User).filter(User.username == username).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    records = db.query(PronunciationRecord).filter(PronunciationRecord.user_id == user.id).order_by(PronunciationRecord.created_at.desc()).all()
-    return {"username": username, "records": records}
-
-
-@app.get("/api/analytics/{username}", response_model=AnalyticsResponse)
-async def get_analytics(username: str, db: Session = Depends(get_db)):
-    """Fetch aggregated score trends and frequent phoneme mistakes."""
-    user = db.query(User).filter(User.username == username).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    records = db.query(PronunciationRecord).filter(PronunciationRecord.user_id == user.id).order_by(PronunciationRecord.created_at.asc()).all()
-    
-    total_sessions = len(records)
-    avg_score = sum(r.score for r in records) / total_sessions if total_sessions > 0 else 0.0
-    
-    score_trend = [{"date": r.created_at.isoformat(), "score": r.score} for r in records]
-    
-    mistakes = db.query(PhonemeMistake.expected_phoneme, func.count(PhonemeMistake.id).label('count'))\
-        .join(PronunciationRecord)\
-        .filter(PronunciationRecord.user_id == user.id)\
-        .group_by(PhonemeMistake.expected_phoneme)\
-        .order_by(func.count(PhonemeMistake.id).desc())\
-        .limit(5).all()
-        
-    top_weaknesses = [{"phoneme": m.expected_phoneme, "count": m.count} for m in mistakes]
-    
-    return {
-        "average_score": round(avg_score, 2),
-        "total_practice_sessions": total_sessions,
-        "score_trend": score_trend,
-        "top_weaknesses": top_weaknesses
-    }
-
-@app.get("/api/tutor/card")
-async def get_tutor_card(word: str, expected: str, actual: str):
-    """Generate an educational tutor card for a specific mispronunciation."""
-    try:
-        return generate_tutor_card(word, expected, actual)
-    except Exception:
-        logger.exception("Error generating tutor card")
-        raise HTTPException(status_code=500, detail="Error generating tutor card")
-
-@app.get("/api/tutor/personalized-practice/{username}")
-async def get_personalized_practice_endpoint(username: str, db: Session = Depends(get_db)):
-    """Fetch personalized practice sentences based on weak phonemes."""
-    user = db.query(User).filter(User.username == username).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-        
-    mistakes = db.query(PhonemeMistake.expected_phoneme)\
-        .join(PronunciationRecord)\
-        .filter(PronunciationRecord.user_id == user.id)\
-        .group_by(PhonemeMistake.expected_phoneme)\
-        .order_by(func.count(PhonemeMistake.id).desc())\
-        .limit(3).all()
-        
-    weaknesses = [m.expected_phoneme for m in mistakes]
-    practice = get_personalized_practice(weaknesses)
-    return {"username": username, "practices": practice}
-
-# Serve the static frontend at the site root.  StaticFiles with html=True
-# automatically serves index.html for ``/``.
-app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="frontend")
+__all__ = ["app", "SPAStaticFiles"]
 
 
 if __name__ == "__main__":
     import uvicorn
 
-    logger.info("Starting AI Pronunciation Coach API...")
-    logger.info("Server will be available at: http://localhost:8000")
-    logger.info("API documentation at: http://localhost:8000/docs")
+    logger.info("Starting AI Pronunciation Coach API on http://localhost:8000 (docs at /docs)")
     uvicorn.run(app, host="0.0.0.0", port=8000)
