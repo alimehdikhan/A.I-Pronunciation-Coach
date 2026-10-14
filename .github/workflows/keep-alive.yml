@@ -1,0 +1,30 @@
+name: Keep Space awake
+
+# Free Hugging Face Spaces sleep after 48 hours without traffic. A request
+# every few hours keeps the app warm; if it's already asleep, the request
+# wakes it and this job waits until it is serving again.
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SPACE_URL: https://alimehdi973-ai-pronunciation-coach.hf.space
+    steps:
+      - name: Ping the Space
+        run: |
+          for attempt in $(seq 1 15); do
+            curl -s -o /dev/null --max-time 30 "$SPACE_URL/" || true
+            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "$SPACE_URL/health" || true)
+            echo "attempt $attempt: /health -> $code"
+            if [ "$code" = "200" ]; then exit 0; fi
+            sleep 40
+          done
+          echo "The Space did not respond with 200 within ~10 minutes." >&2
+          exit 1
