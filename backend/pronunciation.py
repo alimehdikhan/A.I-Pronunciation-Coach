@@ -1,268 +1,429 @@
 """
-Pronunciation scoring helpers.
+Pronunciation scoring.
 
-The scorer compares reference and transcribed text at two levels:
-phoneme-like strings for pronunciation similarity and normalized words for
-exact word accuracy. Epitran is used when available; a conservative text
-fallback keeps the API usable if optional English G2P system data is missing.
+The scorer aligns the words Whisper heard against the target sentence, then
+compares each aligned pair phoneme by phoneme. Whisper's per-word confidence
+and timestamps add two signals a plain transcript comparison misses: words
+that were recognised but sounded unclear, and delivery (pace and pauses).
+
+Four metrics are produced, each 0-100:
+
+* pronunciation - phoneme accuracy of the words that were spoken
+* completeness  - share of target words that were attempted
+* fluency       - speaking rate, long pauses and extra words (needs timings)
+* clarity       - mean ASR confidence on the target words (needs timings)
+
+These are heuristics built on ASR output, not a forced-alignment acoustic
+model, so they measure how intelligible the speech was to Whisper.
 """
 
+from __future__ import annotations
+
 import logging
-import re
-from typing import Any, Dict, List
-import unicodedata
+import math
+from collections import Counter
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional
 
-import epitran
-import Levenshtein
-
+from backend import phonetics
 
 logger = logging.getLogger("pronunciation_coach.pronunciation")
-WORD_RE = re.compile(r"[a-z0-9]+(?:'[a-z0-9]+)?")
+
+DIFFICULTY_ALIASES = {
+    "beginner": "beginner",
+    "easy": "beginner",
+    "intermediate": "intermediate",
+    "custom": "intermediate",
+    "advanced": "advanced",
+    "professional": "advanced",
+    "expert": "advanced",
+}
+
+# curve < 1 is lenient, > 1 is strict (applied as score ** curve).
+DIFFICULTY_SETTINGS: Dict[str, Dict[str, Any]] = {
+    "beginner": {"curve": 0.75, "unclear_below": 0.35, "wpm": (70, 190), "pause_s": 0.9},
+    "intermediate": {"curve": 1.0, "unclear_below": 0.5, "wpm": (90, 180), "pause_s": 0.7},
+    "advanced": {"curve": 1.3, "unclear_below": 0.6, "wpm": (110, 175), "pause_s": 0.5},
+}
+
+METRIC_WEIGHTS = {"pronunciation": 0.6, "completeness": 0.1, "fluency": 0.15, "clarity": 0.15}
+# A word with a wrong sound reads as wrong to a listener, so substituted
+# words are scored on a steeper curve and never above this ceiling.
+MISPRONOUNCED_CEILING = 80.0
+# Substitutes less similar than this are treated as different words, not attempts.
+ATTEMPT_SIMILARITY = 0.3
+
+
+def normalize_difficulty(difficulty: Optional[str]) -> str:
+    return DIFFICULTY_ALIASES.get((difficulty or "").strip().lower(), "intermediate")
+
+
+@dataclass
+class SpokenToken:
+    text: str
+    display: str = ""
+    start: Optional[float] = None
+    end: Optional[float] = None
+    probability: Optional[float] = None
+
+
+def _clamp(value: float, low: float = 0.0, high: float = 100.0) -> float:
+    return max(low, min(high, value))
+
+
+def _round(value: Optional[float], digits: int = 1) -> Optional[float]:
+    return None if value is None else round(value, digits)
 
 
 class PronunciationScorer:
-    """Scores pronunciation accuracy using phoneme and word comparison."""
+    """Scores pronunciation from a target sentence and an ASR result."""
 
     def __init__(self, language: str = "eng-Latn"):
-        """
-        Initialize pronunciation scorer.
-
-        Args:
-            language: Epitran language code, for example "eng-Latn".
-        """
         self.language = language
-        self.epi = epitran.Epitran(language)
-        self.phoneme_backend = "epitran"
-        self._phoneme_cache = {}
+        phonetics.warm_up(language)
 
-    def text_to_phonemes(self, text: str) -> tuple[str, str]:
-        """Convert text to a phoneme representation with a safe fallback.
+    @property
+    def phoneme_backend(self) -> str:
+        return "cmudict" if phonetics.dictionary_available() else "spelling"
 
-        Returns:
-            A tuple of (phonemes, backend_used) where backend_used is
-            either ``"epitran"`` or ``"text-fallback"``.
-        """
-        normalized_text = self.normalize_text(text)
-        if not normalized_text:
-            return "", self.phoneme_backend
-
-        if normalized_text in self._phoneme_cache:
-            return self._phoneme_cache[normalized_text], self.phoneme_backend
-
-        try:
-            phonemes = self.epi.transliterate(normalized_text)
-            if phonemes:
-                self._phoneme_cache[normalized_text] = phonemes
-                return phonemes, "epitran"
-        except Exception:
-            logger.warning(
-                "Epitran transliteration failed for language '%s'; using text fallback.",
-                self.language,
-                exc_info=True,
-            )
-            return self.fallback_phonemes(normalized_text), "text-fallback"
-
-        return self.fallback_phonemes(normalized_text), "text-fallback"
+    # -- helpers -----------------------------------------------------------
 
     @staticmethod
-    def normalize_text(text: str) -> str:
-        """Normalize user-facing text for consistent comparisons."""
-        text = unicodedata.normalize("NFKC", text or "").lower()
-        text = re.sub(r"\s+", " ", text).strip()
-        return text
+    def spoken_tokens(transcription: str, words: Optional[List[Dict[str, Any]]]) -> List[SpokenToken]:
+        """Expand ASR words (with timings) into normalised tokens."""
+        if not words:
+            return [
+                SpokenToken(text, display)
+                for text, display in zip(phonetics.tokenize(transcription), phonetics.display_tokens(transcription), strict=True)
+            ]
+
+        tokens: List[SpokenToken] = []
+        for word in words:
+            prob = word.get("probability")
+            raw = str(word.get("word", ""))
+            for text, display in zip(phonetics.tokenize(raw), phonetics.display_tokens(raw), strict=True):
+                tokens.append(
+                    SpokenToken(
+                        text=text,
+                        display=display,
+                        start=word.get("start"),
+                        end=word.get("end"),
+                        probability=float(prob) if prob is not None else None,
+                    )
+                )
+        return tokens
 
     @staticmethod
-    def fallback_phonemes(text: str) -> str:
-        """Return a simple ASCII-ish representation when IPA is unavailable."""
-        decomposed = unicodedata.normalize("NFKD", text)
-        ascii_text = decomposed.encode("ascii", "ignore").decode("ascii")
-        words = WORD_RE.findall(ascii_text.lower())
-        return " ".join(words)
+    def _word_entry(
+        index: int, reference: Optional[str], display: Optional[str], spoken: Optional[SpokenToken]
+    ) -> Dict[str, Any]:
+        return {
+            "index": index,
+            "reference": reference,
+            "display": display or (spoken.display or spoken.text if spoken else ""),
+            "spoken": spoken.text if spoken else None,
+            "status": "correct",
+            "score": None,
+            "confidence": _round(spoken.probability, 3) if spoken and spoken.probability is not None else None,
+            "start": spoken.start if spoken else None,
+            "end": spoken.end if spoken else None,
+            "expected_ipa": "",
+            "spoken_ipa": "",
+            "expected_phonemes": [],
+            "spoken_phonemes": [],
+            "alignment": [],
+            "syllables": [],
+            "source": "cmudict",
+            "pause_before": None,
+            "similarity": None,
+        }
 
-    @classmethod
-    def split_words(cls, text: str) -> List[str]:
-        """Split text into normalized words without punctuation."""
-        return WORD_RE.findall(cls.fallback_phonemes(text))
+    # -- main entry point --------------------------------------------------
 
-    def calculate_similarity(self, ref_phonemes: str, trans_phonemes: str) -> float:
-        """
-        Calculate similarity between two phoneme sequences.
+    def score_pronunciation(
+        self,
+        reference_text: str,
+        transcribed_text: str,
+        difficulty: Optional[str] = "intermediate",
+        words: Optional[List[Dict[str, Any]]] = None,
+        duration: Optional[float] = None,
+    ) -> Dict[str, Any]:
+        level = normalize_difficulty(difficulty)
+        settings = DIFFICULTY_SETTINGS[level]
+        ref_tokens = phonetics.tokenize(reference_text)
+        ref_display = phonetics.display_tokens(reference_text)
+        spoken = self.spoken_tokens(transcribed_text, words)
 
-        Returns:
-            Similarity score between 0 and 1, where 1 is a perfect match.
-        """
-        ref_phonemes = ref_phonemes or ""
-        trans_phonemes = trans_phonemes or ""
-        max_len = max(len(ref_phonemes), len(trans_phonemes))
-        if max_len == 0:
-            return 1.0
+        if not ref_tokens:
+            return self._empty_result(level, "No reference text was provided for pronunciation scoring.")
 
-        distance = Levenshtein.distance(ref_phonemes, trans_phonemes)
-        return max(0.0, min(1.0, 1 - (distance / max_len)))
+        ops, _ = phonetics.align(ref_tokens, [t.text for t in spoken], phonetics.word_cost)
 
-    def get_word_level_scores(
-        self, reference_words: List[str], transcribed_words: List[str]
-    ) -> tuple[List[Dict[str, Any]], str]:
-        """Calculate pronunciation scores for individual words.
+        entries: List[Dict[str, Any]] = []
+        mistakes: Counter[str] = Counter()
+        unclear_below = settings["unclear_below"]
 
-        Returns:
-            A tuple of (word_scores_list, backend_used).
-        """
-        word_scores = []
-        backend_used = self.phoneme_backend
-        max_len = max(len(reference_words), len(transcribed_words))
+        for index, (kind, ri, hi) in enumerate(ops):
+            ref_word = ref_tokens[ri] if ri is not None else None
+            token = spoken[hi] if hi is not None else None
+            entry = self._word_entry(index, ref_word, ref_display[ri] if ri is not None else None, token)
 
-        for index in range(max_len):
-            ref_word = reference_words[index] if index < len(reference_words) else ""
-            trans_word = transcribed_words[index] if index < len(transcribed_words) else ""
+            if kind == "delete":
+                pron = phonetics.primary_pronunciation(ref_word)  # type: ignore[arg-type]
+                entry.update(
+                    status="missing",
+                    score=0.0,
+                    expected_ipa=phonetics.ipa_string(pron),
+                    expected_phonemes=list(pron.phonemes) if pron.source != "spelling" else [],
+                    syllables=phonetics.syllabify(pron),
+                    source=pron.source,
+                )
+            elif kind == "insert":
+                pron = phonetics.primary_pronunciation(token.text)  # type: ignore[union-attr]
+                entry.update(
+                    status="extra",
+                    spoken_ipa=phonetics.ipa_string(pron),
+                    spoken_phonemes=list(pron.phonemes) if pron.source != "spelling" else [],
+                    source=pron.source,
+                )
+            else:
+                comparison = phonetics.compare_words(ref_word, token.text)  # type: ignore[arg-type,union-attr]
+                confidence = token.probability if token else None
+                conf_factor = 1.0 if confidence is None else 0.75 + 0.25 * confidence
+                phoneme_mode = comparison.ref.source != "spelling"
 
-            if not ref_word and not trans_word:
-                continue
+                if kind == "equal":
+                    status = "unclear" if confidence is not None and confidence < unclear_below else "correct"
+                    score = 100.0 * conf_factor
+                else:
+                    status = "mispronounced"
+                    score = min(MISPRONOUNCED_CEILING, 100.0 * (comparison.similarity ** 2) * conf_factor)
+                    if phoneme_mode:
+                        for op_kind, expected, _actual in comparison.ops:
+                            if op_kind in ("replace", "delete") and expected:
+                                mistakes[expected] += 1
 
-            ref_phonemes, ref_backend = self.text_to_phonemes(ref_word)
-            trans_phonemes, trans_backend = self.text_to_phonemes(trans_word)
-            if ref_backend == "text-fallback" or trans_backend == "text-fallback":
-                backend_used = "text-fallback"
-            similarity = self.calculate_similarity(ref_phonemes, trans_phonemes)
+                # Spelling comparisons carry no phonemes; still show the target IPA.
+                reference_pron = comparison.ref if phoneme_mode else phonetics.primary_pronunciation(ref_word)  # type: ignore[arg-type]
+                entry.update(
+                    status=status,
+                    similarity=round(comparison.similarity, 3),
+                    score=round(_clamp(score), 1),
+                    expected_ipa=phonetics.ipa_string(reference_pron),
+                    spoken_ipa=phonetics.ipa_string(comparison.hyp),
+                    expected_phonemes=list(comparison.ref.phonemes) if phoneme_mode else [],
+                    spoken_phonemes=list(comparison.hyp.phonemes) if phoneme_mode else [],
+                    alignment=[
+                        {"op": op_kind, "expected": expected, "actual": actual}
+                        for op_kind, expected, actual in comparison.ops
+                    ] if phoneme_mode else [],
+                    syllables=phonetics.syllabify(reference_pron),
+                    source=comparison.ref.source,
+                )
+            entries.append(entry)
 
-            error_details = []
-            if ref_phonemes and trans_phonemes:
-                ops = Levenshtein.editops(ref_phonemes, trans_phonemes)
-                for op, ref_idx, trans_idx in ops:
-                    error_details.append({
-                        "type": op,
-                        "expected": ref_phonemes[ref_idx] if op in ('replace', 'delete') else "",
-                        "actual": trans_phonemes[trans_idx] if op in ('replace', 'insert') else "",
-                        "ref_index": ref_idx,
-                        "trans_index": trans_idx
-                    })
+        speech = self._speech_stats(entries, duration, settings)
+        metrics = self._metrics(entries, ref_tokens, speech, settings)
+        score = self._overall(metrics, settings)
+        word_accuracy = 100.0 * sum(1 for e in entries if e["status"] in ("correct", "unclear")) / len(ref_tokens)
 
-            word_scores.append(
-                {
-                    "reference_word": ref_word,
-                    "transcribed_word": trans_word,
-                    "score": round(similarity * 100, 2),
-                    "reference_phonemes": ref_phonemes,
-                    "transcribed_phonemes": trans_phonemes,
-                    "match": ref_word == trans_word,
-                    "error_details": error_details,
-                }
-            )
-
-        return word_scores, backend_used
-
-    def generate_feedback(
-        self, score: float, accuracy: float, word_scores: List[Dict[str, Any]], backend: str
-    ) -> str:
-        """Generate human-readable feedback based on scores."""
-        feedback_parts = []
-
-        if score >= 90:
-            feedback_parts.append("Excellent pronunciation! Your speech is very clear and accurate.")
-        elif score >= 75:
-            feedback_parts.append("Good pronunciation! You're speaking clearly with minor errors.")
-        elif score >= 60:
-            feedback_parts.append("Fair pronunciation. Keep practicing to improve clarity.")
-        else:
-            feedback_parts.append("Keep practicing! Focus on pronouncing each word carefully.")
-
-        incorrect_words = [word for word in word_scores if not word["match"] and word["reference_word"]]
-        if incorrect_words:
-            words = ", ".join(word["reference_word"] for word in incorrect_words[:5])
-            feedback_parts.append(f"Words to practice: {words}")
-
-        if accuracy < 100:
-            feedback_parts.append(f"Word accuracy: {accuracy}% - Try to pronounce all words clearly.")
-
-        if backend == "text-fallback":
-            feedback_parts.append(
-                "Phoneme scoring is using a text fallback because the IPA transliteration backend is unavailable."
-            )
-
-        return "\n\n".join(feedback_parts)
-
-    # Scoring weights: phoneme similarity and word accuracy are blended
-    # into a single 0–100 score.  Both components are normalised to
-    # percentages (0–100) before the weighted sum.
-    PHONEME_WEIGHT = 0.70
-    WORD_WEIGHT = 0.30
-
-    def score_pronunciation(self, reference_text: str, transcribed_text: str, difficulty: str = "Intermediate") -> Dict[str, Any]:
-        """
-        Compare reference and transcribed text and return scoring details.
-        """
-        reference_text = self.normalize_text(reference_text)
-        transcribed_text = self.normalize_text(transcribed_text)
-
-        if not reference_text:
-            trans_phonemes, backend = self.text_to_phonemes(transcribed_text)
-            return {
-                "score": 0.0,
-                "accuracy": 0.0,
-                "phoneme_analysis": {
-                    "reference_phonemes": "",
-                    "transcribed_phonemes": trans_phonemes,
-                    "phoneme_similarity": 0.0,
-                    "backend": backend,
-                },
-                "word_level_scores": [],
-                "feedback": "No reference text was provided for pronunciation scoring.",
-            }
-
-        ref_phonemes, ref_backend = self.text_to_phonemes(reference_text)
-        trans_phonemes, trans_backend = self.text_to_phonemes(transcribed_text)
-        backend = "text-fallback" if "text-fallback" in (ref_backend, trans_backend) else "epitran"
-        phoneme_score = self.calculate_similarity(ref_phonemes, trans_phonemes)
-
-        ref_words = self.split_words(reference_text)
-        trans_words = self.split_words(transcribed_text)
-        word_scores, word_backend = self.get_word_level_scores(ref_words, trans_words)
-        if word_backend == "text-fallback":
-            backend = "text-fallback"
-
-        correct_words = sum(1 for word in word_scores if word["match"])
-        total_words = len(ref_words)
-        # word_accuracy uses reference word count as denominator; extra
-        # transcribed words do not inflate accuracy.
-        word_accuracy = (correct_words / total_words * 100) if total_words else 0.0
-
-        # Both phoneme_score (0-1 ratio → percentage) and word_accuracy
-        # (already 0-100) are normalised to 0-100 before weighting.
-        phoneme_pct = phoneme_score * 100
-        final_score = (phoneme_pct * self.PHONEME_WEIGHT) + (word_accuracy * self.WORD_WEIGHT)
-        
-        # Difficulty Scaling
-        # Beginner: more lenient (+10%)
-        # Intermediate: standard
-        # Advanced: stricter (-10%)
-        if difficulty.lower() == "beginner":
-            final_score = final_score * 1.10
-        elif difficulty.lower() == "advanced":
-            final_score = final_score * 0.90
-
-        final_score = round(max(0.0, min(100.0, final_score)), 2)
-
-        # Aggregate weaknesses
-        weaknesses_count = {}
-        for word in word_scores:
-            for error in word.get("error_details", []):
-                if error["type"] in ("replace", "delete") and error["expected"].strip():
-                    ph = error["expected"]
-                    weaknesses_count[ph] = weaknesses_count.get(ph, 0) + 1
-        
-        sorted_weaknesses = sorted(weaknesses_count.items(), key=lambda x: x[1], reverse=True)
-        phoneme_weaknesses = [ph for ph, count in sorted_weaknesses][:3]
+        insights = self._insights(entries, speech, settings, score)
+        sources = {e["source"] for e in entries if e["reference"]}
+        backend = "cmudict" if sources <= {"cmudict"} else ("mixed" if "cmudict" in sources else sources.pop())
 
         return {
-            "score": final_score,
-            "accuracy": round(word_accuracy, 2),
+            "score": round(score, 1),
+            "accuracy": round(word_accuracy, 1),
+            "difficulty": level,
+            "metrics": {name: _round(value) for name, value in metrics.items()},
+            "words": entries,
+            "insights": insights,
+            "weak_phonemes": [ph for ph, _ in mistakes.most_common(3)],
+            "speech": speech,
+            "feedback": self._headline(score),
             "phoneme_analysis": {
-                "reference_phonemes": ref_phonemes,
-                "transcribed_phonemes": trans_phonemes,
-                "phoneme_similarity": round(phoneme_score * 100, 2),
+                "reference_phonemes": " ".join(e["expected_ipa"] for e in entries if e["reference"]),
+                "transcribed_phonemes": " ".join(e["spoken_ipa"] for e in entries if e["spoken"]),
+                "phoneme_similarity": _round(metrics["pronunciation"]),
                 "backend": backend,
-                "phoneme_weaknesses": phoneme_weaknesses,
             },
-            "word_level_scores": word_scores,
-            "feedback": self.generate_feedback(final_score, word_accuracy, word_scores, backend),
+        }
+
+    # -- scoring components ------------------------------------------------
+
+    @staticmethod
+    def _speech_stats(entries: List[Dict[str, Any]], duration: Optional[float], settings: Dict[str, Any]) -> Dict[str, Any]:
+        timed = [e for e in entries if e["spoken"] and e["start"] is not None and e["end"] is not None]
+        stats: Dict[str, Any] = {
+            "duration": _round(duration, 2),
+            "speaking_time": None,
+            "wpm": None,
+            "long_pauses": 0,
+            "word_count": sum(1 for e in entries if e["spoken"]),
+        }
+        if len(timed) < 2:
+            return stats
+
+        span = float(timed[-1]["end"]) - float(timed[0]["start"])
+        stats["speaking_time"] = _round(span, 2)
+        if span > 0:
+            stats["wpm"] = round(len(timed) / span * 60)
+
+        threshold = settings["pause_s"]
+        for previous, current in zip(timed, timed[1:], strict=False):
+            gap = float(current["start"]) - float(previous["end"])
+            if gap > threshold:
+                current["pause_before"] = round(gap, 2)
+                stats["long_pauses"] += 1
+        return stats
+
+    @staticmethod
+    def _metrics(
+        entries: List[Dict[str, Any]],
+        ref_tokens: List[str],
+        speech: Dict[str, Any],
+        settings: Dict[str, Any],
+    ) -> Dict[str, Optional[float]]:
+        spoken_refs = [e for e in entries if e["reference"] and e["status"] != "missing"]
+        pronunciation = sum(e["score"] for e in spoken_refs) / len(spoken_refs) if spoken_refs else 0.0
+        # An unrelated word in a target word's place doesn't count as saying it.
+        attempted = [
+            e for e in spoken_refs
+            if e["status"] != "mispronounced" or (e["similarity"] or 0.0) >= ATTEMPT_SIMILARITY
+        ]
+        completeness = 100.0 * len(attempted) / len(ref_tokens)
+
+        # Confidence in a substituted word says little about the target, so
+        # scale it by how close the substitute was.
+        confidences = [
+            e["confidence"] * (e["similarity"] if e["status"] == "mispronounced" else 1.0)
+            for e in spoken_refs
+            if e["confidence"] is not None
+        ]
+        clarity = 100.0 * sum(confidences) / len(confidences) if confidences else None
+
+        fluency: Optional[float] = None
+        timed_count = sum(1 for e in entries if e["spoken"] and e["start"] is not None)
+        if timed_count >= 3 and speech["wpm"]:
+            low, high = settings["wpm"]
+            wpm = speech["wpm"]
+            if wpm < low:
+                rate_score = 100 - (low - wpm) * 1.2
+            elif wpm > high:
+                rate_score = 100 - (wpm - high) * 1.0
+            else:
+                rate_score = 100.0
+            pause_penalty = sum(
+                min(20.0, 8.0 + 10.0 * (e["pause_before"] - settings["pause_s"]))
+                for e in entries
+                if e["pause_before"]
+            )
+            extra_penalty = 6.0 * sum(1 for e in entries if e["status"] == "extra")
+            fluency = _clamp(0.5 * _clamp(rate_score) + 0.5 * _clamp(100 - pause_penalty - extra_penalty))
+
+        return {
+            "pronunciation": _clamp(pronunciation),
+            "fluency": fluency,
+            "completeness": _clamp(completeness),
+            "clarity": None if clarity is None else _clamp(clarity),
+        }
+
+    @staticmethod
+    def _overall(metrics: Dict[str, Optional[float]], settings: Dict[str, Any]) -> float:
+        weighted = [(METRIC_WEIGHTS[name], value) for name, value in metrics.items() if value is not None]
+        total_weight = sum(weight for weight, _ in weighted)
+        raw = sum(weight * value for weight, value in weighted) / total_weight if total_weight else 0.0
+        # Skipped words cap the score so a perfect first word can't carry a sentence.
+        raw *= math.sqrt((metrics["completeness"] or 0.0) / 100.0)
+        return _clamp(100.0 * (raw / 100.0) ** settings["curve"]) if raw > 0 else 0.0
+
+    @staticmethod
+    def _headline(score: float) -> str:
+        if score >= 90:
+            return "Excellent pronunciation. Your speech is clear and natural."
+        if score >= 75:
+            return "Good pronunciation with a few sounds to polish."
+        if score >= 60:
+            return "Fair attempt. Focus on the highlighted words and sounds."
+        return "Keep practising. Slow down and work through the words one at a time."
+
+    @staticmethod
+    def _insights(
+        entries: List[Dict[str, Any]],
+        speech: Dict[str, Any],
+        settings: Dict[str, Any],
+        score: float,
+    ) -> List[Dict[str, Any]]:
+        insights: List[Dict[str, Any]] = []
+
+        def add(kind: str, severity: str, title: str, index: Optional[int] = None,
+                expected: Optional[str] = None, actual: Optional[str] = None) -> None:
+            insights.append({
+                "kind": kind, "severity": severity, "title": title,
+                "word_index": index, "expected": expected, "actual": actual,
+            })
+
+        for entry in entries:
+            word = entry["reference"]
+            if entry["status"] == "mispronounced":
+                ops = [op for op in entry["alignment"] if op["op"] != "equal"]
+                if not ops:
+                    add("word", "high", f"You said “{entry['spoken']}” instead of “{word}”.", entry["index"])
+                    continue
+                op = ops[0]
+                if op["op"] == "replace":
+                    add("substitution", "high", f"In “{word}”, /{op['expected']}/ sounded like /{op['actual']}/.",
+                        entry["index"], op["expected"], op["actual"])
+                elif op["op"] == "delete":
+                    add("deletion", "high", f"In “{word}”, the /{op['expected']}/ sound was dropped.",
+                        entry["index"], op["expected"])
+                else:
+                    add("insertion", "medium", f"In “{word}”, an extra /{op['actual']}/ sound crept in.",
+                        entry["index"], None, op["actual"])
+            elif entry["status"] == "missing":
+                add("missing", "high", f"You skipped “{word}”.", entry["index"])
+            elif entry["status"] == "unclear":
+                confidence = round((entry["confidence"] or 0) * 100)
+                add("unclear", "medium", f"“{word}” was recognised but sounded unclear ({confidence}% confidence).",
+                    entry["index"])
+            elif entry["status"] == "extra":
+                add("extra", "low", f"Extra word “{entry['spoken']}”. Try to stick to the script.", entry["index"])
+
+        for entry in entries:
+            if entry["pause_before"]:
+                add("pause", "low", f"Long pause before “{entry['reference'] or entry['spoken']}” ({entry['pause_before']:.1f}s).",
+                    entry["index"])
+
+        wpm = speech.get("wpm")
+        if wpm and speech.get("word_count", 0) >= 3:
+            low, high = settings["wpm"]
+            if wpm > high:
+                add("pace", "medium", f"You spoke quickly ({wpm} wpm). Slow down slightly so every sound lands.")
+            elif wpm < low:
+                add("pace", "low", f"Your pace was slow ({wpm} wpm). Aim for a smooth, connected rhythm.")
+
+        severity_rank = {"high": 0, "medium": 1, "low": 2}
+        insights.sort(key=lambda item: severity_rank[item["severity"]])
+        if not insights and score >= 85:
+            add("praise", "positive", "Clean delivery. Every word came through clearly.")
+        return insights[:8]
+
+    @staticmethod
+    def _empty_result(level: str, feedback: str) -> Dict[str, Any]:
+        return {
+            "score": 0.0,
+            "accuracy": 0.0,
+            "difficulty": level,
+            "metrics": {"pronunciation": 0.0, "fluency": None, "completeness": 0.0, "clarity": None},
+            "words": [],
+            "insights": [],
+            "weak_phonemes": [],
+            "speech": {"duration": None, "speaking_time": None, "wpm": None, "long_pauses": 0, "word_count": 0},
+            "feedback": feedback,
+            "phoneme_analysis": {
+                "reference_phonemes": "",
+                "transcribed_phonemes": "",
+                "phoneme_similarity": 0.0,
+                "backend": "cmudict",
+            },
         }
