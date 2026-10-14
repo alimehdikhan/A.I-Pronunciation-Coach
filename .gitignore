@@ -16,3 +16,11 @@ htmlcov/
 .ruff_cache/
 .mypy_cache/
 *.db
+*.db-wal
+*.db-shm
+backups/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+*.tsbuildinfo
