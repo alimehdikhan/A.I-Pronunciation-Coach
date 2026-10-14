@@ -1,0 +1,341 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import 'shadcn/tailwind.css';
+
+@custom-variant dark (&:is(.dark *));
+
+/* --------------------------------------------------------------------------
+ * Apple-inspired design tokens (shadcn variable names + semantic extras).
+ * Light mirrors apple.com; dark mirrors iOS/macOS system colours.
+ * ------------------------------------------------------------------------ */
+:root {
+  --radius: 1.125rem;
+
+  --background: #f5f5f7;
+  --foreground: #1d1d1f;
+  --card: #ffffff;
+  --card-foreground: #1d1d1f;
+  --popover: #ffffff;
+  --popover-foreground: #1d1d1f;
+  --primary: #0071e3;
+  --primary-foreground: #ffffff;
+  --secondary: #e8e8ed;
+  --secondary-foreground: #1d1d1f;
+  --muted: #f0f0f3;
+  --muted-foreground: #6e6e73;
+  --accent: #ececf0;
+  --accent-foreground: #1d1d1f;
+  --destructive: #e3342b;
+  --border: rgb(0 0 0 / 0.08);
+  --input: rgb(0 0 0 / 0.1);
+  --ring: #0071e3;
+  --chart-1: #0071e3;
+  --chart-2: #28b14c;
+  --chart-3: #ff9500;
+  --chart-4: #af52de;
+  --chart-5: #ff2d55;
+
+  --subtle: #86868b;
+  --fill: rgb(120 120 128 / 0.08);
+  --fill-strong: rgb(120 120 128 / 0.14);
+  --border-strong: rgb(0 0 0 / 0.13);
+  --primary-soft: rgb(0 113 227 / 0.09);
+  --good: #1e9b46;
+  --good-soft: rgb(40 177 76 / 0.11);
+  --warn: #c76a00;
+  --warn-soft: rgb(255 149 0 / 0.12);
+  --bad: #e0342a;
+  --bad-soft: rgb(255 59 48 / 0.09);
+  --info: #0071e3;
+  --extra: #9f45e0;
+  --extra-soft: rgb(175 82 222 / 0.1);
+  --material: rgb(251 251 253 / 0.78);
+  --glow: rgb(0 113 227 / 0.28);
+  --shadow-color: 220 10% 20%;
+
+  /* Activity-ring colours (Apple Fitness palette). */
+  --ring-move-a: #fa114f;
+  --ring-move-b: #ff5e8a;
+  --ring-exercise-a: #92e82a;
+  --ring-exercise-b: #c3ff4d;
+  --ring-stand-a: #1eeaef;
+  --ring-stand-b: #00c7ff;
+}
+
+.dark {
+  --background: #000000;
+  --foreground: #f5f5f7;
+  --card: #1c1c1e;
+  --card-foreground: #f5f5f7;
+  --popover: #2c2c2e;
+  --popover-foreground: #f5f5f7;
+  --primary: #0a84ff;
+  --primary-foreground: #ffffff;
+  --secondary: #2c2c2e;
+  --secondary-foreground: #f5f5f7;
+  --muted: #1c1c1e;
+  --muted-foreground: #a1a1a6;
+  --accent: #2c2c2e;
+  --accent-foreground: #f5f5f7;
+  --destructive: #ff453a;
+  --border: rgb(255 255 255 / 0.09);
+  --input: rgb(255 255 255 / 0.14);
+  --ring: #0a84ff;
+  --chart-1: #0a84ff;
+  --chart-2: #30d158;
+  --chart-3: #ff9f0a;
+  --chart-4: #bf5af2;
+  --chart-5: #ff375f;
+
+  --subtle: #6e6e73;
+  --fill: rgb(118 118 128 / 0.16);
+  --fill-strong: rgb(118 118 128 / 0.26);
+  --border-strong: rgb(255 255 255 / 0.16);
+  --primary-soft: rgb(10 132 255 / 0.16);
+  --good: #30d158;
+  --good-soft: rgb(48 209 88 / 0.14);
+  --warn: #ff9f0a;
+  --warn-soft: rgb(255 159 10 / 0.14);
+  --bad: #ff453a;
+  --bad-soft: rgb(255 69 58 / 0.14);
+  --info: #0a84ff;
+  --extra: #bf5af2;
+  --extra-soft: rgb(191 90 242 / 0.15);
+  --material: rgb(28 28 30 / 0.72);
+  --glow: rgb(10 132 255 / 0.38);
+  --shadow-color: 0 0% 0%;
+  color-scheme: dark;
+}
+
+@theme inline {
+  --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter Variable', 'Segoe UI Variable Text', 'Segoe UI',
+    Roboto, 'Helvetica Neue', sans-serif;
+  --font-display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter Variable', 'Segoe UI Variable Display',
+    'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace;
+  --font-ipa: 'Inter Variable', -apple-system, 'Segoe UI', 'Noto Sans', 'Lucida Sans Unicode', 'Arial Unicode MS', sans-serif;
+
+  --radius-sm: calc(var(--radius) - 8px);
+  --radius-md: calc(var(--radius) - 4px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-4xl: calc(var(--radius) + 18px);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  --color-subtle: var(--subtle);
+  --color-fill: var(--fill);
+  --color-fill-strong: var(--fill-strong);
+  --color-border-strong: var(--border-strong);
+  --color-primary-soft: var(--primary-soft);
+  --color-good: var(--good);
+  --color-good-soft: var(--good-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-bad: var(--bad);
+  --color-bad-soft: var(--bad-soft);
+  --color-info: var(--info);
+  --color-extra: var(--extra);
+  --color-extra-soft: var(--extra-soft);
+  --color-material: var(--material);
+
+  --shadow-card: 0 1px 1px hsl(var(--shadow-color) / 0.03), 0 4px 14px -2px hsl(var(--shadow-color) / 0.07),
+    0 18px 40px -18px hsl(var(--shadow-color) / 0.12);
+  --shadow-pop: 0 30px 80px -20px hsl(var(--shadow-color) / 0.35), 0 4px 14px hsl(var(--shadow-color) / 0.1);
+  --shadow-glow: 0 8px 30px -6px var(--glow);
+
+  --animate-glow-spin: glow-spin 4s linear infinite;
+  --animate-breathe: breathe 3.2s ease-in-out infinite;
+}
+
+@keyframes glow-spin {
+  to {
+    --glow-angle: 360deg;
+  }
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.55;
+  }
+  50% {
+    transform: scale(1.08);
+    opacity: 0.85;
+  }
+}
+
+@keyframes shimmer {
+  from {
+    background-position: -200% 0;
+  }
+  to {
+    background-position: 200% 0;
+  }
+}
+
+@property --glow-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+    scrollbar-width: thin;
+    scrollbar-color: var(--fill-strong) transparent;
+  }
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-rendering: optimizeLegibility;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    letter-spacing: -0.011em;
+    min-height: 100dvh;
+  }
+  ::selection {
+    background: var(--primary-soft);
+  }
+  button:not(:disabled),
+  [role='button']:not(:disabled) {
+    cursor: pointer;
+  }
+}
+
+@layer components {
+  /* Translucent "material" used for bars and floating chrome. */
+  .material {
+    background: var(--material);
+    backdrop-filter: saturate(180%) blur(24px);
+    -webkit-backdrop-filter: saturate(180%) blur(24px);
+  }
+  /* Elevated card surface. */
+  .surface {
+    background: var(--card);
+    border-radius: var(--radius-3xl);
+    box-shadow: var(--shadow-card);
+  }
+  .dark .surface {
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.06);
+  }
+  .ipa {
+    font-family: var(--font-ipa);
+    letter-spacing: 0;
+  }
+  /* Apple Intelligence-style gradient. */
+  .bg-ai {
+    background: linear-gradient(135deg, #0894ff 0%, #c959dd 38%, #ff2e54 70%, #ff9004 100%);
+  }
+  .text-ai {
+    background: linear-gradient(100deg, #0894ff 0%, #c959dd 40%, #ff2e54 75%, #ff9004 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .ai-glow {
+    background: conic-gradient(from var(--glow-angle), #0894ff, #c959dd, #ff2e54, #ff9004, #0894ff);
+    animation: glow-spin 4s linear infinite;
+  }
+  .skeleton-shimmer {
+    background: linear-gradient(90deg, var(--fill) 25%, var(--fill-strong) 50%, var(--fill) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.6s linear infinite;
+  }
+  .headline {
+    font-family: var(--font-display);
+    font-weight: 600;
+    letter-spacing: -0.035em;
+    line-height: 1.05;
+  }
+  /* Cursor-following highlight; set --mx/--my from pointer position. */
+  .spotlight {
+    position: relative;
+    isolation: isolate;
+  }
+  .spotlight::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    opacity: 0;
+    transition: opacity 0.35s ease;
+    background: radial-gradient(220px circle at var(--mx, 50%) var(--my, 50%), var(--primary-soft), transparent 65%);
+  }
+  .spotlight:hover::before {
+    opacity: 1;
+  }
+  /* Hairline gradient border in the Apple Intelligence palette. */
+  .ring-ai {
+    position: relative;
+  }
+  .ring-ai::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    padding: 1.5px;
+    border-radius: inherit;
+    background: linear-gradient(135deg, #0894ff, #c959dd, #ff2e54, #ff9004);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+  /* Hover lift used on tiles and list cards. */
+  .lift {
+    transition:
+      transform 0.35s cubic-bezier(0.25, 0.1, 0.25, 1),
+      box-shadow 0.35s ease;
+  }
+  .lift:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-pop);
+  }
+  .dark .lift:hover {
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.12);
+  }
+}
+
+/* Pointer helper for .spotlight elements. */
+@layer utilities {
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
