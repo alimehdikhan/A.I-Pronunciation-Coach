@@ -50,7 +50,8 @@ RUN python -m nltk.downloader -q -d "$NLTK_DATA" cmudict \
          HF_HUB_DISABLE_XET=1 python -c "from faster_whisper.utils import download_model; download_model('$PRELOAD_WHISPER', cache_dir='$PRONUNCIATION_COACH_ASR_DIR')"; \
        fi \
     && if [ -n "$PRELOAD_VOICE" ]; then \
-         python -c "from pathlib import Path; from piper.download_voices import download_voice; download_voice('$PRELOAD_VOICE', Path('$PRONUNCIATION_COACH_TTS_DIR'))"; \
+         mkdir -p "$PRONUNCIATION_COACH_TTS_DIR" \
+         && python -c "from pathlib import Path; from piper.download_voices import download_voice; download_voice('$PRELOAD_VOICE', Path('$PRONUNCIATION_COACH_TTS_DIR'))"; \
        fi
 
 COPY backend/ backend/
