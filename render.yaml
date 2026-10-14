@@ -3,9 +3,17 @@ services:
     name: ai-pronunciation-coach
     runtime: python
     buildCommand: bash build.sh
-    startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+    startCommand: python -m uvicorn backend.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips='*'
+    healthCheckPath: /health
     envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.11
+      - key: NODE_VERSION
+        value: 22
       - key: WHISPER_MODEL_SIZE
         value: tiny
       - key: PRONUNCIATION_LANGUAGE
         value: eng-Latn
+      # Set to a PostgreSQL URL (e.g. Neon) so history survives restarts.
+      - key: NEON_DATABASE_URL
+        sync: false
