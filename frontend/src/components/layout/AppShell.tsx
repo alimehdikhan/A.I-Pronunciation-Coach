@@ -32,6 +32,7 @@ import { NAV } from './nav'
 
 // Overlays aren't needed for first paint; load them on demand.
 const CommandMenu = lazy(() => import('./CommandMenu').then((m) => ({ default: m.CommandMenu })))
+const ChatLauncher = lazy(() => import('@/components/coach/ChatLauncher').then((m) => ({ default: m.ChatLauncher })))
 const SettingsDialog = lazy(() => import('./SettingsDialog').then((m) => ({ default: m.SettingsDialog })))
 const OnboardingDialog = lazy(() => import('./OnboardingDialog').then((m) => ({ default: m.OnboardingDialog })))
 const PhonemeSheet = lazy(() => import('@/components/tutor/PhonemeSheet').then((m) => ({ default: m.PhonemeSheet })))
@@ -345,6 +346,7 @@ export function AppShell() {
         <SettingsDialog />
         <OnboardingDialog />
         <PhonemeSheet />
+        <ChatLauncher />
       </Suspense>
     </div>
   )
