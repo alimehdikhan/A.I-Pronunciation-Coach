@@ -8,6 +8,7 @@ import PracticePage from '@/pages/PracticePage'
 
 const AuthPage = lazy(() => import('@/pages/AuthPage'))
 const ProfilePage = lazy(() => import('@/pages/ProfilePage'))
+const CoachPage = lazy(() => import('@/pages/CoachPage'))
 
 const DrillsPage = lazy(() => import('@/pages/DrillsPage'))
 const SoundsPage = lazy(() => import('@/pages/SoundsPage'))
@@ -60,6 +61,7 @@ export const router = createBrowserRouter([
     errorElement: <RouteError />,
     children: [
       { index: true, element: <PracticePage /> },
+      { path: 'coach', element: <CoachPage /> },
       { path: 'drills', element: <DrillsPage /> },
       { path: 'sounds', element: <SoundsPage /> },
       { path: 'progress', element: <ProgressPage /> },
