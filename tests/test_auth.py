@@ -170,13 +170,34 @@ def test_signing_in_on_a_device_moves_it_out_of_its_previous_account(client):
     assert client.get("/api/history/Sam", headers=headers(PROFILE_KEY)).status_code == 403
 
 
-def test_rename_keeps_names_unique(client):
+def test_display_names_may_repeat_but_usernames_may_not(client):
+    first = register(client, username="sam_one", email="a@example.com")
+    assert first.json()["display_name"] == "sam_one"  # defaults to the username
+
+    shared = client.post(
+        "/api/auth/register",
+        json={"email": "b@example.com", "password": PASSWORD, "username": "sam_two", "display_name": "Sam"},
+        headers=headers(OTHER_KEY),
+    )
+    assert shared.status_code == 200 and shared.json()["display_name"] == "Sam"
+
+    # Two people can both be shown as "Sam" ...
+    ok = client.patch("/api/auth/me", json={"display_name": "Sam"}, headers=headers(PROFILE_KEY))
+    assert ok.status_code == 200 and ok.json()["display_name"] == "Sam"
+    assert ok.json()["username"] == "sam_one"
+    # ... but the username they are stored under stays unique.
+    clash = client.patch("/api/auth/me", json={"username": "sam_two"}, headers=headers(PROFILE_KEY))
+    assert clash.status_code == 409 and clash.json()["code"] == "username_taken"
+    taken = register(client, key=THIRD_KEY, email="c@example.com", username="sam_two")
+    assert taken.status_code == 409 and taken.json()["code"] == "username_taken"
+
+
+def test_rename_username_and_guest_cases(client):
     register(client)
-    register(client, key=OTHER_KEY, email="kim@example.com", username="Kim")
     ok = client.patch("/api/auth/me", json={"username": "Samuel"}, headers=headers(PROFILE_KEY))
     assert ok.status_code == 200 and ok.json()["username"] == "Samuel"
-    taken = client.patch("/api/auth/me", json={"username": "Kim"}, headers=headers(PROFILE_KEY))
-    assert taken.status_code == 409 and taken.json()["code"] == "username_taken"
+    empty = client.patch("/api/auth/me", json={}, headers=headers(PROFILE_KEY))
+    assert empty.status_code == 400 and empty.json()["code"] == "nothing_to_change"
     guest = client.patch("/api/auth/me", json={"username": "X"}, headers=headers(THIRD_KEY))
     assert guest.status_code == 401 and guest.json()["code"] == "not_signed_in"
 
