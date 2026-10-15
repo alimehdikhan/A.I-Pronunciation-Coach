@@ -310,6 +310,8 @@ class PronunciationRecordSchema(BaseModel):
 class UserHistoryResponse(BaseModel):
     username: str
     records: List[PronunciationRecordSchema]
+    # Matching attempts in all (before limit/offset), so a client can page.
+    total: int = 0
 
 
 class TrendPoint(BaseModel):
@@ -338,3 +340,9 @@ class AnalyticsResponse(BaseModel):
     metric_averages: dict
     score_trend: List[TrendPoint]
     top_weaknesses: List[WeaknessSchema]
+    # Added after v2: first attempts against the latest, a twelve-week calendar, per-sound
+    # mastery (weakest first) and the words that went wrong most often.
+    improvement: Optional[dict] = None
+    daily_activity: List[dict] = []
+    sound_mastery: List[dict] = []
+    tricky_words: List[dict] = []
