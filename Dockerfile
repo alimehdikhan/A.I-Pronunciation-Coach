@@ -60,15 +60,19 @@ RUN python -m nltk.downloader -q -d "$NLTK_DATA" cmudict \
          && python -c "from pathlib import Path; from piper.download_voices import download_voice; download_voice('$PRELOAD_VOICE', Path('$PRONUNCIATION_COACH_TTS_DIR'))"; \
        fi
 
-# Acoustic sound scoring (optional). With PRELOAD_PHONEMES=1 the build downloads
-# Meta's wav2vec 2.0 phoneme model, exports it to int8 ONNX (about 355 MB) and
-# removes the export tools again, so PyTorch is never part of the image. Without
-# it the app still runs and scores from Whisper's words only. Needs roughly 6 GB
-# of build memory and a few extra minutes; Hugging Face passes Space variables
-# as build args, so setting PRELOAD_PHONEMES=1 as a Space variable enables it.
-ARG PRELOAD_PHONEMES=0
-COPY scripts/export_phoneme_model.py scripts/
-RUN if [ "$PRELOAD_PHONEMES" = "1" ]; then       pip install --extra-index-url https://download.pytorch.org/whl/cpu         "torch>=2.5,<3" "transformers>=4.45" "onnx>=1.16" "onnxscript>=0.1"       && HF_HUB_DISABLE_XET=1 python scripts/export_phoneme_model.py "$PRONUNCIATION_COACH_PHONEME_DIR"       && pip uninstall -y torch transformers onnx onnxscript       && rm -rf /app/.cache/huggingface;     fi
+# Acoustic sound scoring: download the int8 phoneme model (about 355 MB) that
+# scripts/export_phoneme_model.py produces from Meta's wav2vec 2.0 espeak model.
+# It is fetched from the Hub, like the Whisper weights, so the build needs no
+# PyTorch. A failed download does not fail the build: the app then scores from
+# Whisper's words only and /health reports "acoustic_scoring": false.
+# Pass PRELOAD_PHONEMES=0 to skip it (Hugging Face passes Space variables as
+# build args, so a Space variable of the same name works too).
+ARG PRELOAD_PHONEMES=1
+ARG PHONEME_MODEL_REPO=Alimehdi973/wav2vec2-espeak-onnx-int8
+RUN if [ "$PRELOAD_PHONEMES" = "1" ]; then \
+      HF_HUB_DISABLE_XET=1 python -c "from huggingface_hub import snapshot_download; snapshot_download('$PHONEME_MODEL_REPO', local_dir='$PRONUNCIATION_COACH_PHONEME_DIR', allow_patterns=['phonemes.onnx', 'vocab.json', 'MODEL'])" \
+      || echo "WARNING: phoneme model not downloaded; scoring will use Whisper's words only"; \
+    fi
 
 COPY backend/ backend/
 COPY --from=frontend /app/frontend/dist frontend/dist
