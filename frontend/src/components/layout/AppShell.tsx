@@ -51,17 +51,18 @@ function useThemeSync() {
 
 /** Keeps this browser's signed-in state in step with the server (e.g. after a password change elsewhere). */
 function useAccountSync() {
-  const { data } = useAccount()
+  const { data, isFetching } = useAccount()
   const accountEmail = useSettings((s) => s.accountEmail)
   const displayName = useSettings((s) => s.displayName)
   const signIn = useSettings((s) => s.signIn)
   const signOut = useSettings((s) => s.signOut)
   useEffect(() => {
-    if (!data) return
+    // Cached data is only a guess while a refetch is under way (e.g. right after signing in).
+    if (!data || isFetching) return
     if (data.account && (accountEmail !== data.email || displayName !== data.display_name))
       signIn({ username: data.username, displayName: data.display_name, email: data.email })
     else if (!data.account && accountEmail) signOut()
-  }, [data, accountEmail, displayName, signIn, signOut])
+  }, [data, isFetching, accountEmail, displayName, signIn, signOut])
 }
 
 function useCommandShortcut() {
