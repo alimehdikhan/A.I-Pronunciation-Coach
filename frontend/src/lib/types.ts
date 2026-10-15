@@ -299,6 +299,9 @@ export interface CoachRequest {
   score: number
   slips: CoachSlip[]
   weak_sounds: { phoneme: string; count: number }[]
+  /** The score of the previous attempt at this phrase, when there is one. */
+  previous_score?: number | null
+  native_language?: string | null
 }
 
 export interface CoachReply {
