@@ -13,6 +13,7 @@ from fastapi import APIRouter, HTTPException, Query, Response
 from backend import phonetics
 from backend.config import settings
 from backend.phoneme_kb import get_phoneme, list_phonemes
+from backend.respell import respell
 from backend.tutor import generate_tutor_card, phoneme_details
 
 logger = logging.getLogger("pronunciation_coach.api.library")
@@ -28,9 +29,12 @@ def pronounce_text(response: Response, text: str = Query(..., min_length=1, max_
     for display in text.split():
         tokens = phonetics.tokenize(display)
         details = [phonetics.describe_word(token) for token in tokens]
+        spelled = [respell(token) for token in tokens]
         words.append({
             "text": display,
             "ipa": " ".join(d["ipa"] for d in details if d["ipa"]),
+            # The same sounds in plain letters ("uh-BOWT"); None when the dictionary does not know the word.
+            "respelling": " ".join(r for r in spelled if r) or None,
             "tokens": details,
         })
     response.headers["Cache-Control"] = CACHEABLE
