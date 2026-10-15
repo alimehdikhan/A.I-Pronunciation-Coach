@@ -12,6 +12,7 @@ import type {
   PracticeResponse,
   PronounceResponse,
   TutorCard,
+  VoiceCatalog,
 } from './types'
 import { useSettings } from '@/store/settings'
 import { prepareRecording } from './audioProcessing'
@@ -71,6 +72,7 @@ export interface EvaluateInput {
 
 export const api = {
   health: () => request<Health>('/health'),
+  voices: () => request<VoiceCatalog>('/api/voices'),
 
   evaluate: ({ audio, filename, text, difficulty, username, signal }: EvaluateInput) => {
     const form = new FormData()
