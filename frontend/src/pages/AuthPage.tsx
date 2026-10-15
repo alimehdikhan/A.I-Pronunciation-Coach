@@ -1,6 +1,6 @@
 import { ArrowRightIcon, EyeIcon, EyeSlashIcon, ShieldCheckIcon } from '@phosphor-icons/react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useState, type FormEvent } from 'react'
+import { useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { toast } from 'sonner'
 import { Background } from '@/components/layout/Background'
@@ -14,17 +14,19 @@ import { useSettings } from '@/store/settings'
 const NAME_RE = /^[\p{L}\p{N}_ .'-]{1,40}$/u
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s.]{2,}$/
 
-function Field({
-  label,
-  hint,
-  error,
-  children,
-}: {
-  label: string
-  hint?: string
-  error?: string | null
-  children: React.ReactNode
-}) {
+/** A starting username from a display name: "Sam Lee" -> "sam.lee". */
+function suggestUsername(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '.')
+    .replace(/^\.+|\.+$/g, '')
+    .slice(0, 30)
+}
+
+function Field({ label, hint, error, children }: { label: string; hint?: string; error?: string | null; children: ReactNode }) {
   return (
     <label className="block">
       <span className="mb-1.5 block text-[13px] font-medium text-muted-foreground">{label}</span>
@@ -44,16 +46,20 @@ export default function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const signIn = useSettings((s) => s.signIn)
+  const continueAsGuest = useSettings((s) => s.continueAsGuest)
   const guestName = useSettings((s) => s.username)
 
-  const [name, setName] = useState(signup ? guestName : '')
+  const [displayName, setDisplayName] = useState(signup ? guestName : '')
+  const [username, setUsername] = useState(signup ? guestName : '')
+  const [usernameEdited, setUsernameEdited] = useState(!!guestName)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [reveal, setReveal] = useState(false)
   const [touched, setTouched] = useState(false)
 
   const errors = {
-    name: signup && !NAME_RE.test(name.trim()) ? 'Use up to 40 letters, numbers, spaces or . \' _ -' : null,
+    displayName: signup && displayName.trim() && !NAME_RE.test(displayName.trim()) ? "Use up to 40 letters, numbers, spaces or . ' _ -" : null,
+    username: signup && !NAME_RE.test(username.trim()) ? "Use up to 40 letters, numbers, spaces or . ' _ -" : null,
     email: !EMAIL_RE.test(email.trim()) ? 'Enter a valid email address.' : null,
     password: signup && password.length < 8 ? 'Use at least 8 characters.' : !password ? 'Enter your password.' : null,
   }
@@ -62,13 +68,18 @@ export default function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
   const submit = useMutation({
     mutationFn: () =>
       signup
-        ? api.register({ email: email.trim(), password, username: name.trim() })
+        ? api.register({
+            email: email.trim(),
+            password,
+            username: username.trim(),
+            display_name: displayName.trim() || undefined,
+          })
         : api.login({ email: email.trim(), password }),
     meta: { silent: true },
     onSuccess: (profile) => {
-      signIn({ username: profile.username, email: profile.email })
+      signIn({ username: profile.username, displayName: profile.display_name, email: profile.email })
       void queryClient.invalidateQueries()
-      toast.success(signup ? `Welcome, ${profile.username}` : `Signed in as ${profile.username}`)
+      toast.success(signup ? `Welcome, ${profile.display_name}` : `Signed in as ${profile.display_name}`)
       navigate('/', { replace: true })
     },
   })
@@ -86,7 +97,7 @@ export default function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
       <Background />
       <div className="w-full max-w-[400px]">
         <div className="mb-8 flex flex-col items-center text-center">
-          <Link to="/" aria-label="Back to practice">
+          <Link to="/" onClick={continueAsGuest} aria-label="Back to practice">
             <LogoMark className="size-14 rounded-2xl shadow-[0_12px_40px_-10px_rgb(201_89_221/0.6)]" />
           </Link>
           <h1 className="headline mt-6 text-[30px]">{signup ? 'Create your account' : 'Welcome back'}</h1>
@@ -94,24 +105,51 @@ export default function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
             {signup
               ? guestName
                 ? `Your practice history as “${guestName}” moves to your account.`
-                : 'Keep your streaks and progress on every device.'
-              : 'Sign in to pick up your streaks and history.'}
+                : 'See your scores and keep your progress on every device.'
+              : 'Sign in to see your scores, streaks and history.'}
           </p>
         </div>
 
         <form onSubmit={onSubmit} noValidate className="surface space-y-4 p-6">
           {signup && (
-            <Field label="Display name" error={touched ? errors.name : null}>
-              <Input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                autoComplete="nickname"
-                maxLength={40}
-                autoFocus={!guestName}
-                aria-invalid={touched && !!errors.name}
-                className="h-11 rounded-xl text-[15px]"
-              />
-            </Field>
+            <>
+              <Field
+                label="Display name"
+                hint="Shown on your profile. Other people can use the same name."
+                error={touched ? errors.displayName : null}
+              >
+                <Input
+                  value={displayName}
+                  onChange={(e) => {
+                    setDisplayName(e.target.value)
+                    if (!usernameEdited) setUsername(suggestUsername(e.target.value))
+                  }}
+                  autoComplete="name"
+                  maxLength={40}
+                  autoFocus={!guestName}
+                  aria-invalid={touched && !!errors.displayName}
+                  className="h-11 rounded-xl text-[15px]"
+                />
+              </Field>
+              <Field
+                label="Username"
+                hint="Unique to you. Your practice history is stored under it."
+                error={touched ? errors.username : null}
+              >
+                <Input
+                  value={username}
+                  onChange={(e) => {
+                    setUsername(e.target.value)
+                    setUsernameEdited(true)
+                  }}
+                  autoComplete="username"
+                  autoCapitalize="none"
+                  maxLength={40}
+                  aria-invalid={touched && !!errors.username}
+                  className="h-11 rounded-xl text-[15px]"
+                />
+              </Field>
+            </>
           )}
 
           <Field label="Email" error={touched ? errors.email : null}>
@@ -122,17 +160,13 @@ export default function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
               autoComplete="email"
               inputMode="email"
               maxLength={254}
-              autoFocus={!signup || !!guestName}
+              autoFocus={!signup}
               aria-invalid={touched && !!errors.email}
               className="h-11 rounded-xl text-[15px]"
             />
           </Field>
 
-          <Field
-            label="Password"
-            hint={signup ? 'At least 8 characters.' : undefined}
-            error={touched ? errors.password : null}
-          >
+          <Field label="Password" hint={signup ? 'At least 8 characters.' : undefined} error={touched ? errors.password : null}>
             <div className="relative">
               <Input
                 type={reveal ? 'text' : 'password'}
@@ -171,9 +205,10 @@ export default function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
           </Link>
         </p>
         <p className="mt-3 text-center text-[13px]">
-          <Link to="/" className="font-medium text-subtle hover:text-foreground">
-            Continue as a guest
+          <Link to="/" onClick={continueAsGuest} className="font-medium text-subtle hover:text-foreground">
+            Practice without signing in
           </Link>
+          <span className="mt-1 block text-xs text-subtle">You will need an account to see your scores.</span>
         </p>
 
         <p className="mx-auto mt-8 flex max-w-[320px] items-start gap-2 text-xs leading-relaxed text-subtle">
