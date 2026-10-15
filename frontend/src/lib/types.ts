@@ -83,6 +83,13 @@ export interface EvaluationResult {
   insights: Insight[]
   weak_phonemes: string[]
   feedback: string
+  /** What the server did about the room: how noisy it was and what was removed. */
+  audio_cleanup?: {
+    snr_db: number | null
+    denoised: boolean
+    method: 'rnnoise' | 'spectral' | null
+    background_voices: number
+  } | null
   speech: {
     duration: number | null
     speaking_time: number | null
@@ -230,6 +237,25 @@ export interface Analytics {
   metric_averages: Partial<Record<MetricKey, number>>
   score_trend: ({ date: string; score: number } & Partial<Record<MetricKey, number | null>>)[]
   top_weaknesses: { phoneme: string; count: number; name: string | null; label: string | null }[]
+  /** First attempts against the latest ones, once there are enough to compare. */
+  improvement?: { attempts: number; first_average: number; recent_average: number; change: number } | null
+  /** Attempts per local day for the last twelve weeks, oldest first. */
+  daily_activity?: { date: string; count: number }[]
+  /** Per sound, weakest first. */
+  sound_mastery?: SoundMastery[]
+  /** Words that went wrong most often. */
+  tricky_words?: { word: string; misses: number }[]
+}
+
+export interface HistoryFilters {
+  /** all, or only the attempts that need work / went well. */
+  band: 'all' | 'low' | 'high'
+  text: string
+}
+
+export interface HistoryPage {
+  records: HistoryRecord[]
+  total: number
 }
 
 export interface CoachSlip {
