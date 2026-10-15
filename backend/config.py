@@ -109,6 +109,8 @@ class Settings:
     max_upload_bytes: int = field(default_factory=lambda: _int("PRONUNCIATION_COACH_MAX_UPLOAD_BYTES", 25 * 1024 * 1024))
     max_audio_seconds: float = field(default_factory=lambda: _float("PRONUNCIATION_COACH_MAX_AUDIO_SECONDS", 60.0))
     max_target_chars: int = 500
+    # Remove room noise and quieter background voices from recordings before scoring.
+    noise_cleanup: bool = field(default_factory=lambda: _flag("PRONUNCIATION_COACH_NOISE_CLEANUP", "1"))
 
     # Coach voice
     tts_enabled: bool = field(default_factory=lambda: _flag("PRONUNCIATION_COACH_TTS", "1"))
