@@ -1,15 +1,15 @@
-import { ArrowDownRightIcon, ArrowUpRightIcon } from '@phosphor-icons/react'
+import { ArrowDownRightIcon, ArrowUpRightIcon, CheckCircleIcon, type Icon, SparkleIcon, TargetIcon, TrendUpIcon } from '@phosphor-icons/react'
 import { motion, useReducedMotion } from 'motion/react'
 import { describeSound } from '@/lib/plain'
 import type { SoundMastery } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { useUI } from '@/store/ui'
 
-const STATUS: Record<SoundMastery['status'], { label: string; tone: string }> = {
-  needs_work: { label: 'Needs practice', tone: 'bg-bad-soft text-bad' },
-  getting_there: { label: 'Getting there', tone: 'bg-warn-soft text-warn' },
-  solid: { label: 'Got it', tone: 'bg-good-soft text-good' },
-  new: { label: 'Just started', tone: 'bg-fill text-muted-foreground' },
+const STATUS: Record<SoundMastery['status'], { label: string; tone: string; Icon: Icon }> = {
+  needs_work: { label: 'Needs practice', tone: 'bg-bad-soft text-bad', Icon: TargetIcon },
+  getting_there: { label: 'Getting there', tone: 'bg-warn-soft text-warn', Icon: TrendUpIcon },
+  solid: { label: 'Got it', tone: 'bg-good-soft text-good', Icon: CheckCircleIcon },
+  new: { label: 'Just started', tone: 'bg-fill text-muted-foreground', Icon: SparkleIcon },
 }
 
 /**
@@ -68,7 +68,10 @@ export function SoundMasteryGrid({ sounds }: { sounds: SoundMastery[] }) {
                   />
                 </div>
                 <div className="flex items-center justify-between gap-2 text-[12px]">
-                  <span className={cn('shrink-0 rounded-full px-2 py-0.5 font-medium', status.tone)}>{status.label}</span>
+                  <span className={cn('inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 font-medium', status.tone)}>
+                    <status.Icon size={12} weight="fill" />
+                    {status.label}
+                  </span>
                   <span className="truncate text-subtle">
                     Right {percent}% of the time · {s.attempts} {s.attempts === 1 ? 'try' : 'tries'}
                   </span>
