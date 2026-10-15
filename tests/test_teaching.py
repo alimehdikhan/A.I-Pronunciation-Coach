@@ -67,7 +67,7 @@ def test_plan_builds_a_session_around_the_learners_own_words():
     assert focus["words"][: len(focus["your_words"])] == focus["your_words"]
     assert len(focus["words"]) == 4 and len(set(focus["words"])) == 4
     assert [step["kind"] for step in plan["session"]] == ["learn", "listen", "words", "sentence", "review"]
-    assert "/θ/" in focus["reason"] and "cleanly" in focus["reason"]
+    assert "“th”" in focus["reason"] and "cleanly" in focus["reason"]  # named in words, not by symbol
 
 
 def test_plan_without_history_is_still_a_complete_session():
@@ -152,7 +152,7 @@ async def test_briefing_uses_the_model_but_only_the_facts_it_is_given():
     text, source = await svc.briefing(facts, "fallback")
     again, _ = await svc.briefing(facts, "fallback")
 
-    assert source == "groq" and text == again and "θ" in text
+    assert source == "groq" and text == again and "“th”" in text  # the symbol is spelled out
     assert "has_history" in seen["messages"][1]["content"]
     assert "Sam" not in seen["messages"][1]["content"]  # no names are sent
 
@@ -184,3 +184,49 @@ async def test_attempt_feedback_carries_a_single_cue():
     offline = await CoachService("", "test-model").coach(request)
     assert offline.source == "template" and offline.one_thing  # the template gives a cue too
     assert runtime is not None
+
+
+# --- the plan speaks in plain words --------------------------------------------------------------------------
+
+
+def test_the_plan_has_no_slashed_symbols_but_keeps_the_sounds_themselves():
+    plan = teaching.build_plan([])
+
+    prose = []
+
+    def collect(value, key=""):
+        if key in {"phoneme", "symbol", "words", "your_words", "sentence", "pairs", "confused_with", "label", "name", "kind"}:
+            return
+        if isinstance(value, str):
+            prose.append(value)
+        elif isinstance(value, list):
+            for item in value:
+                collect(item, key)
+        elif isinstance(value, dict):
+            for k, v in value.items():
+                collect(v, k)
+
+    collect(plan)
+    import re
+
+    assert not [t for t in prose if re.search(r"/[^/\s]{1,3}/", t) or re.search("[\u03b8\u00f0\u0283\u0292\u014b]", t)]
+    assert plan["focus"]["phoneme"] == "\u03b8"  # the symbol is still there for the app to use
+    assert "confused_with" in plan["focus"]
+
+
+def test_the_template_note_names_the_sound_in_words():
+    note = teaching.template_briefing(teaching.build_plan([]))
+    assert "/" not in note and "th" in note.lower()
+
+
+@pytest.mark.anyio
+async def test_a_model_note_with_symbols_is_cleaned_before_it_is_shown():
+    def handler(request):
+        return llm({"note": "Today we work on the /\u03b8/ sound, which often becomes /s/."})
+
+    svc = CoachService("k", "test-model", transport=httpx.MockTransport(handler))
+    text, source = await svc.briefing({"focus_sound": "\u03b8"}, "fallback")
+
+    assert source == "groq"
+    assert "/" not in text and "\u03b8" not in text
+    assert "\u201cth\u201d" in text and "\u201cs\u201d" in text
