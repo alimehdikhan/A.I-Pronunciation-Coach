@@ -242,7 +242,10 @@ export type AccountProfile =
   | { account: false }
   | {
       account: true
+      /** Unique handle; history is stored under it. */
       username: string
+      /** Shown in the app; several people can share one. */
+      display_name: string
       email: string
       /** ISO timestamp. */
       member_since: string | null
