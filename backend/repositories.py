@@ -194,16 +194,50 @@ def save_attempt(
     return record.id
 
 
-def history(db: Session, user: User, limit: int) -> list[PronunciationRecord]:
+def _history_filters(
+    user: User, min_score: float | None, max_score: float | None, text: str | None
+) -> list[Any]:
+    R = PronunciationRecord
+    conditions: list[Any] = [R.user_id == user.id]
+    if min_score is not None:
+        conditions.append(R.score >= min_score)
+    if max_score is not None:
+        conditions.append(R.score <= max_score)
+    if text:
+        needle = text.strip().lower().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        if needle:
+            conditions.append(func.lower(R.target_text).like(f"%{needle}%", escape="\\"))
+    return conditions
+
+
+def history(
+    db: Session,
+    user: User,
+    limit: int,
+    offset: int = 0,
+    min_score: float | None = None,
+    max_score: float | None = None,
+    text: str | None = None,
+) -> list[PronunciationRecord]:
     return list(
         db.scalars(
             select(PronunciationRecord)
             .options(selectinload(PronunciationRecord.mistakes))
-            .where(PronunciationRecord.user_id == user.id)
+            .where(*_history_filters(user, min_score, max_score, text))
             .order_by(PronunciationRecord.created_at.desc(), PronunciationRecord.id.desc())
+            .offset(offset)
             .limit(limit)
         )
     )
+
+
+def history_total(
+    db: Session, user: User, min_score: float | None = None, max_score: float | None = None, text: str | None = None
+) -> int:
+    count = db.scalar(
+        select(func.count()).select_from(PronunciationRecord).where(*_history_filters(user, min_score, max_score, text))
+    )
+    return int(count or 0)
 
 
 def delete_history(db: Session, user: User) -> int:
@@ -286,6 +320,65 @@ def _streak(days: list[date], today: date) -> int:
     return streak
 
 
+ACTIVITY_DAYS = 84  # twelve weeks
+IMPROVEMENT_WINDOW = 10
+MASTERY_LISTED = 16
+TRICKY_WORDS = 8
+
+
+def _improvement(db: Session, user: User, total: int) -> dict[str, Any] | None:
+    """Average of the first attempts against the latest ones, once there are enough to compare."""
+    window = min(IMPROVEMENT_WINDOW, total // 2)
+    if window < 3:
+        return None
+    R = PronunciationRecord
+    first = db.scalars(select(R.score).where(R.user_id == user.id).order_by(R.created_at.asc(), R.id.asc()).limit(window)).all()
+    recent = db.scalars(select(R.score).where(R.user_id == user.id).order_by(R.created_at.desc(), R.id.desc()).limit(window)).all()
+    first_avg = sum(first) / len(first)
+    recent_avg = sum(recent) / len(recent)
+    return {
+        "attempts": window,
+        "first_average": round(first_avg, 1),
+        "recent_average": round(recent_avg, 1),
+        "change": round(recent_avg - first_avg, 1),
+    }
+
+
+def _daily_activity(db: Session, user: User, tz_offset: int, today: date) -> list[dict[str, Any]]:
+    """Attempts per local calendar day for the last twelve weeks, oldest first, empty days included."""
+    start = today - timedelta(days=ACTIVITY_DAYS - 1)
+    cutoff = (utcnow() - timedelta(days=ACTIVITY_DAYS + 2)).replace(tzinfo=None)
+    stamps = db.scalars(
+        select(PronunciationRecord.created_at).where(
+            PronunciationRecord.user_id == user.id, PronunciationRecord.created_at >= cutoff
+        )
+    ).all()
+    offset = timedelta(minutes=tz_offset)
+    counts: dict[date, int] = {}
+    for stamp in stamps:
+        day = (as_utc(stamp) - offset).date()
+        if day >= start:
+            counts[day] = counts.get(day, 0) + 1
+    return [
+        {"date": (start + timedelta(days=i)).isoformat(), "count": counts.get(start + timedelta(days=i), 0)}
+        for i in range(ACTIVITY_DAYS)
+    ]
+
+
+def _sound_mastery(db: Session, user: User) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """(per-sound mastery, the words that went wrong most often), from the attempt-level observations."""
+    from collections import Counter
+
+    from backend import teaching
+
+    rows = observations(db, user)
+    stats = [s for s in teaching.compute_mastery(rows) if s.attempts >= teaching.MIN_ATTEMPTS]
+    stats.sort(key=lambda s: (s.clean_rate, -s.attempts))  # weakest first
+    missed = Counter(word.lower() for _p, ok, _s, word, _t in rows if not ok and word)
+    tricky = [{"word": word, "misses": count} for word, count in missed.most_common(TRICKY_WORDS) if count >= 2]
+    return [s.as_dict() for s in stats[:MASTERY_LISTED]], tricky
+
+
 def analytics(db: Session, user: User, tz_offset: int) -> dict[str, Any] | None:
     """Aggregated scores, streaks, trend and weaknesses; None when there are no attempts."""
     R = PronunciationRecord
@@ -323,7 +416,12 @@ def analytics(db: Session, user: User, tz_offset: int) -> dict[str, Any] | None:
             "label": entry["label"] if entry else None,
         })
 
+    mastery, tricky = _sound_mastery(db, user)
     return {
+        "improvement": _improvement(db, user, int(total)),
+        "daily_activity": _daily_activity(db, user, tz_offset, today),
+        "sound_mastery": mastery,
+        "tricky_words": tricky,
         "average_score": round(float(average), 1),
         "best_score": round(float(best), 1),
         "total_practice_sessions": int(total),
