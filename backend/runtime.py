@@ -81,6 +81,7 @@ class Runtime:
     asr: WhisperASR | None = None
     scorer: PronunciationScorer | None = None
     voice: CoachVoice | None = None
+    voice_engine: str | None = None
     coach: CoachService | None = None
     phonemes: PhonemeRecognizer | None = None
     db_ready: bool = False
@@ -158,10 +159,20 @@ def load_voice() -> None:
     """The neural coach voice is optional: the frontend falls back to browser speech."""
     if runtime.voice is not None or not settings.tts_enabled:
         return
-    try:
-        from backend.tts import CoachVoice
+    from backend.tts import CoachVoice, KokoroVoice, kokoro_available
 
+    if settings.tts_engine in ("auto", "kokoro") and kokoro_available():
+        try:
+            runtime.voice = KokoroVoice(settings.kokoro_voice, threads=settings.kokoro_threads)
+            runtime.voice_engine = "kokoro"
+            return
+        except Exception:
+            logger.exception("Kokoro unavailable; using Piper instead.")
+    if settings.tts_engine == "kokoro":
+        logger.warning("PRONUNCIATION_COACH_TTS_ENGINE=kokoro but Kokoro could not be loaded; using Piper.")
+    try:
         runtime.voice = CoachVoice(settings.tts_voice)
+        runtime.voice_engine = "piper"
     except Exception:
         logger.exception("Neural voice unavailable; the frontend will fall back to browser speech.")
 
