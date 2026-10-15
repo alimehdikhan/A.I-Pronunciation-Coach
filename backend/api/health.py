@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hmac
+import os
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
@@ -18,6 +19,22 @@ from backend.runtime import runtime
 router = APIRouter()
 
 
+def database_status() -> dict[str, Any]:
+    """Which database is in use and whether accounts and history outlive a restart.
+
+    SQLite inside a container (as on a Hugging Face Space without persistent
+    storage) is thrown away whenever the container is replaced.
+    """
+    from backend.database import DATABASE_SOURCE, IS_SQLITE
+
+    in_container = bool(os.getenv("SPACE_ID")) or os.path.exists("/.dockerenv")
+    return {
+        "engine": "sqlite" if IS_SQLITE else "postgresql",
+        "persistent": not (IS_SQLITE and in_container),
+        "source": DATABASE_SOURCE,  # the variable's name, never its value
+    }
+
+
 @router.get("/health")
 async def health_check(request: Request) -> dict[str, Any]:
     """Liveness plus model status (the web app polls this while models load)."""
@@ -30,6 +47,7 @@ async def health_check(request: Request) -> dict[str, Any]:
         "phoneme_backend": "cmudict" if phonetics.dictionary_available() else "spelling",
         "tts_ready": runtime.voice is not None,
         "tts_engine": runtime.voice_engine,
+        "database": database_status(),
         "acoustic_scoring": runtime.phonemes is not None,
         "coach_llm": bool(settings.groq_api_key),
         "version": request.app.version,
