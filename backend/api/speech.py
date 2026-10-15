@@ -16,7 +16,7 @@ from backend.config import settings
 from backend.database import get_db
 from backend.observability import StageTimer
 from backend.repositories import ProfileLocked, save_attempt
-from backend.runtime import runtime
+from backend.runtime import get_fallback_voice, runtime
 from backend.security import RateLimiter, clean_username, client_key
 from backend.tts import MAX_RATE, MIN_RATE
 
@@ -174,13 +174,19 @@ async def text_to_speech(
     if not phonetics.tokenize(clean):
         raise HTTPException(status_code=400, detail="text must contain at least one word.")
     tts_rate_limiter.check(client_key(request))
+    headers = {"Cache-Control": "public, max-age=604800, immutable"}
     try:
         audio = await run_in_threadpool(voice.synthesize, clean, rate)
     except Exception as exc:
-        logger.exception("Speech synthesis failed")
-        raise HTTPException(status_code=500, detail="Speech synthesis failed.") from exc
-    return Response(
-        content=audio,
-        media_type="audio/wav",
-        headers={"Cache-Control": "public, max-age=604800, immutable"},
-    )
+        logger.exception("Speech synthesis failed with the %s voice", runtime.voice_engine)
+        fallback = await run_in_threadpool(get_fallback_voice)
+        if fallback is None:
+            raise HTTPException(status_code=500, detail="Speech synthesis failed.") from exc
+        try:
+            audio = await run_in_threadpool(fallback.synthesize, clean, rate)
+        except Exception as fallback_exc:
+            logger.exception("Fallback voice failed too")
+            raise HTTPException(status_code=500, detail="Speech synthesis failed.") from fallback_exc
+        # Not immutable: the primary voice may work next time and sound better.
+        headers = {"Cache-Control": "no-store", "X-Voice-Fallback": "piper"}
+    return Response(content=audio, media_type="audio/wav", headers=headers)
