@@ -169,7 +169,7 @@ export interface WordInfo {
 
 export interface PronounceResponse {
   text: string
-  words: { text: string; ipa: string; tokens: WordInfo[] }[]
+  words: { text: string; ipa: string; respelling?: string | null; tokens: WordInfo[] }[]
 }
 
 export interface TutorCard {
