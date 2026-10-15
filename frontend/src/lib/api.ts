@@ -1,6 +1,8 @@
 import type {
   AccountProfile,
   Analytics,
+  ChatReply,
+  ChatTurn,
   CoachPlan,
   CoachReply,
   CoachRequest,
@@ -11,7 +13,9 @@ import type {
   PhonemeDetail,
   PhonemeSummary,
   PracticeResponse,
+  PracticeSentences,
   PronounceResponse,
+  ProgressReport,
   TutorCard,
   VoiceCatalog,
 } from './types'
@@ -138,6 +142,25 @@ export const api = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
+    }),
+
+  coachChat: (body: { username: string; message: string; history: ChatTurn[] }) =>
+    request<ChatReply>('/api/coach/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...profileHeaders() },
+      body: JSON.stringify(body),
+    }),
+
+  coachSentences: (body: { username: string; phoneme?: string | null; level: string; topic?: string; count?: number }) =>
+    request<PracticeSentences>('/api/coach/practice', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...profileHeaders() },
+      body: JSON.stringify(body),
+    }),
+
+  coachReport: (username: string) =>
+    request<ProgressReport>(`/api/coach/report/${enc(username)}?tz_offset=${new Date().getTimezoneOffset()}`, {
+      headers: profileHeaders(),
     }),
 
   coachPlan: (username: string) =>
