@@ -95,6 +95,24 @@ class Settings:
     # key the knowledge-base templates are used.
     groq_api_key: str = field(default_factory=lambda: os.getenv("GROQ_API_KEY", "").strip())
     groq_model: str = field(default_factory=lambda: os.getenv("PRONUNCIATION_COACH_LLM_MODEL", "openai/gpt-oss-120b"))
+    # The live voice conversation (Gemini Live). The key stays on the server; the browser talks to us.
+    gemini_api_key: str = field(default_factory=lambda: os.getenv("GEMINI_API_KEY", "").strip())
+    gemini_live_model: str = field(
+        default_factory=lambda: os.getenv("PRONUNCIATION_COACH_VOICE_MODEL", "gemini-3.1-flash-live-preview").strip()
+    )
+    gemini_live_fallbacks: str = field(
+        default_factory=lambda: os.getenv(
+            "PRONUNCIATION_COACH_VOICE_FALLBACKS", "gemini-3.8-live,gemini-2.5-flash-native-audio-latest"
+        )
+    )
+    voice_max_sessions: int = field(default_factory=lambda: _int("PRONUNCIATION_COACH_VOICE_MAX_SESSIONS", 3))
+
+    @property
+    def gemini_live_models(self) -> tuple[str, ...]:
+        """The live model to try first, then the fallbacks, without duplicates."""
+        models = [self.gemini_live_model, *self.gemini_live_fallbacks.split(",")]
+        return tuple(dict.fromkeys(m.strip() for m in models if m.strip()))
+
     # Tried in order when the main model is rate limited or fails (each has its own token budget).
     groq_fallback_models: tuple[str, ...] = field(
         default_factory=lambda: tuple(
