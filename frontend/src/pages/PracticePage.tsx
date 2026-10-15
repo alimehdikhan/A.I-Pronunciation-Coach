@@ -6,6 +6,7 @@ import { Segmented } from '@/components/common'
 import { LockedResults } from '@/components/auth/SignInGate'
 import { PageHeader } from '@/components/layout/AppShell'
 import { GoalChip } from '@/components/journey/GoalChip'
+import { TalkButton } from '@/components/voice/TalkButton'
 import { PhraseStage } from '@/components/practice/PhraseStage'
 import { Recorder } from '@/components/practice/Recorder'
 import { Results } from '@/components/practice/Results'
@@ -141,6 +142,7 @@ export default function PracticePage() {
         description="Pick a phrase, tap the mic, and get feedback on each word and sound you say."
         actions={
           <div className="flex flex-wrap items-center gap-3">
+            <TalkButton />
             <GoalChip />
             <Segmented<Level>
               layoutId="level"
