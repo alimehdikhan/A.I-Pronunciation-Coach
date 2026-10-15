@@ -9,6 +9,7 @@ import { PageHeader } from '@/components/layout/AppShell'
 import { SignInActions } from '@/components/auth/SignInGate'
 import { PracticeWriter } from '@/components/coach/PracticeWriter'
 import { SpeakChip } from '@/components/tutor/SpeakButton'
+import { TalkButton } from '@/components/voice/TalkButton'
 import { useSpeaker } from '@/lib/speech'
 import { describeSound } from '@/lib/plain'
 import { Button } from '@/components/ui/button'
@@ -400,9 +401,12 @@ export default function CoachPage() {
         title="Your coach"
         description="One sound, one short session. I pick it from what you actually do."
         actions={
-          <Button variant="secondary" onClick={fresh} disabled={isFetching}>
-            <ArrowClockwiseIcon weight="bold" /> New session
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <TalkButton />
+            <Button variant="secondary" onClick={fresh} disabled={isFetching}>
+              <ArrowClockwiseIcon weight="bold" /> New session
+            </Button>
+          </div>
         }
       />
 
