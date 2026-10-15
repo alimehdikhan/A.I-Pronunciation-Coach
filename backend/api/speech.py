@@ -44,7 +44,7 @@ def _prepare(data: bytes, suffix: str):
     samples = decode_audio(data, suffix, settings.max_audio_seconds)
     cleanup = None
     if settings.noise_cleanup:
-        samples, cleanup = enhance(samples)
+        samples, cleanup = enhance(samples, neural=settings.noise_neural)
     samples, gain_db = normalize_loudness(samples)
     return samples, gain_db, cleanup
 
