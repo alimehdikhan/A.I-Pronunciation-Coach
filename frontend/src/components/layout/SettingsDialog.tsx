@@ -1,4 +1,4 @@
-import { DesktopIcon, EyeSlashIcon, MoonIcon, PaletteIcon, PlayIcon, SpeakerHighIcon, SunIcon, TextTIcon, TranslateIcon, UserIcon, UserSoundIcon } from '@phosphor-icons/react'
+import { TargetIcon, DesktopIcon, EyeSlashIcon, MoonIcon, PaletteIcon, PlayIcon, SpeakerHighIcon, SunIcon, TextTIcon, TranslateIcon, UserIcon, UserSoundIcon } from '@phosphor-icons/react'
 import { useEffect, useState, type ReactNode } from 'react'
 import { toast } from 'sonner'
 import { Segmented } from '@/components/common'
@@ -79,6 +79,22 @@ export function SettingsDialog() {
           <DialogTitle className="text-xl">Settings</DialogTitle>
           <DialogDescription>Changes are saved automatically.</DialogDescription>
         </DialogHeader>
+
+        <Group icon={<TargetIcon size={14} weight="fill" />} title="Daily goal" footer="How many attempts to aim for each day. It shows on the practice page and your journey.">
+          <div className="p-2">
+            <Segmented<string>
+              layoutId="settings-goal"
+              value={String(settings.dailyGoal)}
+              onChange={(v) => settings.setDailyGoal(Number(v))}
+              className="w-full"
+              options={[
+                { value: '3', label: '3 a day', icon: <TargetIcon weight="bold" /> },
+                { value: '5', label: '5 a day', icon: <TargetIcon weight="bold" /> },
+                { value: '10', label: '10 a day', icon: <TargetIcon weight="bold" /> },
+              ]}
+            />
+          </div>
+        </Group>
 
         <Group icon={<UserIcon size={14} weight="fill" />} title="Profile" footer="History and streaks are stored under this name on the server.">
           <div className="px-4 py-2">
