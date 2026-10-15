@@ -127,6 +127,9 @@ async def chat(
         "conversation": [t.model_dump() for t in body.history[-6:]],
         "learner_message": " ".join(body.message.split()),
     }
+    typed = coach_tools.words_in_message(body.message)
+    facts["words_in_message"] = [{k: v for k, v in w.items() if not k.startswith("_")} for w in typed]
+    facts["sound_guides"] = coach_tools.sound_guides(focus["phoneme"], typed)
     fallback_facts = {"focus_sound": focus["phoneme"]}
     result, source = await get_coach().generate(
         "chat",
