@@ -22,6 +22,7 @@ const STARTERS = [
 /** The conversation itself: messages, suggestions and the box to type in. Lives inside the chat panel. */
 export function CoachChat() {
   const username = useSettings((s) => s.username)
+  const nativeLanguage = useSettings((s) => s.nativeLanguage)
   const messages = useChat((s) => s.messages)
   const add = useChat((s) => s.add)
   const setOpen = useChat((s) => s.setOpen)
@@ -36,6 +37,7 @@ export function CoachChat() {
       api.coachChat({
         username,
         message: text,
+        native_language: nativeLanguage,
         history: useChat
           .getState()
           .messages.slice(-7, -1)
