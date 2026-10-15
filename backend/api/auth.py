@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -49,6 +49,13 @@ auth_rate_limiter = RateLimiter(_limit, name="auth")
 
 class Credentials(BaseModel):
     email: str = Field(max_length=254)
+    password: str = Field(max_length=256)
+
+
+class LoginBody(BaseModel):
+    # An email address or a username. "email" is the original field name.
+    identifier: str | None = Field(default=None, max_length=254)
+    email: str | None = Field(default=None, max_length=254)
     password: str = Field(max_length=256)
 
 
@@ -113,8 +120,8 @@ def register(
     auth_rate_limiter.check(client_key(request))
     key = _need_key(key)
     email = normalize_email(body.email)
-    password = check_password_strength(body.password)
     name = clean_username(body.username)
+    password = check_password_strength(body.password, email=email, username=name)
     if not name:
         raise AuthError(400, "Choose a username.", "username_required")
     display = clean_username(body.display_name) if (body.display_name or "").strip() else name
@@ -149,20 +156,54 @@ def register(
 
 @router.post("/login")
 def login(
-    request: Request, body: Credentials, key: str | None = Depends(profile_key), db: Session = Depends(get_db)
+    request: Request, body: LoginBody, key: str | None = Depends(profile_key), db: Session = Depends(get_db)
 ) -> dict[str, Any]:
     auth_rate_limiter.check(client_key(request))
     key = _need_key(key)
-    email = (body.email or "").strip().lower()
-    user = find_user_by_email(db, email) if email else None
-    # Always do the hashing work, so timing does not reveal which emails exist.
+    identifier = (body.identifier or body.email or "").strip()
+    if not identifier:
+        raise AuthError(400, "Enter your email or username.", "identifier_required")
+    if "@" in identifier:
+        user = find_user_by_email(db, identifier.lower())
+    else:
+        user = find_user(db, identifier)
+        if user is None:  # usernames are case-sensitive in storage; be forgiving when signing in
+            user = db.scalar(select(User).where(func.lower(User.username) == identifier.lower(), User.password_hash.is_not(None)))
+    if user is not None and user.password_hash is None:
+        user = None  # a guest profile has no password to sign in with
+    # Always do the hashing work, so timing does not depend on whether the account exists.
     valid = verify_password(body.password or "", user.password_hash if user else None)
-    if user is None or not valid:
-        raise AuthError(401, "Email or password is incorrect.", "invalid_credentials")
+    if user is None:
+        raise AuthError(
+            401,
+            "There is no account with that email or username. Check the spelling, or create an account.",
+            "no_account",
+        )
+    if not valid:
+        raise AuthError(401, "That password is not right for this account.", "wrong_password")
     _release_key(db, key, except_user_id=user.id)
     add_device(db, user, key)
     db.commit()
     return _profile(db, user)
+
+
+@router.get("/available")
+def availability(
+    request: Request,
+    username: str = Query("", max_length=80),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Whether a username can be taken, so sign-up can say so before the form is sent."""
+    auth_rate_limiter.check(client_key(request))
+    try:
+        name = clean_username(username)
+    except HTTPException:
+        return {"available": False, "reason": "invalid"}
+    if not name:
+        return {"available": False, "reason": "empty"}
+    user = find_user(db, name)
+    taken = user is not None and user.password_hash is not None
+    return {"available": not taken, "reason": "taken" if taken else None}
 
 
 @router.post("/logout")
