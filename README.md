@@ -99,6 +99,30 @@ The tip text comes from a language model through [Groq](https://groq.com) when `
 
 The default model is `openai/gpt-oss-120b` at medium reasoning effort, which answered in about two seconds on Groq's free tier. High effort took about 18 seconds without better tips.
 
+### What else the model does
+
+Beyond explaining one attempt, the model has three larger jobs. They share one rule: the facts come from the learner's own data and the model only words or composes with them, and its answer is checked before anyone sees it. Each falls back to a built-in template when the model is unavailable.
+
+| Feature | Where | What is checked |
+|---|---|---|
+| **Ask your coach** | Coach page, `POST /api/coach/chat` | Answers are grounded in the learner's sounds and latest attempts. Replies are length-capped, practice words are validated, and the prompt keeps it to pronunciation. No name or email is sent. |
+| **Fresh sentences** | Coach page, `POST /api/coach/practice` | Every sentence must fit the level's length and contain at least two words whose dictionary pronunciation has the target sound. The words listed come from our own check, not the model's claim. |
+| **Progress note** | Progress page, `GET /api/coach/report/{username}` | Written only from the numbers in the analytics, and cached per set of numbers. |
+
+### Noise cleanup
+
+Recordings go through `backend/enhance.py` before scoring. A spectral filter removes steady room noise when the recording is audibly noisy, and stretches of speech far quieter than the learner (people talking behind them) are turned down. Clean recordings are left untouched. The results screen says when the room was noisy.
+
+It was measured on 60 human-rated utterances from speechocean762 with room noise 8 dB under the speech (`scripts/eval_noise.py`):
+
+| | Sentence accuracy (PCC) | Word accuracy (PCC) |
+|---|---|---|
+| Noisy, no cleanup | 0.587 | 0.418 |
+| Noisy, spectral filter | 0.592 | 0.448 |
+| Noisy, RNNoise (neural) | 0.573 | 0.355 |
+
+RNNoise sounds cleaner to a person but lowered accuracy, because it distorts the cues the scoring models use, so it is off by default (`PRONUNCIATION_COACH_NOISE_NEURAL=1` turns it on, with `pyrnnoise` installed). Two limits to know about: a second person talking at the same loudness as the learner cannot be removed by loudness alone, and cleanup is not applied to the audio played back to the learner.
+
 ## Architecture
 
 ```mermaid
@@ -288,10 +312,14 @@ All settings are environment variables. See [`.env.example`](.env.example).
 | `GET` | `/api/phonemes/{symbol}` | Full tutor entry for one sound |
 | `GET` | `/api/tutor/card?word=&expected=&actual=` | Tutor card for one slip |
 | `GET` | `/api/tutor/personalized-practice/{username}` | Drills for a user's weakest sounds |
-| `GET` | `/api/history/{username}` | Recent attempts with sound mistakes |
+| `GET` | `/api/history/{username}` | Attempts with sound mistakes; `limit`, `offset`, `min_score`, `max_score`, `q` (phrase) and a `total` |
 | `DELETE` | `/api/history/{username}` | Delete a user's history (needs the profile key) |
-| `GET` | `/api/analytics/{username}` | Averages, streaks, trend and top weaknesses |
+| `GET` | `/api/analytics/{username}` | Averages, streaks, trend, top weaknesses, improvement, a twelve-week calendar, per-sound mastery and tricky words |
 | `GET` | `/api/coach/plan/{username}` | Mastery per sound, today's focus and a guided session |
+| `POST` | `/api/coach/chat` | Ask the coach a question (`message`, `history`), grounded in the learner's own data |
+| `POST` | `/api/coach/practice` | Fresh practice sentences for a sound (`phoneme`, `level`, `topic`), each verified to contain it |
+| `GET` | `/api/coach/report/{username}` | A short written progress note |
+| `GET` | `/api/voices` | The coach voices on offer; `/api/tts?voice=` picks one |
 | `POST` | `/api/auth/register` | Create an account (`email`, `password`, `username`, optional `display_name`); upgrades a guest profile in place |
 | `POST` | `/api/auth/login` | Sign this browser in to an account |
 | `POST` | `/api/auth/logout` | Sign this browser out |
