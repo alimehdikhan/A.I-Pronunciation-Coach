@@ -13,6 +13,7 @@ from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, field_serializer
 from sqlalchemy import (
+    Boolean,
     Column,
     DateTime,
     Float,
@@ -132,6 +133,7 @@ class PronunciationRecord(Base):
 
     user = relationship("User", back_populates="records")
     mistakes = relationship("PhonemeMistake", back_populates="record", cascade="all, delete-orphan")
+    observations = relationship("PhonemeObservation", back_populates="record", cascade="all, delete-orphan")
 
 
 class PhonemeMistake(Base):
@@ -145,6 +147,27 @@ class PhonemeMistake(Base):
     actual_phoneme = Column(String, nullable=False)
 
     record = relationship("PronunciationRecord", back_populates="mistakes")
+
+
+class PhonemeObservation(Base):
+    """One sound the learner attempted in one recording, whether or not it was clean.
+
+    PhonemeMistake only keeps the slips, which is not enough to say how often a
+    sound goes right. These rows give the coach a clean-rate per sound.
+    """
+
+    __tablename__ = "phoneme_observations"
+    __table_args__ = (Index("ix_phoneme_observations_record", "record_id"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    record_id = Column(Integer, ForeignKey("pronunciation_records.id"), nullable=False)
+    phoneme = Column(String(8), nullable=False, index=True)
+    word = Column(String, nullable=True)
+    ok = Column(Boolean, nullable=False)
+    # Probability (0-100) the sound would be rated clean; NULL without acoustic scoring.
+    score = Column(Float, nullable=True)
+
+    record = relationship("PronunciationRecord", back_populates="observations")
 
 
 # Columns added after the first release. create_all() never alters existing
