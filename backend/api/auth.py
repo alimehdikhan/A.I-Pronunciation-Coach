@@ -54,10 +54,13 @@ class Credentials(BaseModel):
 
 class RegisterBody(Credentials):
     username: str = Field(max_length=80)
+    # Shown in the app; may be shared with other people. Defaults to the username.
+    display_name: str | None = Field(default=None, max_length=80)
 
 
 class RenameBody(BaseModel):
-    username: str = Field(max_length=80)
+    username: str | None = Field(default=None, max_length=80)
+    display_name: str | None = Field(default=None, max_length=80)
 
 
 class ChangePasswordBody(BaseModel):
@@ -81,6 +84,7 @@ def _profile(db: Session, user: User) -> dict[str, Any]:
     return {
         "account": True,
         "username": user.username,
+        "display_name": user.display_name or user.username,
         "email": user.email,
         "member_since": as_utc(user.created_at).isoformat() if user.created_at else None,
         "attempts": int(attempts or 0),
@@ -112,7 +116,8 @@ def register(
     password = check_password_strength(body.password)
     name = clean_username(body.username)
     if not name:
-        raise AuthError(400, "Choose a name to show on your profile.", "username_required")
+        raise AuthError(400, "Choose a username.", "username_required")
+    display = clean_username(body.display_name) if (body.display_name or "").strip() else name
     if account_for_key(db, key) is not None:
         raise AuthError(409, "This browser is already signed in. Sign out first to create another account.", "already_signed_in")
     if find_user_by_email(db, email) is not None:
@@ -120,19 +125,22 @@ def register(
 
     user = find_user(db, name)
     if user is None:
-        user = User(username=name, key_hash=None, email=email, password_hash=hash_password(password))
+        user = User(
+            username=name, display_name=display, key_hash=None, email=email, password_hash=hash_password(password)
+        )
         db.add(user)
         db.flush()
         add_device(db, user, key)
     else:
         if user.password_hash is not None:
-            raise AuthError(409, "That name is taken. Choose another one.", "username_taken")
+            raise AuthError(409, "That username is taken. Choose another one.", "username_taken")
         try:
             authorize(db, user, key)  # a guest profile this browser owns is upgraded in place
         except ProfileLocked:
             db.rollback()
-            raise AuthError(409, "That name is in use on another device. Choose another one.", "username_taken") from None
+            raise AuthError(409, "That username is in use on another device. Choose another one.", "username_taken") from None
         user.email = email
+        user.display_name = display
         user.password_hash = hash_password(password)
         add_device(db, user, key)  # moves this browser's key out of the guest slot
     db.commit()
@@ -175,13 +183,21 @@ def me(key: str | None = Depends(profile_key), db: Session = Depends(get_db)) ->
 @router.patch("/me")
 def rename(body: RenameBody, key: str | None = Depends(profile_key), db: Session = Depends(get_db)) -> dict[str, Any]:
     user = _require_account(db, key)
-    name = clean_username(body.username)
-    if not name:
-        raise AuthError(400, "Choose a name to show on your profile.", "username_required")
-    existing = find_user(db, name)
-    if existing is not None and existing.id != user.id:
-        raise AuthError(409, "That name is taken. Choose another one.", "username_taken")
-    user.username = name
+    if body.username is None and body.display_name is None:
+        raise AuthError(400, "Nothing to change.", "nothing_to_change")
+    if body.username is not None:
+        name = clean_username(body.username)
+        if not name:
+            raise AuthError(400, "Choose a username.", "username_required")
+        existing = find_user(db, name)
+        if existing is not None and existing.id != user.id:
+            raise AuthError(409, "That username is taken. Choose another one.", "username_taken")
+        user.username = name
+    if body.display_name is not None:
+        shown = clean_username(body.display_name)
+        if not shown:
+            raise AuthError(400, "Enter a name to show on your profile.", "display_name_required")
+        user.display_name = shown  # not unique: several people can share a name
     db.commit()
     return _profile(db, user)
 
