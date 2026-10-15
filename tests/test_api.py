@@ -378,3 +378,53 @@ def test_piper_is_not_its_own_fallback(monkeypatch):
 
     monkeypatch.setattr(runtime_module.runtime, "voice_engine", "piper")
     assert runtime_module.get_fallback_voice() is None
+
+
+# --- choosing a coach voice -------------------------------------------------------
+
+
+class ChoosyVoice:
+    def __init__(self):
+        self.calls = []
+
+    def synthesize(self, text, rate=1.0, voice=None):
+        self.calls.append((text, rate, voice))
+        return b"RIFF" + b"\x00" * 40
+
+
+def test_the_voice_list_names_the_default_first(client, monkeypatch):
+    monkeypatch.setattr(runtime, "voice", ChoosyVoice())
+    monkeypatch.setattr(runtime, "voice_engine", "kokoro")
+
+    body = client.get("/api/voices").json()
+
+    assert body["engine"] == "kokoro" and body["default"] == "af_heart"
+    ids = [v["id"] for v in body["voices"]]
+    assert ids[0] == "af_heart" and "bm_george" in ids
+    assert all({"id", "name", "accent", "gender"} <= set(v) for v in body["voices"])
+
+
+def test_a_chosen_kokoro_voice_is_used_and_unknown_ones_are_ignored(client, monkeypatch):
+    voice = ChoosyVoice()
+    monkeypatch.setattr(runtime, "voice", voice)
+    monkeypatch.setattr(runtime, "voice_engine", "kokoro")
+
+    assert client.get("/api/tts", params={"text": "Hello there", "voice": "bf_emma"}).status_code == 200
+    assert client.get("/api/tts", params={"text": "Hello there", "voice": "not_a_voice"}).status_code == 200
+    assert client.get("/api/tts", params={"text": "Hello there", "voice": "../etc"}).status_code == 422
+
+    assert [c[2] for c in voice.calls] == ["bf_emma", None]
+
+
+def test_the_quick_voice_uses_piper(client, monkeypatch):
+    primary, piper = ChoosyVoice(), FakeVoice()
+    monkeypatch.setattr(runtime, "voice", primary)
+    monkeypatch.setattr(runtime, "voice_engine", "kokoro")
+    monkeypatch.setattr(speech, "get_quick_voice", lambda: piper)
+
+    assert client.get("/api/tts", params={"text": "Hello there", "voice": "piper"}).status_code == 200
+    assert piper.calls == [("Hello there", 1.0)] and primary.calls == []
+
+    monkeypatch.setattr(speech, "get_quick_voice", lambda: None)  # Piper missing: default voice answers
+    assert client.get("/api/tts", params={"text": "Hello there", "voice": "piper"}).status_code == 200
+    assert len(primary.calls) == 1
