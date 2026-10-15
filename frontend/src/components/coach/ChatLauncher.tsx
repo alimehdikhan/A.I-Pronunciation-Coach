@@ -1,7 +1,9 @@
-import { ChatCircleDotsIcon, TrashIcon, XIcon } from '@phosphor-icons/react'
+import { ChatCircleDotsIcon, MicrophoneIcon, TrashIcon, XIcon } from '@phosphor-icons/react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { useEffect } from 'react'
+import { useHealth } from '@/lib/queries'
 import { useChat } from '@/store/chat'
+import { useVoiceUI } from '@/store/voice'
 import { CoachChat } from './CoachChat'
 
 /**
@@ -15,6 +17,8 @@ export function ChatLauncher() {
   const hasMessages = useChat((s) => s.messages.length > 0)
   const clear = useChat((s) => s.clear)
   const reduce = useReducedMotion()
+  const { data: health } = useHealth()
+  const openVoice = useVoiceUI((s) => s.setOpen)
 
   useEffect(() => {
     if (!open) return
@@ -46,6 +50,20 @@ export function ChatLauncher() {
                 <div className="text-[15px] font-semibold">Your coach</div>
                 <div className="text-xs text-subtle">Ask about a word, a sound or your progress</div>
               </div>
+              {health?.voice_agent && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpen(false)
+                    openVoice(true)
+                  }}
+                  aria-label="Talk to your coach out loud"
+                  title="Talk out loud"
+                  className="inline-flex h-8 items-center gap-1.5 rounded-full bg-primary-soft px-3 text-[13px] font-semibold text-primary transition-colors hover:brightness-95"
+                >
+                  <MicrophoneIcon size={15} weight="fill" /> Talk
+                </button>
+              )}
               {hasMessages && (
                 <button
                   type="button"
