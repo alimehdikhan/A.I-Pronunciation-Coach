@@ -3,10 +3,12 @@ import { motion, useReducedMotion } from 'motion/react'
 import { Panel, SectionLabel } from '@/components/common'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useProgressReport } from '@/lib/queries'
+import { useSettings } from '@/store/settings'
 
 /** A short note from the coach on how things are going, written from the learner's own numbers. */
 export function CoachNote({ username, sessions }: { username: string; sessions: number }) {
-  const { data, isLoading } = useProgressReport(username, sessions)
+  const language = useSettings((s) => s.nativeLanguage)
+  const { data, isLoading } = useProgressReport(username, sessions, language)
   const reduce = useReducedMotion()
   const report = data?.report
 
