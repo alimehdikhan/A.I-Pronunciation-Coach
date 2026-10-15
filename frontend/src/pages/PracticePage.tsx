@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { Segmented } from '@/components/common'
 import { LockedResults } from '@/components/auth/SignInGate'
 import { PageHeader } from '@/components/layout/AppShell'
+import { GoalChip } from '@/components/journey/GoalChip'
 import { PhraseStage } from '@/components/practice/PhraseStage'
 import { Recorder } from '@/components/practice/Recorder'
 import { Results } from '@/components/practice/Results'
@@ -48,6 +49,7 @@ export default function PracticePage() {
         void queryClient.invalidateQueries({ queryKey: keys.analytics(username) })
         void queryClient.invalidateQueries({ queryKey: keys.history(username) })
         void queryClient.invalidateQueries({ queryKey: keys.practice(username) })
+        void queryClient.invalidateQueries({ queryKey: keys.journey(username) })
       }
     },
   })
@@ -138,12 +140,15 @@ export default function PracticePage() {
         title="Say it. See every sound."
         description="Pick a phrase, tap the mic, and get feedback on each word and sound you say."
         actions={
-          <Segmented<Level>
-            layoutId="level"
-            value={level}
-            onChange={changeLevel}
-            options={LEVELS.map((l) => ({ value: l.id, label: l.label }))}
-          />
+          <div className="flex flex-wrap items-center gap-3">
+            <GoalChip />
+            <Segmented<Level>
+              layoutId="level"
+              value={level}
+              onChange={changeLevel}
+              options={LEVELS.map((l) => ({ value: l.id, label: l.label }))}
+            />
+          </div>
         }
       />
 
