@@ -171,6 +171,13 @@ class KokoroVoice:
         self._cache_size = cache_size
         logger.info("Kokoro voice %s loaded (%s).", voice_name, model.name)
 
+    def warm_up(self) -> None:
+        """One throwaway render so the first real clip is not the one that pays for session start-up."""
+        try:
+            self.engine.create("Hello there, welcome back.", voice=self.voice_name, speed=1.0, lang=self.lang)
+        except Exception:  # warming is an optimisation, never a reason to fail start-up
+            logger.warning("Kokoro warm-up failed", exc_info=True)
+
     def _voice(self, voice: str | None) -> str:
         """The requested catalog voice, or this engine's default for anything else."""
         return voice if voice in KOKORO_VOICE_IDS else self.voice_name
