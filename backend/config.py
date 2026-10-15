@@ -114,6 +114,10 @@ class Settings:
     tts_enabled: bool = field(default_factory=lambda: _flag("PRONUNCIATION_COACH_TTS", "1"))
     tts_voice: str = field(default_factory=lambda: os.getenv("PRONUNCIATION_COACH_TTS_VOICE", "en_US-lessac-medium"))
     max_tts_chars: int = 300
+    # "auto" uses Kokoro when its model files are present, otherwise Piper.
+    tts_engine: str = field(default_factory=lambda: os.getenv("PRONUNCIATION_COACH_TTS_ENGINE", "auto").strip().lower())
+    kokoro_voice: str = field(default_factory=lambda: os.getenv("PRONUNCIATION_COACH_KOKORO_VOICE", "af_heart"))
+    kokoro_threads: int = field(default_factory=lambda: _int("PRONUNCIATION_COACH_KOKORO_THREADS", 0))
 
     # HTTP
     cors_origins: list[str] = field(default_factory=_cors_origins)
