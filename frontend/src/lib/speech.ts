@@ -97,6 +97,7 @@ function speakWithBrowser(text: string, key: string, rate: number, voiceURI: str
  */
 export function useSpeaker() {
   const voiceURI = useSettings((s) => s.voiceURI)
+  const coachVoice = useSettings((s) => s.coachVoice) ?? ''
   const settingsRate = useSettings((s) => s.rate)
   const speakingKey = useVoiceStore((s) => s.speakingKey)
   const lastKey = useRef<string | null>(null)
@@ -111,7 +112,7 @@ export function useSpeaker() {
       const rate = clampRate((opts.rate ?? 1) * settingsRate)
       lastKey.current = key
       if (usesNeuralVoice(voiceURI)) {
-        audioEngine.speak(clean, { key, rate }).catch(() => {
+        audioEngine.speak(clean, { key, rate, voice: coachVoice }).catch(() => {
           // Server voice unavailable: still speak, just without the analyser.
           if (lastKey.current === key) speakWithBrowser(clean, key, rate, voiceURI)
         })
@@ -120,7 +121,16 @@ export function useSpeaker() {
         speakWithBrowser(clean, key, rate, voiceURI)
       }
     },
-    [voiceURI, settingsRate],
+    [voiceURI, settingsRate, coachVoice],
+  )
+
+  /** Start fetching a clip before it is asked for, so the click that follows plays at once. */
+  const prefetch = useCallback(
+    (text: string, rate = 1) => {
+      const clean = text.trim()
+      if (clean && usesNeuralVoice(voiceURI)) audioEngine.prefetch(clean, clampRate(rate * settingsRate), coachVoice)
+    },
+    [voiceURI, settingsRate, coachVoice],
   )
 
   // Stop speech this component started if it unmounts mid-sentence.
@@ -131,5 +141,5 @@ export function useSpeaker() {
     [],
   )
 
-  return { speak, stop, speakingKey, supported: true }
+  return { speak, stop, prefetch, speakingKey, supported: true }
 }
