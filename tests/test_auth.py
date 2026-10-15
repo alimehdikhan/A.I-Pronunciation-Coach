@@ -244,3 +244,30 @@ def test_account_endpoints_are_rate_limited(client, monkeypatch):
     auth_api.auth_rate_limiter.reset()
     codes = [login(client, OTHER_KEY, password="guess number %d" % i).status_code for i in range(5)]
     assert codes[:3] == [401, 401, 401] and codes[3:] == [429, 429]
+
+
+def test_accounts_created_before_device_keys_are_recognised_and_healed(client, session_factory):
+    """The first account release kept the browser key in users.key_hash with no device row."""
+    from backend.database import User, UserKey
+    from backend.security import hash_profile_key
+
+    with session_factory() as db:
+        db.add(
+            User(
+                username="legacy",
+                email="legacy@example.com",
+                password_hash=hash_password(PASSWORD),
+                key_hash=hash_profile_key(PROFILE_KEY),
+            )
+        )
+        db.commit()
+
+    me = client.get("/api/auth/me", headers=headers(PROFILE_KEY)).json()
+    assert me["account"] is True and me["username"] == "legacy"  # not reported as a guest
+
+    with session_factory() as db:
+        assert db.query(UserKey).count() == 1  # healed into the device table
+
+    assert client.get("/api/coach/plan/legacy", headers=headers(PROFILE_KEY)).status_code == 200
+    assert client.post("/api/auth/logout", headers=headers(PROFILE_KEY)).status_code == 200
+    assert client.get("/api/coach/plan/legacy", headers=headers(PROFILE_KEY)).status_code == 403
