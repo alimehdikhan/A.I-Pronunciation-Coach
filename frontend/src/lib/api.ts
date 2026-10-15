@@ -127,7 +127,7 @@ export const api = {
 
   me: () => request<AccountProfile>('/api/auth/me', { headers: profileHeaders() }),
 
-  register: (input: { email: string; password: string; username: string }) =>
+  register: (input: { email: string; password: string; username: string; display_name?: string }) =>
     request<Extract<AccountProfile, { account: true }>>('/api/auth/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...profileHeaders() },
@@ -143,11 +143,11 @@ export const api = {
 
   logout: () => request<{ signed_out: boolean }>('/api/auth/logout', { method: 'POST', headers: profileHeaders() }),
 
-  rename: (username: string) =>
+  rename: (changes: { username?: string; display_name?: string }) =>
     request<Extract<AccountProfile, { account: true }>>('/api/auth/me', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', ...profileHeaders() },
-      body: JSON.stringify({ username }),
+      body: JSON.stringify(changes),
     }),
 
   changePassword: (input: { current_password: string; new_password: string }) =>
