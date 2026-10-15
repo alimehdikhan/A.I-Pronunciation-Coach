@@ -405,12 +405,21 @@ export default function CoachPage() {
 
       {error && !plan && (
         <div className="surface">
-          <EmptyState
-            icon={<QuestionIcon weight="fill" />}
-            title="The coach could not be reached"
-            description={error instanceof ApiError ? error.message : 'Check your connection and try again.'}
-            action={<Button onClick={fresh}>Try again</Button>}
-          />
+          {error instanceof ApiError && error.code === 'profile_locked' ? (
+            <EmptyState
+              icon={<LockKeyIcon weight="fill" />}
+              title="Sign in again to continue"
+              description="This browser is no longer signed in to your account. Sign in and your sounds and history will be right here."
+              action={<SignInActions />}
+            />
+          ) : (
+            <EmptyState
+              icon={<QuestionIcon weight="fill" />}
+              title="The coach could not be reached"
+              description={error instanceof ApiError ? error.message : 'Check your connection and try again.'}
+              action={<Button onClick={fresh}>Try again</Button>}
+            />
+          )}
         </div>
       )}
 
