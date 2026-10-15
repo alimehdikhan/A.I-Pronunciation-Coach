@@ -1,7 +1,7 @@
 import { ArrowClockwiseIcon, ArrowLeftIcon, ArrowRightIcon, CheckCircleIcon, ListChecksIcon, LockKeyIcon, MicrophoneIcon, QuestionIcon, SparkleIcon, StopIcon, TrendDownIcon, TrendUpIcon, WaveformIcon, XCircleIcon } from '@phosphor-icons/react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router'
+import { Link, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
 import { EmptyState, Pill, SectionLabel } from '@/components/common'
 import { PageHeader } from '@/components/layout/AppShell'
@@ -9,6 +9,7 @@ import { SignInActions } from '@/components/auth/SignInGate'
 import { PracticeWriter } from '@/components/coach/PracticeWriter'
 import { SpeakChip } from '@/components/tutor/SpeakButton'
 import { useSpeaker } from '@/lib/speech'
+import { describeSound } from '@/lib/plain'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useRecorder, type Recording } from '@/hooks/useRecorder'
@@ -355,13 +356,17 @@ export default function CoachPage() {
   const username = useSettings((s) => s.username)
   const signedIn = useSettings((s) => !!s.accountEmail)
   const queryClient = useQueryClient()
-  const { data: plan, isLoading, error, isFetching } = useCoachPlan(signedIn ? username : '')
+  // The learning path sends people here with ?focus=<sound> to work on that exact sound.
+  const [params] = useSearchParams()
+  const chosen = params.get('focus')
+  const { data: plan, isLoading, error, isFetching } = useCoachPlan(signedIn ? username : '', chosen)
   const [round, setRound] = useState(0) // bumps to restart the session with a fresh plan
 
   const fresh = useCallback(() => {
-    void queryClient.invalidateQueries({ queryKey: keys.coachPlan(username) })
+    void queryClient.invalidateQueries({ queryKey: keys.coachPlan(username, chosen) })
+    void queryClient.invalidateQueries({ queryKey: keys.journey(username) })
     setRound((n) => n + 1)
-  }, [queryClient, username])
+  }, [queryClient, username, chosen])
 
   const strongest = useMemo(() => plan?.strengths[0], [plan])
 
@@ -426,12 +431,11 @@ export default function CoachPage() {
           <section className="surface p-6 sm:p-8">
             <div className="flex flex-wrap items-start gap-6">
               <div className="grid size-24 shrink-0 place-items-center rounded-[28px] bg-primary-soft">
-                <span className="ipa text-[44px] leading-none font-semibold text-primary">{plan.focus.phoneme}</span>
+                <span className="text-[40px] leading-none font-semibold text-primary">{describeSound({ label: plan.focus.label, phoneme: plan.focus.phoneme }).spelled}</span>
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-[13px] font-semibold text-primary">Today&rsquo;s focus</span>
-                  <Pill tone="neutral">{plan.focus.name}</Pill>
                   {plan.focus.stats && TREND[plan.focus.stats.trend].icon && (
                     <Pill tone={TREND[plan.focus.stats.trend].tone}>
                       {TREND[plan.focus.stats.trend].icon} {TREND[plan.focus.stats.trend].label}
