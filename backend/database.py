@@ -76,13 +76,37 @@ def utcnow() -> datetime:
 
 class User(Base):
     __tablename__ = "users"
+    # Accounts have an email and password; guest profiles leave both NULL.
+    __table_args__ = (Index("ix_users_email", "email", unique=True),)
+
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String, unique=True, index=True, nullable=False)
     created_at = Column(DateTime, default=utcnow)
     # SHA-256 of the browser's profile key; NULL until a browser claims the name.
     key_hash = Column(String(64), nullable=True)
+    email = Column(String(254), nullable=True)
+    # "scrypt$<n>$<salt hex>$<hash hex>"; see backend.security.hash_password.
+    password_hash = Column(String(200), nullable=True)
 
     records = relationship("PronunciationRecord", back_populates="user", cascade="all, delete-orphan")
+    keys = relationship("UserKey", back_populates="user", cascade="all, delete-orphan")
+
+
+class UserKey(Base):
+    """A signed-in device: the SHA-256 of a browser's profile key, bound to an account.
+
+    Signing in adds a row, signing out deletes it, so one account can be open on
+    several devices and each device can leave on its own.
+    """
+
+    __tablename__ = "user_keys"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    key_hash = Column(String(64), nullable=False, unique=True, index=True)
+    created_at = Column(DateTime, default=utcnow)
+
+    user = relationship("User", back_populates="keys")
 
 
 class PronunciationRecord(Base):
@@ -124,7 +148,7 @@ class PhonemeMistake(Base):
 # tables, so add any that are missing with a plain ALTER TABLE.
 ADDED_COLUMNS = {
     "pronunciation_records": ["pronunciation", "fluency", "completeness", "clarity"],
-    "users": ["key_hash"],
+    "users": ["key_hash", "email", "password_hash"],
 }
 
 
