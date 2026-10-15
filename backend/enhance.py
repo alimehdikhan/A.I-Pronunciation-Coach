@@ -233,10 +233,13 @@ def mute_background_voices(samples: np.ndarray, noise_db: float) -> tuple[np.nda
     return out, muted
 
 
-def enhance(samples: np.ndarray, *, neural: bool = True) -> tuple[np.ndarray, dict]:
+def enhance(samples: np.ndarray, *, neural: bool = False) -> tuple[np.ndarray, dict]:
     """Return (cleaned samples, what was done). Never raises: on any problem the input is returned.
 
-    ``neural=False`` forces the spectral filter (used to compare the two in the evaluation).
+    The neural denoiser (RNNoise) is off by default: on 60 human-rated utterances with room
+    noise it lowered word accuracy from 0.418 to 0.355, where the spectral filter raised it to
+    0.448. It sounds cleaner to people but distorts the cues the scoring models use. ``neural=True``
+    keeps it available for experiments (scripts/eval_noise.py) and for playback-only uses.
     """
     info = {"snr_db": None, "denoised": False, "method": None, "background_voices": 0}
     if samples.size < SAMPLE_RATE // 3:
