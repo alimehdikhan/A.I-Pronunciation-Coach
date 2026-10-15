@@ -91,6 +91,18 @@ RUN if [ "$PRELOAD_KOKORO" = "1" ]; then \
 COPY backend/ backend/
 COPY --from=frontend /app/frontend/dist frontend/dist
 
+# Render the fixed spoken content (phrase library, example words, practice sentences)
+# with Kokoro now, so those clips play at once instead of being synthesised on a small
+# CPU while the learner waits. Only text a user types is rendered live. Best effort and
+# capped at 20 minutes: a clip that was not reached is simply rendered on first use.
+ARG PRERENDER_VOICE=1
+COPY scripts/prerender_voice.py scripts/
+COPY frontend/src/lib/sentences.ts frontend/src/lib/sentences.ts
+RUN if [ "$PRERENDER_VOICE" = "1" ] && [ -f "$PRONUNCIATION_COACH_KOKORO_DIR/voices-v1.0.bin" ]; then \
+      timeout 1200 python scripts/prerender_voice.py \
+      || echo "WARNING: voice pre-render stopped early; remaining clips render on demand"; \
+    fi
+
 # Hugging Face Spaces runs containers as UID 1000.
 RUN useradd --create-home --uid 1000 app \
     && mkdir -p /app/data \
