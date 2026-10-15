@@ -56,7 +56,7 @@ export function Results({
         <WordInspector word={word} playback={playback} />
         <InsightsPanel insights={result.insights} onSelect={setSelected} />
       </div>
-      <CoachCard result={result} />
+      <CoachCard result={result} previousScore={previousScore} />
       <div className="results-item flex flex-col-reverse items-center justify-center gap-3 pt-4 sm:flex-row">
         <Button variant="secondary" size="lg" onClick={onRetry} className="h-12 px-6 text-[15px]">
           <ArrowClockwiseIcon weight="bold" /> Try again <Kbd className="ml-1 hidden sm:inline-flex">R</Kbd>
