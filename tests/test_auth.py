@@ -95,13 +95,65 @@ def test_signed_in_browser_cannot_create_a_second_account(client):
     assert second.status_code == 409 and second.json()["code"] == "already_signed_in"
 
 
-def test_login_failures_do_not_reveal_which_emails_exist(client):
+def test_login_says_which_part_was_wrong(client):
     register(client)
+
     wrong_password = login(client, OTHER_KEY, password="wrong password!")
-    unknown_email = login(client, OTHER_KEY, email="nobody@example.com")
-    assert wrong_password.status_code == unknown_email.status_code == 401
-    assert wrong_password.json() == unknown_email.json()
-    assert wrong_password.json()["code"] == "invalid_credentials"
+    unknown = login(client, OTHER_KEY, email="nobody@example.com")
+
+    assert wrong_password.status_code == unknown.status_code == 401
+    assert wrong_password.json()["code"] == "wrong_password"
+    assert "password" in wrong_password.json()["detail"].lower()
+    assert unknown.json()["code"] == "no_account"
+    assert "no account" in unknown.json()["detail"].lower()
+
+
+def test_login_works_with_email_or_username_in_any_case(client):
+    register(client, username="Sam", email="sam@example.com")
+    for identifier in ("sam@example.com", "SAM@Example.com", "Sam", "sam", "  Sam  "):
+        client.post("/api/auth/logout", headers=headers(OTHER_KEY))
+        response = client.post(
+            "/api/auth/login", json={"identifier": identifier, "password": PASSWORD}, headers=headers(OTHER_KEY)
+        )
+        assert response.status_code == 200, identifier
+        assert response.json()["username"] == "Sam"
+
+
+def test_a_guest_name_cannot_be_signed_in_to(client):
+    assert attempt(client, PROFILE_KEY, username="JustAGuest").json()["saved"] is True
+    response = client.post(
+        "/api/auth/login", json={"identifier": "JustAGuest", "password": PASSWORD}, headers=headers(OTHER_KEY)
+    )
+    assert response.status_code == 401 and response.json()["code"] == "no_account"
+
+
+def test_username_availability_is_reported_before_sign_up(client):
+    assert client.get("/api/auth/available", params={"username": "fresh_name"}).json() == {"available": True, "reason": None}
+    register(client, username="taken_name")
+    taken = client.get("/api/auth/available", params={"username": "taken_name"}).json()
+    assert taken == {"available": False, "reason": "taken"}
+    assert client.get("/api/auth/available", params={"username": "no/good"}).json()["reason"] == "invalid"
+    # A guest profile's name is not "taken": signing up from that browser upgrades it.
+    attempt(client, OTHER_KEY, username="guest_name")
+    assert client.get("/api/auth/available", params={"username": "guest_name"}).json()["available"] is True
+
+
+@pytest.mark.parametrize(
+    "password",
+    ["password123", "12345678", "qwertyui", "aaaaaaaaaa", "samantha-rocks-1", "sam.example-1"],
+)
+def test_guessable_passwords_are_refused_with_a_reason(client, password):
+    response = register(client, password=password, username="Samantha", email="sam.example@example.com")
+    assert response.status_code == 400 and response.json()["code"] == "weak_password"
+
+
+def test_a_long_unusual_password_is_accepted(client):
+    assert register(client, password="violet-harbour-lamp-72").status_code == 200
+
+
+def test_health_says_whether_accounts_survive_a_restart(client):
+    database = client.get("/health").json()["database"]
+    assert database["engine"] in ("sqlite", "postgresql") and isinstance(database["persistent"], bool)
 
 
 def test_a_second_device_can_sign_in_and_read_the_same_history(client):
