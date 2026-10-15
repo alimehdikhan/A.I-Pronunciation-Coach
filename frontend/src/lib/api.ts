@@ -1,5 +1,7 @@
 import type {
   Analytics,
+  CoachReply,
+  CoachRequest,
   EvaluationResult,
   Health,
   HistoryRecord,
@@ -113,6 +115,13 @@ export const api = {
   practice: (username: string) =>
     request<PracticeResponse>(`/api/tutor/personalized-practice/${enc(username || 'guest')}`, {
       headers: username ? profileHeaders() : undefined,
+    }),
+
+  coach: (body: CoachRequest) =>
+    request<CoachReply>('/api/coach', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
     }),
 
   resetHistory: (username: string) =>
