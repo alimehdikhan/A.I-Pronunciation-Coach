@@ -122,7 +122,10 @@ Write the coach's opening note: 2 or 3 sentences, first person, plain language.
 - End by telling them what the session involves (feel the sound, listen, say words, say a sentence).
 - No emojis, no exclamation marks, no lists.
 
-Reply with a single JSON object and nothing else: {"note": string}"""
+Reply with a single JSON object and nothing else: {"note": string}
+
+Name sounds the way a learner would: by their spelling and an example word ("the sh sound as in ship"). Never write IPA symbols or slashes, and avoid technical terms such as voiceless, fricative or phoneme. Do not say the learner chose a sound unless the facts say so.
+"""
 
 
 def template_reply(request: CoachRequest) -> CoachReply:
