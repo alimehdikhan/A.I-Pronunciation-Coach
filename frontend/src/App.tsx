@@ -9,6 +9,8 @@ import PracticePage from '@/pages/PracticePage'
 const AuthPage = lazy(() => import('@/pages/AuthPage'))
 const ProfilePage = lazy(() => import('@/pages/ProfilePage'))
 const CoachPage = lazy(() => import('@/pages/CoachPage'))
+const JourneyPage = lazy(() => import('@/pages/JourneyPage'))
+const CheckupPage = lazy(() => import('@/pages/CheckupPage'))
 
 const DrillsPage = lazy(() => import('@/pages/DrillsPage'))
 const SoundsPage = lazy(() => import('@/pages/SoundsPage'))
@@ -61,6 +63,8 @@ export const router = createBrowserRouter([
     errorElement: <RouteError />,
     children: [
       { index: true, element: <PracticePage /> },
+      { path: 'journey', element: <JourneyPage /> },
+      { path: 'checkup', element: <CheckupPage /> },
       { path: 'coach', element: <CoachPage /> },
       { path: 'drills', element: <DrillsPage /> },
       { path: 'sounds', element: <SoundsPage /> },
