@@ -6,6 +6,7 @@ import type {
   CoachRequest,
   EvaluationResult,
   Health,
+  HistoryPage,
   HistoryRecord,
   PhonemeDetail,
   PhonemeSummary,
@@ -110,6 +111,17 @@ export const api = {
     }).then(
       (r) => r.records,
     ),
+
+  historyPage: (
+    username: string,
+    { offset = 0, limit = 20, minScore, maxScore, text }: { offset?: number; limit?: number; minScore?: number; maxScore?: number; text?: string },
+  ) => {
+    const params = new URLSearchParams({ limit: String(limit), offset: String(offset) })
+    if (minScore !== undefined) params.set('min_score', String(minScore))
+    if (maxScore !== undefined) params.set('max_score', String(maxScore))
+    if (text?.trim()) params.set('q', text.trim())
+    return request<HistoryPage>(`/api/history/${enc(username)}?${params}`, { headers: profileHeaders() })
+  },
 
   analytics: (username: string) =>
     request<Analytics>(`/api/analytics/${enc(username)}?tz_offset=${new Date().getTimezoneOffset()}`, {
