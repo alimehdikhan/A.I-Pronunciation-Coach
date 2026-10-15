@@ -195,3 +195,24 @@ def test_the_report_waits_for_history_then_is_written_from_the_facts(client, mod
     runtime.coach._generated.clear()  # the cached note would otherwise answer
     assert client.get("/api/coach/report/Sam", headers=HEADERS).json()["source"] == "template"
     assert client.get("/api/coach/report/Sam", headers={"X-Profile-Key": "z" * 43}).status_code == 403
+
+
+def test_a_typed_word_is_answered_from_the_dictionary_and_the_library(client, model):
+    model.reply = {"reply": "Say mi-to-KON-dree-uh.", "try_next": None, "words": []}
+
+    client.post("/api/coach/chat", json={"username": "", "message": "How do I say mitochondria?"})
+
+    facts = sent_facts(model)
+    word = facts["words_in_message"][0]
+    assert word["word"] == "mitochondria" and word["from_dictionary"] is True
+    assert word["ipa"] and word["syllables"] >= 4 and word["stressed_syllable"] >= 1
+    assert "_phonemes" not in word  # internal detail stays on the server
+    assert all("how" in guide and "ipa" in guide for guide in facts["sound_guides"])
+    # Filler words are not mistaken for the word being asked about.
+    assert [w["word"] for w in facts["words_in_message"]] == ["mitochondria"]
+
+
+def test_a_misspelt_word_is_flagged_as_not_in_the_dictionary(client, model):
+    model.reply = {"reply": "Did you mean mitochondria?", "try_next": None, "words": []}
+    client.post("/api/coach/chat", json={"username": "", "message": "mitochondriaa"})
+    assert sent_facts(model)["words_in_message"][0]["from_dictionary"] is False
