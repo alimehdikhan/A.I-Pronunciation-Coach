@@ -50,6 +50,14 @@ Keyboard: `Space` records, `R` retries, `N` moves to the next phrase, `L` plays 
 
 When the phoneme model is not installed, steps 3 and 4 are skipped and scoring uses Whisper's words and CMUDict alone. Everything still works, with less precise sound-level feedback.
 
+### The coaching session
+
+The Coach page (`/coach`, sign-in required) works from what the app has recorded about you. Every sound you attempt is stored as clean or not, so the coach knows your clean-rate per sound and whether it is improving, steady or slipping.
+
+It then picks one sound to work on, weighting how often it goes wrong by how often you try it and giving slipping sounds a boost, and says why in numbers ("you said /θ/ cleanly 3 of 10 times, and it has slipped lately"). The session has five steps: feel the sound (mouth placement), hear minimal pairs, say words (your own most-missed words first), say a sentence, and a review that compares today with your history. Each recording is checked for that one sound only.
+
+After any normal attempt the coach card ends with a single "change this on your next try" cue instead of a list. The focus and every number come from your history; the language model only writes the wording, and a built-in coach does when it is unavailable.
+
 ### How well it works
 
 Scoring was checked against expert ratings on [speechocean762](https://huggingface.co/datasets/mispeech/speechocean762) (Apache-2.0): 5,000 English sentences read by Mandarin speakers, rated per sentence, word and sound by trained annotators. The blend weights, sound threshold and fluency curve were fitted on its training split. The figures below are on recordings from the test split that were not used for fitting. Correlations are Pearson's r with the human rating.
@@ -162,6 +170,19 @@ python -c "from huggingface_hub import snapshot_download; snapshot_download('Ali
 
 After a restart, `/health` reports `"acoustic_scoring": true`. On a 4-core CPU a four-second clip takes about one second. To rebuild the file from Meta's original weights instead, run `scripts/export_phoneme_model.py` (it needs PyTorch, `transformers`, `onnx` and `onnxscript`, which the app itself does not).
 
+### Voices
+
+The default voice is Piper. Kokoro sounds more natural and is used automatically when it is installed (`auto`), with Piper as the fallback. On a 4-core CPU the full-precision Kokoro model runs at about 1.2 times real time and about 1.0 times on two threads. The int8 file is smaller but about four times slower on CPUs, so it is not used. Rendered clips are cached in memory and on disk, and `scripts/prerender_voice.py` can fill that cache for the fixed phrase library ahead of time.
+
+```bash
+pip install -r backend/requirements-voice.txt
+# download kokoro-v1.0.onnx (325 MB) and voices-v1.0.bin (28 MB) from
+# https://github.com/thewh1teagle/kokoro-onnx/releases/tag/model-files-v1.0
+# into ~/.cache/pronunciation_coach/kokoro/
+```
+
+`/health` reports the active engine as `tts_engine`. Pick another Kokoro voice with `PRONUNCIATION_COACH_KOKORO_VOICE` (`af_heart` by default; `am_michael`, `bf_emma` and others are included).
+
 ### Turning on the AI coach
 
 Create a key at console.groq.com and add it to `.env`:
@@ -221,6 +242,9 @@ All settings are environment variables. See [`.env.example`](.env.example).
 | `PRONUNCIATION_COACH_MAX_AUDIO_SECONDS` | `60` | Longest accepted recording |
 | `PRONUNCIATION_COACH_RATE_LIMIT` | `30` | Audio requests per client IP per minute (`0` disables) |
 | `PRONUNCIATION_COACH_TTS` | `1` | Neural coach voice at `/api/tts` (`0` falls back to browser speech) |
+| `PRONUNCIATION_COACH_TTS_ENGINE` | `auto` | `auto` uses Kokoro when installed, `kokoro` or `piper` force one |
+| `PRONUNCIATION_COACH_KOKORO_VOICE` | `af_heart` | Kokoro voice name |
+| `PRONUNCIATION_COACH_KOKORO_DIR` | `~/.cache/pronunciation_coach/kokoro` | Where the Kokoro model files live |
 | `PRONUNCIATION_COACH_TTS_VOICE` | `en_US-lessac-medium` | Piper voice, downloaded on first start if missing |
 | `PRONUNCIATION_COACH_TTS_DIR` | `~/.cache/pronunciation_coach/piper` | Voice cache directory |
 | `PRONUNCIATION_COACH_ASR_DEVICE` | `auto` | `cpu`, `cuda` or `auto` |
@@ -259,6 +283,7 @@ All settings are environment variables. See [`.env.example`](.env.example).
 | `GET` | `/api/history/{username}` | Recent attempts with sound mistakes |
 | `DELETE` | `/api/history/{username}` | Delete a user's history (needs the profile key) |
 | `GET` | `/api/analytics/{username}` | Averages, streaks, trend and top weaknesses |
+| `GET` | `/api/coach/plan/{username}` | Mastery per sound, today's focus and a guided session |
 | `POST` | `/api/auth/register` | Create an account (`email`, `password`, `username`, optional `display_name`); upgrades a guest profile in place |
 | `POST` | `/api/auth/login` | Sign this browser in to an account |
 | `POST` | `/api/auth/logout` | Sign this browser out |
@@ -307,22 +332,24 @@ backend/
   pronunciation.py    Scoring: word alignment, metrics, insights
   phonetics.py        Tokenising, CMUDict to IPA, letter-to-sound rules, alignment
   coach.py            Groq tips with validation, cache and template fallback
+  teaching.py         Mastery, focus choice and the guided session
   tutor.py            Tutor cards and personalised drills
   phoneme_kb.py       Knowledge base: 41 sounds, substitution and deletion tips
-  tts.py              Piper voice with an LRU cache
+  tts.py              Piper and Kokoro voices with clip caches
   repositories.py     Database queries (SQL aggregates for analytics)
   security.py         Rate limiting, profile keys, password hashing, security headers
   observability.py    Logging, request IDs, Prometheus metrics, Server-Timing
   spa.py              Serving the built app, CSP, legacy-cache recovery
   database.py         Models, indexes, additive migrations, schemas
 frontend/src/
-  pages/              Practice, Drills, Sounds, Progress, Profile, Login and Signup
+  pages/              Practice, Coach, Drills, Sounds, Progress, Profile, Login and Signup
   components/         practice/ (orb, results, inspector, coach), tutor/, layout/, ui/
   hooks/              Recorder, playback, audio peaks, hotkeys
   lib/                API client, queries, speech, audio engine, GSAP helpers
 scripts/
   export_phoneme_model.py   One-time ONNX export of the phoneme model
   eval_speechocean.py       Benchmark, calibration and blend fitting
+  prerender_voice.py        Fill the Kokoro clip cache for the fixed content
 tests/
 ```
 
