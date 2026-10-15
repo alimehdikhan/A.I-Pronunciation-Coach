@@ -48,6 +48,8 @@ export function VoiceAgent() {
   const [muted, setMuted] = useState(false)
   const client = useRef<VoiceClient | null>(null)
   const stateRef = useRef<VoiceState>('connecting')
+  const [mic, setMic] = useState(0)
+  const [silent, setSilent] = useState(false)
 
   const end = useCallback(() => {
     client.current?.stop()
@@ -68,6 +70,23 @@ export function VoiceAgent() {
     }
   }, [open, end])
 
+  // A live microphone meter, so it is obvious whether the app can hear you.
+  useEffect(() => {
+    if (!started) return
+    const timer = window.setInterval(() => setMic(client.current?.audioLevel(false) ?? 0), 90)
+    return () => window.clearInterval(timer)
+  }, [started])
+
+  // If the coach has not said anything a few seconds after connecting, say so rather than sit there.
+  useEffect(() => {
+    if (!started || state === 'connecting' || state === 'ended' || state === 'error' || coachLine) {
+      setSilent(false)
+      return
+    }
+    const timer = window.setTimeout(() => setSilent(true), 12000)
+    return () => window.clearTimeout(timer)
+  }, [started, state, coachLine])
+
   const begin = async () => {
     audioEngine.stop() // the coach's practice voice must not talk over the conversation
     setError(null)
@@ -76,6 +95,7 @@ export function VoiceAgent() {
     setHint(null)
     setGuard(false)
     setMuted(false)
+    setSilent(false)
     setStarted(true)
     const voice = new VoiceClient(
       { username, profileKey, level, nativeLanguage, voice: 'Kore' },
@@ -152,6 +172,24 @@ export function VoiceAgent() {
               <div className="text-[13px] font-semibold text-muted-foreground">{error ?? STATE_TEXT[state]}</div>
               <p className="mt-3 min-h-[3.5rem] text-[19px] leading-snug font-medium">{coachLine}</p>
               <p className="mt-2 min-h-[1.5rem] text-[15px] text-muted-foreground">{learnerLine && `You: ${learnerLine}`}</p>
+              {live && (
+                <div className="mx-auto mt-4 flex w-48 flex-col items-center gap-1.5" aria-label="Microphone level">
+                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-fill">
+                    <div
+                      className={cn('h-full rounded-full transition-[width] duration-100', muted ? 'bg-subtle' : 'bg-good')}
+                      style={{ width: `${muted ? 0 : Math.round(mic * 100)}%` }}
+                    />
+                  </div>
+                  <span className="text-[11px] text-subtle">
+                    {muted ? 'Microphone muted' : mic > 0.05 ? 'I can hear you' : 'Say something and this bar will move'}
+                  </span>
+                </div>
+              )}
+              {silent && live && (
+                <p className="mt-3 text-[13px] text-warn">
+                  No answer yet. Check your connection, then end the call and start again.
+                </p>
+              )}
             </div>
           )}
 
