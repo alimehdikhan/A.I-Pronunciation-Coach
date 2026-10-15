@@ -128,6 +128,8 @@ export interface Health {
   acoustic_scoring?: boolean
   /** Coaching tips are written by a language model. */
   coach_llm?: boolean
+  /** The live voice conversation is available. */
+  voice_agent?: boolean
   version: string
 }
 
