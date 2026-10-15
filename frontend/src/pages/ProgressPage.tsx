@@ -1,13 +1,9 @@
 import {
   ArrowRightIcon,
-  CalendarCheckIcon,
   ChartLineUpIcon,
-  FireIcon,
   LockKeyIcon,
   TrashIcon,
-  TrophyIcon,
   UserCirclePlusIcon,
-  type Icon,
 } from '@phosphor-icons/react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useRef, useState } from 'react'
@@ -17,9 +13,9 @@ import { EmptyState, Panel, Segmented, SectionLabel } from '@/components/common'
 import { SignInActions } from '@/components/auth/SignInGate'
 import { PageHeader } from '@/components/layout/AppShell'
 import { ActivityCalendar } from '@/components/progress/ActivityCalendar'
-import { CoachNote } from '@/components/progress/CoachNote'
 import { HistoryPanel } from '@/components/progress/HistoryPanel'
-import { ImprovementCard } from '@/components/progress/ImprovementCard'
+import { FocusSounds } from '@/components/progress/FocusSounds'
+import { ProgressHero } from '@/components/progress/ProgressHero'
 import { SoundMasteryGrid } from '@/components/progress/SoundMasteryGrid'
 import { TrendChart } from '@/components/progress/TrendChart'
 import { TrickyWords } from '@/components/progress/TrickyWords'
@@ -35,16 +31,18 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
-import { ActivityRings, CountUp } from '@/components/ui/score-ring'
+import { ActivityRings } from '@/components/ui/score-ring'
 import { Skeleton } from '@/components/ui/skeleton'
 import { api, ApiError } from '@/lib/api'
 import { useScrollReveal, useStaggerIn } from '@/lib/gsap'
 import { keys, useAnalytics } from '@/lib/queries'
-import { METRIC_META, cn } from '@/lib/utils'
+import { SCORE_WORDS } from '@/lib/plain'
+import { cn } from '@/lib/utils'
 import { useSettings } from '@/store/settings'
 import { useUI } from '@/store/ui'
 
 type TrendMetric = 'score' | 'pronunciation' | 'fluency' | 'clarity'
+type DetailTab = 'history' | 'sounds' | 'calendar' | 'words'
 
 const TREND_COLORS: Record<TrendMetric, string> = {
   score: 'var(--chart-1)',
@@ -53,32 +51,14 @@ const TREND_COLORS: Record<TrendMetric, string> = {
   clarity: '#00c7ff',
 }
 
-function StatTile({ icon: IconComp, color, label, value, suffix, sub }: { icon: Icon; color: string; label: string; value: number; suffix?: string; sub: string }) {
-  return (
-    <Panel className="progress-item p-5">
-      <div className="flex items-center gap-2 text-[13px] font-semibold" style={{ color }}>
-        <IconComp size={17} weight="fill" />
-        {label}
-      </div>
-      <div className="mt-3 flex items-baseline gap-1">
-        <span className="headline text-[34px] tabular-nums">
-          <CountUp value={value} decimals={value % 1 ? 1 : 0} />
-        </span>
-        {suffix && <span className="text-[15px] font-medium text-muted-foreground">{suffix}</span>}
-      </div>
-      <div className="mt-0.5 text-[13px] text-subtle">{sub}</div>
-    </Panel>
-  )
-}
-
 export default function ProgressPage() {
   const username = useSettings((s) => s.username)
   const signedIn = useSettings((s) => !!s.accountEmail)
   const setSettingsOpen = useUI((s) => s.setSettingsOpen)
-  const openPhoneme = useUI((s) => s.openPhoneme)
   const { data: analytics, isLoading, error } = useAnalytics(username)
   const locked = error instanceof ApiError && error.code === 'profile_locked'
   const [metric, setMetric] = useState<TrendMetric>('score')
+  const [tab, setTab] = useState<DetailTab>('history')
   const queryClient = useQueryClient()
   const scope = useRef<HTMLDivElement>(null)
 
@@ -142,7 +122,6 @@ export default function ProgressPage() {
     )
   }
 
-  const maxCount = Math.max(1, ...(analytics?.top_weaknesses ?? []).map((w) => w.count))
   const averages = analytics?.metric_averages ?? {}
 
   return (
@@ -150,7 +129,7 @@ export default function ProgressPage() {
       <PageHeader
         eyebrow="Progress"
         title={`Nice work, ${username.split(' ')[0]}.`}
-        description="Your scores, streaks and the sounds worth practising next."
+        description="How you are doing, and what to practise next."
         actions={
           hasData && (
             <AlertDialog>
@@ -220,29 +199,9 @@ export default function ProgressPage() {
 
       {hasData && (
         <div className="space-y-5">
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-            <StatTile icon={ChartLineUpIcon} color="var(--chart-1)" label="Average" value={analytics.average_score} sub="across all sessions" />
-            <StatTile icon={TrophyIcon} color="#ff9f0a" label="Best" value={analytics.best_score} sub="personal record" />
-            <StatTile
-              icon={CalendarCheckIcon}
-              color="#30d158"
-              label="Sessions"
-              value={analytics.total_practice_sessions}
-              sub={`${analytics.sessions_this_week} this week`}
-            />
-            <StatTile
-              icon={FireIcon}
-              color="#ff453a"
-              label="Streak"
-              value={analytics.streak_days}
-              suffix={analytics.streak_days === 1 ? 'day' : 'days'}
-              sub={`${analytics.practice_days} practice ${analytics.practice_days === 1 ? 'day' : 'days'}`}
-            />
-          </div>
+          <ProgressHero username={username} analytics={analytics} />
 
-          <CoachNote username={username} sessions={analytics.total_practice_sessions} />
-
-          {analytics.improvement && <ImprovementCard improvement={analytics.improvement} />}
+          <FocusSounds sounds={analytics.sound_mastery ?? []} />
 
           <div className="grid gap-5 lg:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)]">
             <Panel className="progress-item p-6 sm:p-8">
@@ -255,14 +214,14 @@ export default function ProgressPage() {
                     onChange={setMetric}
                     options={[
                       { value: 'score', label: 'Overall' },
-                      { value: 'pronunciation', label: 'Sounds' },
-                      { value: 'fluency', label: 'Fluency' },
-                      { value: 'clarity', label: 'Clarity' },
+                      { value: 'pronunciation', label: SCORE_WORDS.pronunciation.label },
+                      { value: 'fluency', label: SCORE_WORDS.fluency.label },
+                      { value: 'clarity', label: SCORE_WORDS.clarity.label },
                     ]}
                   />
                 }
               >
-                Score trend
+                Your scores over time
               </SectionLabel>
               {trend.length < 2 ? (
                 <div className="grid h-[240px] place-items-center text-[15px] text-muted-foreground">
@@ -274,7 +233,7 @@ export default function ProgressPage() {
             </Panel>
 
             <Panel className="progress-item flex flex-col p-6 sm:p-8">
-              <SectionLabel>Averages</SectionLabel>
+              <SectionLabel>How you score</SectionLabel>
               <div className="flex flex-1 flex-col items-center justify-center gap-6 sm:flex-row lg:flex-col xl:flex-row">
                 <ActivityRings
                   size={150}
@@ -288,10 +247,15 @@ export default function ProgressPage() {
                 />
                 <div className="w-full space-y-3">
                   {(['pronunciation', 'fluency', 'clarity'] as const).map((key, i) => (
-                    <div key={key} className="flex items-center gap-2.5">
-                      <span className={cn('size-2.5 rounded-full', ['bg-[#fa114f]', 'bg-[#92e82a]', 'bg-[#1eeaef]'][i])} />
-                      <span className="flex-1 text-[14px] text-muted-foreground">{METRIC_META[key].label}</span>
-                      <span className="text-[15px] font-semibold tabular-nums">{averages[key] != null ? Math.round(averages[key]!) : '—'}</span>
+                    <div key={key} className="flex items-start gap-2.5">
+                      <span className={cn('mt-1.5 size-2.5 shrink-0 rounded-full', ['bg-[#fa114f]', 'bg-[#92e82a]', 'bg-[#1eeaef]'][i])} />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-baseline justify-between gap-2">
+                          <span className="text-[14px] font-medium">{SCORE_WORDS[key].label}</span>
+                          <span className="text-[15px] font-semibold tabular-nums">{averages[key] != null ? Math.round(averages[key]!) : '—'}</span>
+                        </div>
+                        <div className="text-xs text-subtle">{SCORE_WORDS[key].hint}</div>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -299,69 +263,35 @@ export default function ProgressPage() {
             </Panel>
           </div>
 
-          {!!analytics.sound_mastery?.length && (
-            <Panel className="progress-item p-6 sm:p-8">
-              <SectionLabel>Sound mastery</SectionLabel>
-              <SoundMasteryGrid sounds={analytics.sound_mastery} />
-            </Panel>
-          )}
-
-          <div className="grid gap-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] lg:items-start">
-            <Panel className="progress-item p-6 sm:p-8">
-              <SectionLabel>Practice calendar</SectionLabel>
-              <ActivityCalendar days={analytics.daily_activity ?? []} />
-            </Panel>
-            {!!analytics.tricky_words?.length && (
-              <Panel className="progress-item p-6 sm:p-8">
-                <SectionLabel>Tricky words</SectionLabel>
-                <TrickyWords words={analytics.tricky_words} />
-              </Panel>
-            )}
-          </div>
-
-          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.7fr)] lg:items-start">
-            <Panel className="progress-item p-6 sm:p-8">
-              <SectionLabel
-                action={
-                  <Button asChild variant="ghost" size="sm">
-                    <Link to="/drills">
-                      Drills <ArrowRightIcon weight="bold" />
-                    </Link>
-                  </Button>
-                }
-              >
-                Trouble sounds
-              </SectionLabel>
-              {analytics.top_weaknesses.length === 0 ? (
-                <p className="text-[15px] text-muted-foreground">No recurring mistakes yet. Impressive.</p>
+          <Panel className="progress-item p-6 sm:p-8">
+            <SectionLabel
+              action={
+                <Segmented<DetailTab>
+                  layoutId="progress-detail"
+                  size="sm"
+                  value={tab}
+                  onChange={setTab}
+                  options={[
+                    { value: 'history', label: 'Recent practice' },
+                    { value: 'sounds', label: 'All sounds' },
+                    { value: 'calendar', label: 'Calendar' },
+                    ...(analytics.tricky_words?.length ? [{ value: 'words' as const, label: 'Tricky words' }] : []),
+                  ]}
+                />
+              }
+            >
+              More detail
+            </SectionLabel>
+            {tab === 'history' && <HistoryPanel username={username} bare />}
+            {tab === 'sounds' &&
+              (analytics.sound_mastery?.length ? (
+                <SoundMasteryGrid sounds={analytics.sound_mastery} />
               ) : (
-                <ul className="space-y-1">
-                  {analytics.top_weaknesses.map((w) => (
-                    <li key={w.phoneme}>
-                      <button
-                        type="button"
-                        onClick={() => openPhoneme(w.phoneme)}
-                        className="flex w-full items-center gap-3 rounded-xl p-2 text-left transition-colors hover:bg-fill"
-                      >
-                        <span className="ipa grid size-10 shrink-0 place-items-center rounded-[12px] bg-fill text-[20px]">{w.phoneme}</span>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-baseline justify-between gap-2">
-                            <span className="truncate text-[14px] font-medium">{w.label ?? w.phoneme}</span>
-                            <span className="text-xs text-subtle tabular-nums">{w.count}×</span>
-                          </div>
-                          <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-fill">
-                            <div className="h-full rounded-full bg-gradient-to-r from-[#ff9500] to-[#ff3b30]" style={{ width: `${(w.count / maxCount) * 100}%` }} />
-                          </div>
-                        </div>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </Panel>
-
-            <HistoryPanel username={username} />
-          </div>
+                <p className="text-[15px] text-muted-foreground">Say each sound a few times and it will show up here.</p>
+              ))}
+            {tab === 'calendar' && <ActivityCalendar days={analytics.daily_activity ?? []} />}
+            {tab === 'words' && !!analytics.tricky_words?.length && <TrickyWords words={analytics.tricky_words} />}
+          </Panel>
         </div>
       )}
     </div>
