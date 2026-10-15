@@ -19,6 +19,8 @@ import { toast } from 'sonner'
 import { EmptyState, Pill, SectionLabel } from '@/components/common'
 import { PageHeader } from '@/components/layout/AppShell'
 import { SignInActions } from '@/components/auth/SignInGate'
+import { CoachChat } from '@/components/coach/CoachChat'
+import { PracticeWriter } from '@/components/coach/PracticeWriter'
 import { SpeakChip } from '@/components/tutor/SpeakButton'
 import { useSpeaker } from '@/lib/speech'
 import { Button } from '@/components/ui/button'
@@ -478,6 +480,9 @@ export default function CoachPage() {
           )}
 
           <Session plan={plan} username={username} key={`${plan.focus.phoneme}-${round}`} />
+
+          <PracticeWriter username={username} phoneme={plan.focus.phoneme} key={`write-${plan.focus.phoneme}`} />
+          <CoachChat username={username} />
         </div>
       )}
     </>
