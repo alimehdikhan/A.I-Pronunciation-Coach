@@ -31,47 +31,8 @@ export interface VoiceOptions {
   voice: string
 }
 
-const CAPTURE_RATE = 16000
 const PLAYBACK_RATE = 24000
 const BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? ''
-
-// Runs on the audio thread: averages the microphone down to 16 kHz and hands over 100 ms of 16-bit PCM at a time.
-const CAPTURE_WORKLET = `
-class Pcm16Capture extends AudioWorkletProcessor {
-  constructor() {
-    super()
-    this.ratio = sampleRate / ${CAPTURE_RATE}
-    this.phase = 0
-    this.sum = 0
-    this.count = 0
-    this.out = new Int16Array(${CAPTURE_RATE / 10})
-    this.n = 0
-  }
-  process(inputs) {
-    const channel = inputs[0] && inputs[0][0]
-    if (!channel) return true
-    for (let i = 0; i < channel.length; i++) {
-      this.sum += channel[i]
-      this.count++
-      this.phase += 1
-      if (this.phase >= this.ratio) {
-        const v = Math.max(-1, Math.min(1, this.sum / this.count))
-        this.out[this.n++] = v < 0 ? v * 0x8000 : v * 0x7fff
-        this.sum = 0
-        this.count = 0
-        this.phase -= this.ratio
-        if (this.n === this.out.length) {
-          const chunk = this.out.slice(0)
-          this.port.postMessage(chunk.buffer, [chunk.buffer])
-          this.n = 0
-        }
-      }
-    }
-    return true
-  }
-}
-registerProcessor('pcm16-capture', Pcm16Capture)
-`
 
 export function voiceSocketUrl(): string {
   if (BASE) return BASE.replace(/^http/, 'ws') + '/ws/voice'
@@ -91,6 +52,8 @@ export class VoiceClient {
   private muted = false
   private closed = false
   private frame = new Uint8Array(512)
+  private ready = false
+  private connectTimer: number | undefined
 
   constructor(
     private readonly options: VoiceOptions,
@@ -108,6 +71,15 @@ export class VoiceClient {
       this.fail('The microphone is blocked. Allow it in your browser and try again.', 'microphone')
       return
     }
+    try {
+      await this.connect(this.stream)
+    } catch (error) {
+      console.error('Voice setup failed', error)
+      this.fail('Could not start the audio. Please reload the page and try again.', 'audio')
+    }
+  }
+
+  private async connect(stream: MediaStream): Promise<void> {
     const context = new AudioContext()
     this.context = context
     await context.resume().catch(() => undefined)
@@ -118,13 +90,9 @@ export class VoiceClient {
     this.output.connect(this.outAnalyser)
     this.outAnalyser.connect(context.destination)
 
-    const url = URL.createObjectURL(new Blob([CAPTURE_WORKLET], { type: 'text/javascript' }))
-    try {
-      await context.audioWorklet.addModule(url)
-    } finally {
-      URL.revokeObjectURL(url)
-    }
-    const source = context.createMediaStreamSource(this.stream)
+    // A real file from our own origin: the app's security policy allows scripts from 'self' only.
+    await context.audioWorklet.addModule(new URL('pcm16-capture.js', document.baseURI).toString())
+    const source = context.createMediaStreamSource(stream)
     this.inAnalyser = context.createAnalyser()
     this.inAnalyser.fftSize = 512
     source.connect(this.inAnalyser)
@@ -163,6 +131,10 @@ export class VoiceClient {
         this.on.onState('ended')
       }
     }
+    // If the coach has not answered the connection within a reasonable time, say so.
+    this.connectTimer = window.setTimeout(() => {
+      if (!this.ready) this.fail('The coach did not answer. Please check your connection and try again.', 'timeout')
+    }, 20000)
   }
 
   private handle(data: ArrayBuffer | string): void {
@@ -178,6 +150,8 @@ export class VoiceClient {
     }
     switch (message.type) {
       case 'ready':
+        this.ready = true
+        window.clearTimeout(this.connectTimer)
         this.on.onState('listening')
         break
       case 'transcript':
@@ -284,6 +258,7 @@ export class VoiceClient {
   }
 
   private teardown(): void {
+    window.clearTimeout(this.connectTimer)
     this.stopPlayback()
     this.capture?.disconnect()
     this.stream?.getTracks().forEach((track) => track.stop())
