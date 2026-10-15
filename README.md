@@ -191,6 +191,12 @@ Create a key at console.groq.com and add it to `.env`:
 GROQ_API_KEY=your-key
 ```
 
+### Where accounts are stored
+
+Accounts and practice history live in the database named by `NEON_DATABASE_URL`. `DATABASE_URL`, `POSTGRES_URL` and `POSTGRESQL_URL` are accepted too, a pasted `psql '...'` command is cleaned up, and a PostgreSQL URL is always preferred over a SQLite one. Without any of them the app falls back to a SQLite file.
+
+**On a container host (Hugging Face Spaces, Docker, Render) a SQLite file is thrown away on every restart or deploy, which erases every account.** The app warns about this in its log, `/health` reports it as `"database": {"engine": ..., "persistent": ..., "source": <variable name>}`, and the sign-in and profile pages show a notice when it applies. Set a PostgreSQL URL (for example from Neon, which has a free tier) to keep accounts across deploys.
+
 ### Production build
 
 ```bash
@@ -300,9 +306,9 @@ First-time visitors land on the sign-in page, which also offers "Practice withou
 
 **Guests.** There is no sign-up. Each browser keeps a random profile key and sends it as `X-Profile-Key`. The first browser to use a name claims it, and only that key can read, add to or delete its history afterwards. The server stores a SHA-256 hash of the key. If a name is claimed elsewhere, evaluation still returns feedback with `"saved": false, "save_error": "profile_locked"`, and the history endpoints return `403` with `"code": "profile_locked"`.
 
-**Accounts.** `/signup` and `/login` create and open an account with an email and password. An account has two names: a **display name**, which several people can share, and a **username**, which is unique because practice history is stored and looked up under it. Signing up from a guest profile upgrades it in place, so its history is kept. There are no server-side sessions: signing in binds that browser's profile key to the account, so every existing endpoint authorises the same way it does for guests. One account can be open on several devices, and signing out removes only the device you signed out on. Changing the password signs out every other device. `/profile` shows your stats and lets you change both names, change the password, delete your history or delete the account.
+**Accounts.** `/signup` and `/login` create and open an account. You sign in with your email **or** your username plus your password, and the form says which part is wrong (no such account, or wrong password) and, when signing up, whether the username or email is already used before you submit. An account has two names: a **display name**, which several people can share, and a **username**, which is unique because practice history is stored and looked up under it. Signing up from a guest profile upgrades it in place, so its history is kept. There are no server-side sessions: signing in binds that browser's profile key to the account, so every existing endpoint authorises the same way it does for guests. One account can be open on several devices, and signing out removes only the device you signed out on. Changing the password signs out every other device. `/profile` shows your stats and lets you change both names, change the password, delete your history or delete the account.
 
-Passwords are hashed with scrypt (stdlib, per-password salt) and compared in constant time, login failures do not say whether the email exists, and the auth endpoints have their own stricter rate limit. There is no email verification and no password reset yet, because the app has no mail service; losing the password means losing access to the account's history.
+Passwords are hashed with scrypt (stdlib, per-password salt) and compared in constant time. Common passwords and passwords containing your username or email are refused, and the auth endpoints have their own stricter rate limit. Telling someone that an account does not exist is a deliberate usability choice: sign-up already reveals which emails and usernames are taken, and the rate limit bounds guessing. There is no email verification and no password reset yet, because the app has no mail service; losing the password means losing access to the account's history.
 
 To release a guest name, for example after clearing browser data, run `python -m backend.manage unlock "<name>"`. `python -m backend.manage users` lists names and whether they are claimed.
 
