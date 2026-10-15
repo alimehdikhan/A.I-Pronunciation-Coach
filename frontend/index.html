@@ -15,6 +15,12 @@
         var dark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
         document.documentElement.classList.toggle('dark', dark)
       } catch (e) {}
+      // Arrived from a cached copy of the old page (see backend/spa.py): drop its cache-buster.
+      if (/[?&]_reload=/.test(location.search)) {
+        var url = new URL(location.href)
+        url.searchParams.delete('_reload')
+        history.replaceState(history.state, '', url)
+      }
     </script>
   </head>
   <body>
