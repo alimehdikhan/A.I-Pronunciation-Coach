@@ -35,7 +35,7 @@ The practice page offers sentences at three levels, or your own text. Every word
 
 After you speak, you get four scores (pronunciation, fluency, clarity, completeness) and a transcript where each word is marked correct, unclear, mispronounced, skipped or extra. Tap a word to see it sound by sound, with the chance each sound would be rated clean, and to hear just that segment of your recording. A word shows as *unclear* when the sounds look fine but Whisper heard a different word, and the card says what it heard. Under the transcript, a coach card gives a short summary, one tip per slip and a sentence to try next.
 
-Three more pages: drills built from the sounds you miss most often (you record each minimal pair and the coach checks which word it heard), a library of all 41 American English sounds with articulation steps and minimal pairs, and a progress page with streaks, trends and history.
+Four more pages: drills built from the sounds you miss most often (you record each minimal pair and the coach checks which word it heard), a library of all 41 American English sounds with articulation steps and minimal pairs, a progress page with streaks, trends and history, and a profile page where you manage your account.
 
 Keyboard: `Space` records, `R` retries, `N` moves to the next phrase, `L` plays the sentence, `Ctrl/⌘ K` opens the command palette. Dark and light themes, a layout for phones, and reduced-motion support.
 
@@ -260,14 +260,27 @@ All settings are environment variables. See [`.env.example`](.env.example).
 | `GET` | `/api/history/{username}` | Recent attempts with sound mistakes |
 | `DELETE` | `/api/history/{username}` | Delete a user's history (needs the profile key) |
 | `GET` | `/api/analytics/{username}` | Averages, streaks, trend and top weaknesses |
+| `POST` | `/api/auth/register` | Create an account (`email`, `password`, `username`); upgrades a guest profile in place |
+| `POST` | `/api/auth/login` | Sign this browser in to an account |
+| `POST` | `/api/auth/logout` | Sign this browser out |
+| `GET` | `/api/auth/me` | The account this browser is signed in to, or `{"account": false}` |
+| `PATCH` | `/api/auth/me` | Rename the account |
+| `POST` | `/api/auth/password` | Change the password (signs out other devices) |
+| `POST` | `/api/auth/delete` | Delete the account and its history (needs the password) |
 
 Interactive docs are at `/docs`. Every response carries an `X-Request-ID` (also in the logs), and `/api/evaluate` reports `Server-Timing` for upload, decode, asr, phonemes, score and save.
 
-### Profiles
+### Accounts and profiles
 
-There are no accounts. Each browser keeps a random profile key and sends it as `X-Profile-Key`. The first browser to use a name claims it, and only that key can read, add to or delete its history afterwards. The server stores a SHA-256 hash of the key. Names created before this existed stay readable until their owner's browser claims them. If a name is claimed elsewhere, evaluation still returns feedback with `"saved": false, "save_error": "profile_locked"`, and the history endpoints return `403` with `"code": "profile_locked"`.
+You can use the app as a guest or with an account.
 
-To release a name, for example after clearing browser data, run `python -m backend.manage unlock "<name>"`. `python -m backend.manage users` lists names and whether they are claimed.
+**Guests.** There is no sign-up. Each browser keeps a random profile key and sends it as `X-Profile-Key`. The first browser to use a name claims it, and only that key can read, add to or delete its history afterwards. The server stores a SHA-256 hash of the key. If a name is claimed elsewhere, evaluation still returns feedback with `"saved": false, "save_error": "profile_locked"`, and the history endpoints return `403` with `"code": "profile_locked"`.
+
+**Accounts.** `/signup` and `/login` create and open an account with an email and password. Signing up from a guest profile upgrades it in place, so its history is kept. There are no server-side sessions: signing in binds that browser's profile key to the account, so every existing endpoint authorises the same way it does for guests. One account can be open on several devices, and signing out removes only the device you signed out on. Changing the password signs out every other device. `/profile` shows your stats and lets you rename the account, change the password, delete your history or delete the account.
+
+Passwords are hashed with scrypt (stdlib, per-password salt) and compared in constant time, login failures do not say whether the email exists, and the auth endpoints have their own stricter rate limit. There is no email verification and no password reset yet, because the app has no mail service; losing the password means losing access to the account's history.
+
+To release a guest name, for example after clearing browser data, run `python -m backend.manage unlock "<name>"`. `python -m backend.manage users` lists names and whether they are claimed.
 
 ## Tests
 
@@ -285,7 +298,7 @@ The GOP implementation is checked against brute-force enumeration of CTC paths o
 backend/
   main.py             App assembly: middleware, routers, startup, SPA mount
   config.py           Settings from the environment and .env
-  api/                Routes: health, speech, library, progress, coach
+  api/                Routes: health, speech, library, progress, coach, auth
   runtime.py          Loaded models and the bounded transcription queue
   audio.py            Upload validation, WAV fast path, hardened ffmpeg, loudness
   asr.py              faster-whisper wrapper (VAD, word timestamps)
@@ -299,12 +312,12 @@ backend/
   phoneme_kb.py       Knowledge base: 41 sounds, substitution and deletion tips
   tts.py              Piper voice with an LRU cache
   repositories.py     Database queries (SQL aggregates for analytics)
-  security.py         Rate limiting, profile keys, security headers, body limit
+  security.py         Rate limiting, profile keys, password hashing, security headers
   observability.py    Logging, request IDs, Prometheus metrics, Server-Timing
   spa.py              Serving the built app, CSP, legacy-cache recovery
   database.py         Models, indexes, additive migrations, schemas
 frontend/src/
-  pages/              Practice, Drills, Sounds, Progress
+  pages/              Practice, Drills, Sounds, Progress, Profile, Login and Signup
   components/         practice/ (orb, results, inspector, coach), tutor/, layout/, ui/
   hooks/              Recorder, playback, audio peaks, hotkeys
   lib/                API client, queries, speech, audio engine, GSAP helpers
