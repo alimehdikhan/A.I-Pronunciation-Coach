@@ -11,7 +11,7 @@ import type { HistoryFilters } from '@/lib/types'
 import { SessionRow } from './SessionRow'
 
 /** Every attempt, newest first: filter by how it went, search by phrase, load more as you scroll back. */
-export function HistoryPanel({ username }: { username: string }) {
+export function HistoryPanel({ username, bare = false }: { username: string; bare?: boolean }) {
   const [band, setBand] = useState<HistoryFilters['band']>('all')
   const [text, setText] = useState('')
   const deferred = useDeferredValue(text)
@@ -23,9 +23,12 @@ export function HistoryPanel({ username }: { username: string }) {
   const total = data?.pages[0]?.total ?? 0
   const filtered = band !== 'all' || deferred.trim() !== ''
 
+  const Shell = bare ? 'div' : Panel
   return (
-    <Panel className="progress-item p-6 sm:p-8">
-      <SectionLabel action={<Pill>{total} {filtered ? 'matching' : total === 1 ? 'session' : 'sessions'}</Pill>}>History</SectionLabel>
+    <Shell className={bare ? undefined : 'progress-item p-6 sm:p-8'}>
+      {!bare && (
+        <SectionLabel action={<Pill>{total} {filtered ? 'matching' : total === 1 ? 'session' : 'sessions'}</Pill>}>History</SectionLabel>
+      )}
 
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
         <Segmented<HistoryFilters['band']>
@@ -93,6 +96,6 @@ export function HistoryPanel({ username }: { username: string }) {
       <Button asChild variant="ghost" className="mt-2 w-full text-muted-foreground">
         <Link to="/drills">Work on your weakest sound</Link>
       </Button>
-    </Panel>
+    </Shell>
   )
 }
