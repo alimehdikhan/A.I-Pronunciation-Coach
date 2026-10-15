@@ -89,8 +89,8 @@ def main() -> None:
         noisy = make_noisy(clean, other, args.snr, args.voice, rng)
         spectral_clean, info_clean = enhance(clean, neural=False)
         spectral_noisy, info_noisy = enhance(noisy, neural=False)
-        neural_clean, _ = enhance(clean)
-        neural_noisy, info_neural = enhance(noisy)
+        neural_clean, _ = enhance(clean, neural=True)
+        neural_noisy, info_neural = enhance(noisy, neural=True)
         flagged["clean"] += info_clean["denoised"]
         flagged["noisy"] += info_noisy["denoised"]
         flagged["voices_clean"] += info_clean["background_voices"]
