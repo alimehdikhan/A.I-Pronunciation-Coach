@@ -11,7 +11,7 @@ import {
 } from '@phosphor-icons/react'
 import { AnimatePresence, motion } from 'motion/react'
 import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react'
-import { NavLink, useLocation, useNavigate, useOutlet } from 'react-router'
+import { Navigate, NavLink, useLocation, useNavigate, useOutlet } from 'react-router'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -53,13 +53,15 @@ function useThemeSync() {
 function useAccountSync() {
   const { data } = useAccount()
   const accountEmail = useSettings((s) => s.accountEmail)
+  const displayName = useSettings((s) => s.displayName)
   const signIn = useSettings((s) => s.signIn)
   const signOut = useSettings((s) => s.signOut)
   useEffect(() => {
     if (!data) return
-    if (data.account && accountEmail !== data.email) signIn({ username: data.username, email: data.email })
+    if (data.account && (accountEmail !== data.email || displayName !== data.display_name))
+      signIn({ username: data.username, displayName: data.display_name, email: data.email })
     else if (!data.account && accountEmail) signOut()
-  }, [data, accountEmail, signIn, signOut])
+  }, [data, accountEmail, displayName, signIn, signOut])
 }
 
 function useCommandShortcut() {
@@ -119,7 +121,7 @@ function StreakCard() {
 }
 
 function ProfileMenu() {
-  const username = useSettings((s) => s.username)
+  const username = useSettings((s) => s.displayName || s.username)
   const accountEmail = useSettings((s) => s.accountEmail)
   const setSettingsOpen = useUI((s) => s.setSettingsOpen)
   const navigate = useNavigate()
@@ -217,7 +219,7 @@ function Sidebar() {
 function MobileHeader() {
   const setCommandOpen = useUI((s) => s.setCommandOpen)
   const setSettingsOpen = useUI((s) => s.setSettingsOpen)
-  const username = useSettings((s) => s.username)
+  const username = useSettings((s) => s.displayName || s.username)
   const accountEmail = useSettings((s) => s.accountEmail)
   return (
     <header className="material sticky top-0 z-30 flex h-12 items-center justify-between border-b border-border px-4 lg:hidden">
@@ -289,15 +291,30 @@ function PageFallback() {
   )
 }
 
+/**
+ * Someone opening the site for the first time lands on the sign-in page.
+ * "Continue as a guest" there (or having used the app before) skips it for good.
+ * Deep links such as /sounds are never redirected.
+ */
+function useEntryGate(pathname: string): boolean {
+  const accountEmail = useSettings((s) => s.accountEmail)
+  const guestChosen = useSettings((s) => s.guestChosen)
+  const onboarded = useSettings((s) => s.onboarded)
+  return pathname === '/' && !accountEmail && !guestChosen && !onboarded
+}
+
 export function AppShell() {
   useThemeSync()
   useAccountSync()
   useCommandShortcut()
   const location = useLocation()
+  const gated = useEntryGate(location.pathname)
 
   useEffect(() => {
     window.scrollTo({ top: 0 })
   }, [location.pathname])
+
+  if (gated) return <Navigate to="/login" replace />
 
   return (
     <div className="relative min-h-dvh">
