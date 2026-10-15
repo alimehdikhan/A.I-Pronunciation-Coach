@@ -275,6 +275,44 @@ export interface ProgressReport {
   source: 'groq' | 'template'
 }
 
+export interface Badge {
+  id: string
+  title: string
+  text: string
+  icon: string
+  earned: boolean
+  have: number
+  need: number
+}
+
+export interface PathUnit {
+  phoneme: string
+  label: string
+  name: string
+  example: string
+  status: 'mastered' | 'practising' | 'started' | 'new'
+  clean_rate: number | null
+  attempts: number
+}
+
+export interface Journey {
+  goal: { target: number; done: number; met: boolean; progress: number }
+  xp: { level: number; xp: number; level_floor: number; next_level_at: number; progress: number }
+  streak_days: number
+  attempts: number
+  best_score: number
+  badges: Badge[]
+  path: { units: PathUnit[]; current: string | null; mastered: number; total: number }
+  review: { word: string; misses: number; tries: number }[]
+  checkup_done: boolean
+  suggested_level: Level | null
+}
+
+export interface CheckupItem {
+  text: string
+  sounds: string[]
+}
+
 export interface HistoryFilters {
   /** all, or only the attempts that need work / went well. */
   band: 'all' | 'low' | 'high'
