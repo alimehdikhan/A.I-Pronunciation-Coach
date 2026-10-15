@@ -45,6 +45,10 @@ def _clean_url(value: str) -> str:
     value = value.strip("'\"").strip()
     if value.startswith("postgres://"):  # legacy scheme that SQLAlchemy 2 rejects
         value = "postgresql://" + value[len("postgres://"):]
+    if value.startswith("postgresql://"):
+        # A bare scheme picks whichever driver the installed SQLAlchemy prefers (psycopg 3 from
+        # 2.1 on), which is not the one in requirements.txt; name the driver we ship.
+        value = "postgresql+psycopg2://" + value[len("postgresql://"):]
     return value
 
 

@@ -259,26 +259,27 @@ def test_unhandled_errors_return_json_with_request_id(client, monkeypatch):
 from backend.database import resolve_database_url  # noqa: E402
 
 NEON = "postgresql://user:secret@ep-cool-123.us-east-2.aws.neon.tech/neondb?sslmode=require"
+DRIVER = NEON.replace("postgresql://", "postgresql+psycopg2://")  # the driver we ship is named explicitly
 
 
 def test_the_documented_variable_is_used():
-    assert resolve_database_url({"NEON_DATABASE_URL": NEON}) == (NEON, "NEON_DATABASE_URL")
+    assert resolve_database_url({"NEON_DATABASE_URL": NEON}) == (DRIVER, "NEON_DATABASE_URL")
 
 
 def test_neons_own_variable_name_works_too():
-    assert resolve_database_url({"DATABASE_URL": NEON}) == (NEON, "DATABASE_URL")
+    assert resolve_database_url({"DATABASE_URL": NEON}) == (DRIVER, "DATABASE_URL")
 
 
 def test_a_sqlite_default_never_hides_a_real_database():
     env = {"NEON_DATABASE_URL": "sqlite:////app/data/pc.db", "DATABASE_URL": NEON}
-    assert resolve_database_url(env) == (NEON, "DATABASE_URL")
+    assert resolve_database_url(env) == (DRIVER, "DATABASE_URL")
 
 
 def test_pasted_forms_are_cleaned():
-    assert resolve_database_url({"NEON_DATABASE_URL": f"psql '{NEON}'"})[0] == NEON
-    assert resolve_database_url({"NEON_DATABASE_URL": f'"{NEON}"'})[0] == NEON
+    assert resolve_database_url({"NEON_DATABASE_URL": f"psql '{NEON}'"})[0] == DRIVER
+    assert resolve_database_url({"NEON_DATABASE_URL": f'"{NEON}"'})[0] == DRIVER
     legacy = NEON.replace("postgresql://", "postgres://")
-    assert resolve_database_url({"DATABASE_URL": legacy})[0] == NEON
+    assert resolve_database_url({"DATABASE_URL": legacy})[0] == DRIVER
 
 
 def test_without_any_url_it_falls_back_to_sqlite_and_says_so():
