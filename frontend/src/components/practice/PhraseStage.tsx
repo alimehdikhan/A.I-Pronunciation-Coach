@@ -40,7 +40,7 @@ export function PhraseStage({
   suggesting?: boolean
   children?: ReactNode
 }) {
-  const showIpa = useSettings((s) => s.showIpa)
+  const style = useSettings((s) => s.phoneticStyle)
   const { data: pronunciation } = usePronunciation(target.text)
   const words = target.text.split(/\s+/).filter(Boolean)
   const long = target.text.length > 70
@@ -96,18 +96,24 @@ export function PhraseStage({
             )}
           >
             {words.map((word, i) => {
-              const ipa = pronunciation?.words[i]?.ipa
+              const entry = pronunciation?.words[i]
+              const ipa = entry?.ipa
+              // Plain letters by default; fall back to the symbols for a word the dictionary cannot spell out.
+              const simple = entry?.respelling
+              const shown = style === 'ipa' ? (ipa ? `/${ipa}/` : null) : (simple ?? (ipa ? `/${ipa}/` : null))
+              const asSymbols = style === 'ipa' || !simple
               return (
                 <span key={`${word}-${i}`} className="inline-flex flex-col items-center">
                   <span>{word}</span>
-                  {showIpa && (
+                  {style !== 'off' && (
                     <span
                       className={cn(
-                        'ipa mt-1 text-[13px] font-normal tracking-normal text-subtle transition-opacity sm:text-[14px]',
-                        ipa ? 'opacity-100' : 'opacity-0',
+                        'mt-1 text-[13px] font-normal tracking-normal text-subtle transition-opacity sm:text-[15px]',
+                        asSymbols && 'ipa',
+                        shown ? 'opacity-100' : 'opacity-0',
                       )}
                     >
-                      {ipa ? `/${ipa}/` : '·'}
+                      {shown ?? '·'}
                     </span>
                   )}
                 </span>
