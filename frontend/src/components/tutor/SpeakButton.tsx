@@ -33,7 +33,7 @@ export function SpeakChip({
   children?: ReactNode
   tone?: 'neutral' | 'good' | 'bad' | 'primary'
 }) {
-  const { speak, speakingKey, supported } = useSpeaker()
+  const { speak, prefetch, speakingKey, supported } = useSpeaker()
   const active = speakingKey === `chip:${text}`
   const tones = {
     neutral: 'bg-fill text-foreground hover:bg-fill-strong',
@@ -46,6 +46,8 @@ export function SpeakChip({
       type="button"
       disabled={!supported}
       onClick={() => speak(text, { key: `chip:${text}`, rate })}
+      onPointerEnter={() => prefetch(text, rate)}
+      onFocus={() => prefetch(text, rate)}
       className={cn(
         'inline-flex h-9 items-center gap-2 rounded-full px-3.5 text-[14px] font-medium transition-all active:scale-[0.97]',
         tones[tone],
