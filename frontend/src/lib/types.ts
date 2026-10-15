@@ -247,6 +247,31 @@ export interface Analytics {
   tricky_words?: { word: string; misses: number }[]
 }
 
+export interface ChatTurn {
+  role: 'learner' | 'coach'
+  text: string
+}
+
+export interface ChatReply {
+  reply: string
+  try_next: string | null
+  words: string[]
+  source: 'groq' | 'template'
+}
+
+export interface PracticeSentences {
+  phoneme: string
+  label: string
+  level: Level
+  sentences: { text: string; target_words: string[] }[]
+  source: 'groq' | 'template'
+}
+
+export interface ProgressReport {
+  report: { headline: string; summary: string; wins: string[]; next_steps: string[] } | null
+  source: 'groq' | 'template'
+}
+
 export interface HistoryFilters {
   /** all, or only the attempts that need work / went well. */
   band: 'all' | 'low' | 'high'
