@@ -1,3 +1,5 @@
+import { usePronunciation } from '@/lib/queries'
+import { useSoundName } from '@/lib/soundNames'
 import { ArrowRightIcon, BookOpenTextIcon, CheckCircleIcon, MagnifyingGlassIcon, PlayIcon, SpeakerHighIcon } from '@phosphor-icons/react'
 import { AnimatePresence, motion } from 'motion/react'
 import { Pill, SectionLabel } from '@/components/common'
@@ -80,6 +82,7 @@ function Syllables({ word }: { word: WordResult }) {
 }
 
 function Tutor({ word, op }: { word: string; op: AlignmentOp }) {
+  const soundName = useSoundName()
   const { data, isLoading } = useTutorCard(word, op.expected, op.op === 'delete' ? '' : op.actual)
   const openPhoneme = useUI((s) => s.openPhoneme)
   if (isLoading) return <Skeleton className="mt-6 h-48 w-full rounded-2xl" />
@@ -88,7 +91,7 @@ function Tutor({ word, op }: { word: string; op: AlignmentOp }) {
     <div className="mt-6 border-t border-border pt-6">
       <div className="flex items-center justify-between gap-3">
         <div className="text-[15px] font-semibold">
-          Fix the <span className="ipa text-primary">/{op.expected}/</span> sound
+          Fix the <span className="text-primary">{soundName(op.expected).spelled}</span> sound
           <span className="ml-2 font-normal text-muted-foreground">{data.phoneme.label}</span>
         </div>
         <Button variant="ghost" size="sm" onClick={() => openPhoneme(op.expected)}>
@@ -97,6 +100,18 @@ function Tutor({ word, op }: { word: string; op: AlignmentOp }) {
       </div>
       <PhonemeGuide phoneme={data.phoneme} tip={data.tutor_data.why_wrong} compact />
     </div>
+  )
+}
+
+/** How to say the target word in plain letters ("thingk"), with the symbols as a fallback. */
+function TargetLine({ word, ipa }: { word: string; ipa?: string | null }) {
+  const { data } = usePronunciation(word)
+  const plain = data?.words[0]?.respelling
+  if (!plain && !ipa) return null
+  return (
+    <span className="text-muted-foreground">
+      Say it like <span className={plain ? 'font-medium text-foreground' : 'ipa text-foreground'}>{plain ?? `/${ipa}/`}</span>
+    </span>
   )
 }
 
@@ -135,15 +150,11 @@ export function WordInspector({ word, playback }: { word: WordResult | null; pla
                 <Pill className={cn(meta.soft, meta.text)}>{meta.label}</Pill>
               </div>
               <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[15px]">
-                {word.expected_ipa && (
-                  <span className="text-muted-foreground">
-                    Target <span className="ipa text-foreground">/{word.expected_ipa}/</span>
-                  </span>
-                )}
+                <TargetLine word={word.display} ipa={word.expected_ipa} />
                 {word.status === 'mispronounced' && word.spoken && (
                   <span className="text-muted-foreground">
                     Heard{' '}
-                    <span className="ipa text-bad">{word.spoken_ipa ? `/${word.spoken_ipa}/` : `“${word.spoken}”`}</span>
+                    <span className="text-bad">{word.spoken ? `“${word.spoken}”` : word.spoken_ipa ? `/${word.spoken_ipa}/` : ''}</span>
                   </span>
                 )}
               </div>
