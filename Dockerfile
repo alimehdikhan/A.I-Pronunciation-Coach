@@ -27,6 +27,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     NEON_DATABASE_URL=sqlite:////app/data/pronunciation_coach.db \
     PRONUNCIATION_COACH_TTS_DIR=/app/.cache/piper \
     PRONUNCIATION_COACH_ASR_DIR=/app/.cache/whisper     PRONUNCIATION_COACH_PHONEME_DIR=/app/.cache/phonemes \
+    PRONUNCIATION_COACH_KOKORO_DIR=/app/.cache/kokoro \
     PRONUNCIATION_COACH_LOG_FORMAT=json \
     WHISPER_MODEL_SIZE=${WHISPER_MODEL_SIZE} \
     PRONUNCIATION_LANGUAGE=eng-Latn \
@@ -72,6 +73,19 @@ ARG PHONEME_MODEL_REPO=Alimehdi973/wav2vec2-espeak-onnx-int8
 RUN if [ "$PRELOAD_PHONEMES" = "1" ]; then \
       HF_HUB_DISABLE_XET=1 python -c "from huggingface_hub import snapshot_download; snapshot_download('$PHONEME_MODEL_REPO', local_dir='$PRONUNCIATION_COACH_PHONEME_DIR', allow_patterns=['phonemes.onnx', 'vocab.json', 'MODEL'])" \
       || echo "WARNING: phoneme model not downloaded; scoring will use Whisper's words only"; \
+    fi
+
+# The Kokoro voice: the package and its two model files (about 350 MB). Like
+# the phoneme model this is best effort: if any step fails the build still
+# succeeds and the app speaks with the Piper voice. PRELOAD_KOKORO=0 skips it.
+ARG PRELOAD_KOKORO=1
+ARG KOKORO_RELEASE=https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0
+COPY backend/requirements-voice.txt backend/
+RUN if [ "$PRELOAD_KOKORO" = "1" ]; then \
+      ( pip install -r backend/requirements-voice.txt \
+        && mkdir -p "$PRONUNCIATION_COACH_KOKORO_DIR" \
+        && python -c "import urllib.request as u, sys; base, out = sys.argv[1], sys.argv[2]; [u.urlretrieve(base + '/' + f, out + '/' + f) for f in ('kokoro-v1.0.onnx', 'voices-v1.0.bin')]" "$KOKORO_RELEASE" "$PRONUNCIATION_COACH_KOKORO_DIR" \
+      ) || { echo "WARNING: Kokoro voice not installed; the app will use the Piper voice"; rm -rf "$PRONUNCIATION_COACH_KOKORO_DIR"; }; \
     fi
 
 COPY backend/ backend/
