@@ -13,13 +13,14 @@ import {
   XCircleIcon,
 } from '@phosphor-icons/react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router'
 import { toast } from 'sonner'
 import { EmptyState, Pill, SectionLabel } from '@/components/common'
 import { PageHeader } from '@/components/layout/AppShell'
 import { SignInActions } from '@/components/auth/SignInGate'
 import { SpeakChip } from '@/components/tutor/SpeakButton'
+import { useSpeaker } from '@/lib/speech'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useRecorder, type Recording } from '@/hooks/useRecorder'
@@ -192,6 +193,15 @@ function Session({ plan, username }: { plan: CoachPlan; username: string }) {
   const step: SessionStep = plan.session[index]
   const focus = plan.focus
   const last = index === plan.session.length - 1
+  const { prefetch } = useSpeaker()
+
+  // The session knows every clip it will ask for. Fetch them now, in the order they are needed,
+  // so each Listen press finds its audio ready instead of waiting for the voice to render it.
+  useEffect(() => {
+    plan.session.forEach((s) => (s.pairs ?? []).forEach((pair) => pair.forEach((word) => prefetch(word))))
+    focus.words.forEach((word) => prefetch(word, 0.8))
+    if (focus.sentence) prefetch(focus.sentence, 0.8)
+  }, [plan, focus, prefetch])
 
   const record = (key: string) => (outcome: Outcome) => setResults((r) => ({ ...r, [key]: outcome }))
 
