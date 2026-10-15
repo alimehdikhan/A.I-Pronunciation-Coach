@@ -144,24 +144,34 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
-  coachChat: (body: { username: string; message: string; history: ChatTurn[] }) =>
+  coachChat: (body: { username: string; message: string; history: ChatTurn[]; native_language?: string | null }) =>
     request<ChatReply>('/api/coach/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...profileHeaders() },
       body: JSON.stringify(body),
     }),
 
-  coachSentences: (body: { username: string; phoneme?: string | null; level: string; topic?: string; count?: number }) =>
+  coachSentences: (body: {
+    username: string
+    phoneme?: string | null
+    level: string
+    topic?: string
+    count?: number
+    native_language?: string | null
+  }) =>
     request<PracticeSentences>('/api/coach/practice', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...profileHeaders() },
       body: JSON.stringify(body),
     }),
 
-  coachReport: (username: string) =>
-    request<ProgressReport>(`/api/coach/report/${enc(username)}?tz_offset=${new Date().getTimezoneOffset()}`, {
-      headers: profileHeaders(),
-    }),
+  coachReport: (username: string, language?: string | null) =>
+    request<ProgressReport>(
+      `/api/coach/report/${enc(username)}?tz_offset=${new Date().getTimezoneOffset()}${language ? `&language=${enc(language)}` : ''}`,
+      {
+        headers: profileHeaders(),
+      },
+    ),
 
   coachPlan: (username: string) =>
     request<CoachPlan>(`/api/coach/plan/${enc(username)}`, { headers: profileHeaders() }),
