@@ -138,12 +138,16 @@ export const api = {
       body: JSON.stringify(input),
     }),
 
-  login: (input: { email: string; password: string }) =>
+  /** `identifier` is an email address or a username. */
+  login: (input: { identifier: string; password: string }) =>
     request<Extract<AccountProfile, { account: true }>>('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...profileHeaders() },
       body: JSON.stringify(input),
     }),
+
+  available: (username: string) =>
+    request<{ available: boolean; reason: string | null }>(`/api/auth/available?username=${enc(username)}`),
 
   logout: () => request<{ signed_out: boolean }>('/api/auth/logout', { method: 'POST', headers: profileHeaders() }),
 
