@@ -195,7 +195,17 @@ export function WordInspector({ word, playback }: { word: WordResult | null; pla
           )}
           {word.status === 'unclear' && (
             <p className="mt-6 rounded-2xl bg-warn-soft p-4 text-[15px] leading-relaxed">
-              We recognised this word, but not confidently. Slow down, open your mouth a little more and give each sound its full length.
+              {word.spoken && word.reference && word.spoken.toLowerCase() !== word.reference.toLowerCase() ? (
+                <>
+                  The sounds looked close, but this came across as <b>“{word.spoken}”</b>. Slow down and give each sound its full
+                  length.
+                </>
+              ) : (
+                <>
+                  We recognised this word, but not confidently. Slow down, open your mouth a little more and give each sound its
+                  full length.
+                </>
+              )}
             </p>
           )}
           {word.status === 'missing' && (
