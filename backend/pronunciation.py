@@ -25,7 +25,12 @@ from collections import Counter
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
-from backend import phonetics
+import numpy as np
+
+from backend import acoustic as acoustic_params
+from backend import gop, phonetics
+from backend.acoustic import WordAcoustics
+from backend.acoustic import analyse as analyse_acoustics
 
 logger = logging.getLogger("pronunciation_coach.pronunciation")
 
@@ -38,6 +43,14 @@ DIFFICULTY_ALIASES = {
     "professional": "advanced",
     "expert": "advanced",
 }
+
+# Speaking rate. Human fluency ratings on speechocean762 rise steadily with
+# words per minute (r = +0.56): slow, halting reading is what sounds
+# disfluent, and learners almost never speak "too fast". So the rate score
+# ramps up from RATE_FLOOR * low wpm to `high` wpm, and only speech beyond
+# RATE_CEILING * high wpm is penalised.
+RATE_FLOOR = 0.45
+RATE_CEILING = 1.45
 
 # curve < 1 is lenient, > 1 is strict (applied as score ** curve).
 DIFFICULTY_SETTINGS: Dict[str, Dict[str, Any]] = {
@@ -52,6 +65,13 @@ METRIC_WEIGHTS = {"pronunciation": 0.6, "completeness": 0.1, "fluency": 0.15, "c
 MISPRONOUNCED_CEILING = 80.0
 # Substitutes less similar than this are treated as different words, not attempts.
 ATTEMPT_SIMILARITY = 0.3
+# A sound whose probability of being rated clean falls below this is reported
+# as a slip. On speechocean762 training data this flags 1.7% of sounds with 36%
+# precision; a higher cut-off finds more slips but raises false alarms.
+PHONEME_ERROR = 0.80
+# When Whisper heard a different word, the audio can still vouch for the target:
+# the word stays "correct" unless its blended score is below this.
+REPLACED_WORD_BELOW = 60.0
 
 
 def normalize_difficulty(difficulty: Optional[str]) -> str:
@@ -78,8 +98,11 @@ def _round(value: Optional[float], digits: int = 1) -> Optional[float]:
 class PronunciationScorer:
     """Scores pronunciation from a target sentence and an ASR result."""
 
-    def __init__(self, language: str = "eng-Latn"):
+    def __init__(self, language: str = "eng-Latn", inventory: Optional[gop.Inventory] = None):
         self.language = language
+        # The phoneme recogniser's token inventory; enables acoustic scoring
+        # when score_pronunciation() is given its log-probabilities.
+        self.inventory = inventory
         phonetics.warm_up(language)
 
     @property
@@ -147,6 +170,7 @@ class PronunciationScorer:
         difficulty: Optional[str] = "intermediate",
         words: Optional[List[Dict[str, Any]]] = None,
         duration: Optional[float] = None,
+        phoneme_log_probs: Optional[np.ndarray] = None,
     ) -> Dict[str, Any]:
         level = normalize_difficulty(difficulty)
         settings = DIFFICULTY_SETTINGS[level]
@@ -156,6 +180,11 @@ class PronunciationScorer:
 
         if not ref_tokens:
             return self._empty_result(level, "No reference text was provided for pronunciation scoring.")
+
+        # Acoustic evidence: what each target word's sounds were actually like.
+        acoustic: Optional[List[Optional[WordAcoustics]]] = None
+        if phoneme_log_probs is not None and self.inventory is not None and len(phoneme_log_probs):
+            acoustic = analyse_acoustics(ref_tokens, phoneme_log_probs, self.inventory)
 
         ops, _ = phonetics.align(ref_tokens, [t.text for t in spoken], phonetics.word_cost)
 
@@ -220,6 +249,9 @@ class PronunciationScorer:
                     syllables=phonetics.syllabify(reference_pron),
                     source=comparison.ref.source,
                 )
+                heard = acoustic[ri] if acoustic is not None and ri is not None else None
+                if heard is not None:
+                    self._apply_acoustic(entry, heard, kind, confidence, unclear_below, mistakes)
             entries.append(entry)
 
         speech = self._speech_stats(entries, duration, settings)
@@ -250,6 +282,82 @@ class PronunciationScorer:
         }
 
     # -- scoring components ------------------------------------------------
+
+    @staticmethod
+    def _apply_acoustic(
+        entry: Dict[str, Any],
+        heard: WordAcoustics,
+        kind: str,
+        confidence: Optional[float],
+        unclear_below: float,
+        mistakes: "Counter[str]",
+    ) -> None:
+        """Replace Whisper-text-based evidence with what the audio sounded like.
+
+        Whisper recovers the intended word even from a mispronunciation, so the
+        transcript can't tell "said it right" from "said it close enough for
+        Whisper". The phoneme recogniser can.
+        """
+        ops = []
+        spoken_phonemes = []
+        errors = []
+        for p in heard.phonemes:
+            if p.probability >= PHONEME_ERROR:
+                ops.append({"op": "equal", "expected": p.phoneme, "actual": p.phoneme})
+                spoken_phonemes.append(p.phoneme)
+                continue
+            errors.append(p)
+            if p.alternative == gop.DELETED:
+                ops.append({"op": "delete", "expected": p.phoneme, "actual": ""})
+            else:
+                ops.append({"op": "replace", "expected": p.phoneme, "actual": p.alternative})
+                spoken_phonemes.append(p.alternative)
+
+        # Whisper's words and the audio each see things the other misses, so
+        # the word score blends both (weights fitted against expert ratings).
+        text_score = entry["score"] if entry["score"] is not None else 0.0
+        score = _clamp(
+            acoustic_params.BLEND_INTERCEPT
+            + acoustic_params.BLEND_TEXT * text_score
+            + acoustic_params.BLEND_ACOUSTIC * heard.score
+        )
+        if errors or (kind == "replace" and score < REPLACED_WORD_BELOW):
+            status = "mispronounced"
+            score = min(MISPRONOUNCED_CEILING, score)
+            for p in errors:
+                mistakes[p.phoneme] += 1
+        elif kind == "equal" and confidence is not None and confidence < unclear_below:
+            status = "unclear"
+        else:
+            status = "correct"
+
+        pron = heard.pronunciation
+        entry.update(
+            status=status,
+            score=round(_clamp(score), 1),
+            similarity=round(heard.score / 100.0, 3),
+            expected_ipa=phonetics.ipa_string(pron),
+            spoken_ipa="".join(spoken_phonemes),
+            expected_phonemes=list(pron.phonemes),
+            spoken_phonemes=spoken_phonemes,
+            alignment=ops,
+            syllables=phonetics.syllabify(pron),
+            source=pron.source,
+            acoustic=True,
+            text_score=round(text_score, 1),
+            acoustic_score=round(heard.score, 1),
+            phonemes=[
+                {
+                    "phoneme": p.phoneme,
+                    "score": round(100.0 * p.probability, 1),
+                    "flagged": p.probability < PHONEME_ERROR,
+                    "alternative": None if p.probability >= PHONEME_ERROR else p.alternative,
+                    "start": p.start,
+                    "end": p.end,
+                }
+                for p in heard.phonemes
+            ],
+        )
 
     @staticmethod
     def _speech_stats(entries: List[Dict[str, Any]], duration: Optional[float], settings: Dict[str, Any]) -> Dict[str, Any]:
@@ -307,12 +415,9 @@ class PronunciationScorer:
         if timed_count >= 3 and speech["wpm"]:
             low, high = settings["wpm"]
             wpm = speech["wpm"]
-            if wpm < low:
-                rate_score = 100 - (low - wpm) * 1.2
-            elif wpm > high:
-                rate_score = 100 - (wpm - high) * 1.0
-            else:
-                rate_score = 100.0
+            floor = RATE_FLOOR * low
+            rate_score = 100.0 * _clamp((wpm - floor) / (high - floor), 0.0, 1.0)
+            rate_score -= max(0.0, wpm - RATE_CEILING * high)
             pause_penalty = sum(
                 min(20.0, 8.0 + 10.0 * (e["pause_before"] - settings["pause_s"]))
                 for e in entries
@@ -371,7 +476,10 @@ class PronunciationScorer:
                     add("word", "high", f"You said “{entry['spoken']}” instead of “{word}”.", entry["index"])
                     continue
                 op = ops[0]
-                if op["op"] == "replace":
+                if op["op"] == "replace" and op["actual"] == gop.OTHER:
+                    add("substitution", "high", f"In “{word}”, the /{op['expected']}/ sound wasn’t clear.",
+                        entry["index"], op["expected"], op["actual"])
+                elif op["op"] == "replace":
                     add("substitution", "high", f"In “{word}”, /{op['expected']}/ sounded like /{op['actual']}/.",
                         entry["index"], op["expected"], op["actual"])
                 elif op["op"] == "delete":
@@ -397,7 +505,7 @@ class PronunciationScorer:
         wpm = speech.get("wpm")
         if wpm and speech.get("word_count", 0) >= 3:
             low, high = settings["wpm"]
-            if wpm > high:
+            if wpm > RATE_CEILING * high:
                 add("pace", "medium", f"You spoke quickly ({wpm} wpm). Slow down slightly so every sound lands.")
             elif wpm < low:
                 add("pace", "low", f"Your pace was slow ({wpm} wpm). Aim for a smooth, connected rhythm.")
