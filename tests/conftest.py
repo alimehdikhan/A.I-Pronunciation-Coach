@@ -20,6 +20,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from backend import main
+from backend.api import coach as coach_api
 from backend.api import speech
 from backend.database import Base, get_db
 from backend.pronunciation import PronunciationScorer
@@ -86,6 +87,8 @@ def client(monkeypatch, fake_asr, session_factory):
     monkeypatch.setattr(runtime, "scorer", PronunciationScorer())
     monkeypatch.setattr(speech.audio_rate_limiter, "limit", 1000)
     speech.audio_rate_limiter.reset()
+    # The coach endpoints share one per-minute budget; a test must not spend the next test's.
+    coach_api.coach_rate_limiter.reset()
 
     def override_get_db():
         db = session_factory()
