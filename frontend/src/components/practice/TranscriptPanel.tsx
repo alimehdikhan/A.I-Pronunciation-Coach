@@ -1,4 +1,4 @@
-import { PauseIcon, PlayIcon } from '@phosphor-icons/react'
+import { PauseIcon, PlayIcon, TextTIcon } from '@phosphor-icons/react'
 import { motion, useTransform } from 'motion/react'
 import { useMemo } from 'react'
 import { SectionLabel } from '@/components/common'
@@ -122,6 +122,7 @@ export function TranscriptPanel({
   return (
     <div className="surface results-item p-6 sm:p-8">
       <SectionLabel
+        icon={<TextTIcon weight="fill" />}
         action={
           <div className="hidden flex-wrap justify-end gap-3 sm:flex">
             {LEGEND.filter((s) => statuses.has(s)).map((s) => (
