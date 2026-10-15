@@ -1,3 +1,4 @@
+import { useSoundName } from '@/lib/soundNames'
 import { MagicWandIcon, MountainsIcon, LeafIcon, SpinnerGapIcon, TreeIcon } from '@phosphor-icons/react'
 import { useMutation } from '@tanstack/react-query'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
@@ -16,6 +17,7 @@ import { useSettings } from '@/store/settings'
 export function PracticeWriter({ username, phoneme }: { username: string; phoneme: string }) {
   const level = useSettings((s) => s.level)
   const nativeLanguage = useSettings((s) => s.nativeLanguage)
+  const soundName = useSoundName()
   const [chosen, setChosen] = useState<Level>(level)
   const [topic, setTopic] = useState('')
   const setTarget = usePractice((s) => s.setTarget)
@@ -32,7 +34,7 @@ export function PracticeWriter({ username, phoneme }: { username: string; phonem
 
   return (
     <section className="surface p-6 sm:p-8">
-      <SectionLabel icon={<MagicWandIcon weight="fill" />}>Fresh sentences for /{phoneme}/</SectionLabel>
+      <SectionLabel icon={<MagicWandIcon weight="fill" />}>Fresh sentences for {soundName(phoneme).text}</SectionLabel>
       <p className="mb-4 text-[15px] text-muted-foreground">
         Your coach writes new sentences full of this sound, and each one is checked against the dictionary before you see it.
       </p>
