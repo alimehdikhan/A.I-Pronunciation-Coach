@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useScrollReveal } from '@/lib/gsap'
 import { trackSpotlight } from '@/lib/pointer'
+import { describeSound, GROUP_PLAIN, voiceText } from '@/lib/plain'
 import { useAnalytics, usePhonemes } from '@/lib/queries'
 import type { PhonemeSummary } from '@/lib/types'
 import { cn } from '@/lib/utils'
@@ -15,44 +16,21 @@ import { useUI } from '@/store/ui'
 
 type Filter = 'all' | PhonemeSummary['category']
 
-const GROUP_TITLES: Record<string, string> = {
-  plosive: 'Plosives',
-  fricative: 'Fricatives',
-  affricate: 'Affricates',
-  nasal: 'Nasals',
-  liquid: 'Liquids',
-  glide: 'Glides',
-  front: 'Front vowels',
-  central: 'Central vowels',
-  back: 'Back vowels',
-  'r-colored': 'R-coloured vowels',
-  diphthong: 'Diphthongs',
-}
-
-const GROUP_HINTS: Record<string, string> = {
-  plosive: 'Air is stopped completely, then released.',
-  fricative: 'Air is squeezed through a narrow gap.',
-  affricate: 'A stop that releases into a fricative.',
-  nasal: 'Air flows through the nose.',
-  liquid: 'Air flows around the tongue.',
-  glide: 'A quick movement into the next vowel.',
-  front: 'Tongue raised toward the front of the mouth.',
-  central: 'Tongue relaxed in the middle.',
-  back: 'Tongue raised toward the back.',
-  'r-colored': 'Vowels shaped by an American r.',
-  diphthong: 'Glide from one vowel into another.',
-}
 
 function SoundTile({ phoneme, mistakes, onOpen }: { phoneme: PhonemeSummary; mistakes?: number; onOpen: () => void }) {
+  const { spelled, word } = describeSound({ label: phoneme.label, phoneme: phoneme.symbol })
+  // Consonants are told apart by whether the throat buzzes (think / this); vowels by more example words.
+  const second = phoneme.category === 'consonant' ? voiceText(phoneme.voiced) : phoneme.examples.slice(1, 3).join(', ')
   return (
     <button
       type="button"
       onClick={onOpen}
       onPointerMove={trackSpotlight}
+      title={`Tap to see how to make this sound (${phoneme.symbol})`}
       className="sound-tile spotlight lift surface flex flex-col items-start gap-3 rounded-[22px] p-4 text-left sm:p-5"
     >
       <div className="flex w-full items-start justify-between gap-2">
-        <span className="ipa text-[34px] leading-none font-medium sm:text-[40px]">{phoneme.symbol}</span>
+        <span className="text-[30px] leading-none font-semibold tracking-tight sm:text-[36px]">{spelled}</span>
         {mistakes ? (
           <span className="inline-flex items-center gap-1 rounded-full bg-bad-soft px-2 py-0.5 text-[11px] font-semibold text-bad">
             <WarningCircleIcon size={12} weight="fill" /> {mistakes}
@@ -62,8 +40,8 @@ function SoundTile({ phoneme, mistakes, onOpen }: { phoneme: PhonemeSummary; mis
         )}
       </div>
       <div className="min-w-0">
-        <div className="truncate text-[15px] font-semibold tracking-tight">{phoneme.examples[0]}</div>
-        <div className="truncate text-[13px] text-muted-foreground">{phoneme.label}</div>
+        <div className="truncate text-[15px] font-semibold tracking-tight">as in {word || phoneme.examples[0]}</div>
+        <div className="truncate text-[13px] text-muted-foreground">{second}</div>
       </div>
     </button>
   )
@@ -102,7 +80,7 @@ export default function SoundsPage() {
       <PageHeader
         eyebrow="Sound Library"
         title="Every sound in English."
-        description="All 41 sounds of American English, with mouth guides, examples and minimal pairs you can hear."
+        description="All 41 sounds of American English. Tap one to see how to make it, hear examples, and practise words that sound almost alike."
       />
 
       <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -114,7 +92,7 @@ export default function SoundsPage() {
             { value: 'all', label: 'All' },
             { value: 'consonant', label: 'Consonants' },
             { value: 'vowel', label: 'Vowels' },
-            { value: 'diphthong', label: 'Diphthongs' },
+            { value: 'diphthong', label: 'Two-part vowels' },
           ]}
         />
         <div className="relative sm:w-64">
@@ -132,15 +110,15 @@ export default function SoundsPage() {
       )}
 
       {!isLoading && groups.length === 0 && (
-        <EmptyState icon={<MagnifyingGlassIcon />} title="No sounds match" description="Try a different word or symbol." />
+        <EmptyState icon={<MagnifyingGlassIcon />} title="No sounds match" description="Try a different word or sound." />
       )}
 
       <div className="space-y-10">
         {groups.map(([group, items]) => (
           <section key={group}>
             <div className="mb-4 flex items-baseline gap-3">
-              <h2 className="text-[22px] font-semibold tracking-tight">{GROUP_TITLES[group] ?? group}</h2>
-              <p className="hidden text-[14px] text-muted-foreground sm:block">{GROUP_HINTS[group]}</p>
+              <h2 className="text-[22px] font-semibold tracking-tight">{GROUP_PLAIN[group]?.title ?? group}</h2>
+              <p className="hidden text-[14px] text-muted-foreground sm:block">{GROUP_PLAIN[group]?.hint}</p>
             </div>
             <div className={cn('grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6')}>
               {items.map((p) => (
