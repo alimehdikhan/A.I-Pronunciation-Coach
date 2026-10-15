@@ -35,6 +35,12 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
   )
 }
 
+const NATIVE_LANGUAGES = [
+  'Arabic', 'Bengali', 'Chinese (Mandarin)', 'French', 'German', 'Gujarati', 'Hindi', 'Indonesian', 'Italian',
+  'Japanese', 'Korean', 'Marathi', 'Persian', 'Portuguese', 'Punjabi', 'Russian', 'Spanish', 'Tamil', 'Telugu',
+  'Turkish', 'Urdu', 'Vietnamese',
+]
+
 export function SettingsDialog() {
   const open = useUI((s) => s.settingsOpen)
   const setOpen = useUI((s) => s.setSettingsOpen)
@@ -81,6 +87,27 @@ export function SettingsDialog() {
               className="h-10 border-0 bg-transparent px-0 text-[15px] shadow-none focus-visible:ring-0 dark:bg-transparent"
             />
           </div>
+        </Group>
+
+        <Group title="Your coach" footer="Optional. The coach uses it to say what is usually hard for speakers of your language. It stays in this browser.">
+          <Row label="First language">
+            <Select
+              value={settings.nativeLanguage ?? '__none'}
+              onValueChange={(value) => settings.setNativeLanguage(value === '__none' ? null : value)}
+            >
+              <SelectTrigger className="h-8 max-w-[190px] min-w-0 border-0 bg-transparent text-muted-foreground shadow-none dark:bg-transparent">
+                <SelectValue placeholder="Not set" />
+              </SelectTrigger>
+              <SelectContent position="popper" align="end" className="max-h-72">
+                <SelectItem value="__none">Not set</SelectItem>
+                {NATIVE_LANGUAGES.map((language) => (
+                  <SelectItem key={language} value={language}>
+                    {language}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Row>
         </Group>
 
         <Group title="Appearance">
