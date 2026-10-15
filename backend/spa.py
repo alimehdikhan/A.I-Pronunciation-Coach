@@ -5,9 +5,28 @@ from __future__ import annotations
 from pathlib import Path
 
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.responses import Response
 from starlette.staticfiles import StaticFiles
 
 from backend.security import build_spa_csp
+
+# The pre-React page loaded these two files and was served without
+# Cache-Control, so some browsers still show it from their cache. Its requests
+# for them are the only way to reach those browsers: purge the cache, then
+# reload once into a fresh URL (which can't be a cache hit) to get the app.
+_LEGACY_RELOAD = (
+    "if (!/[?&]_reload=/.test(location.search)) "
+    "location.replace(location.pathname + '?_reload=' + Date.now());\n"
+)
+LEGACY_FILES = {
+    "script.js": ("text/javascript", _LEGACY_RELOAD),
+    "styles.css": ("text/css", ""),
+}
+
+
+def _legacy_response(path: str) -> Response:
+    media_type, body = LEGACY_FILES[path]
+    return Response(body, media_type=media_type, headers={"Cache-Control": "no-store", "Clear-Site-Data": '"cache"'})
 
 
 class SPAStaticFiles(StaticFiles):
@@ -33,6 +52,8 @@ class SPAStaticFiles(StaticFiles):
                 raise
             response = None
         if response is None or response.status_code == 404:
+            if path in LEGACY_FILES:
+                return _legacy_response(path)
             # Missing files (e.g. stale chunks after a deploy) must 404; only
             # extension-less client routes fall back to the app shell.
             if "." in path.rsplit("/", 1)[-1]:
@@ -44,6 +65,10 @@ class SPAStaticFiles(StaticFiles):
             response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
         elif path in ("", ".", "index.html"):
             self._shell_headers(response)
+        else:
+            # Unfingerprinted files (favicon, ...): always revalidate, so no
+            # browser keeps a copy on its own heuristics after a deploy.
+            response.headers["Cache-Control"] = "no-cache"
         return response
 
     def _policy(self) -> str | None:
