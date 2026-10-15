@@ -1,3 +1,4 @@
+import { describeSound } from '@/lib/plain'
 import { GearSixIcon, MoonIcon, QuotesIcon } from '@phosphor-icons/react'
 import { useNavigate } from 'react-router'
 import {
@@ -56,9 +57,10 @@ export function CommandMenu() {
               value={`sound ${p.symbol} ${p.label} ${p.name} ${p.examples.join(' ')}`}
               onSelect={() => run(() => openPhoneme(p.symbol))}
             >
-              <span className="ipa grid size-6 shrink-0 place-items-center rounded-md bg-primary-soft text-[13px] text-primary">{p.symbol}</span>
+              <span className="grid h-6 min-w-6 shrink-0 place-items-center rounded-md bg-primary-soft px-1 text-[12px] font-semibold text-primary">
+                {describeSound({ label: p.label, phoneme: p.symbol }).spelled}
+              </span>
               <span className="truncate">{p.label}</span>
-              <CommandShortcut className="truncate tracking-normal">{p.name}</CommandShortcut>
             </CommandItem>
           ))}
         </CommandGroup>
