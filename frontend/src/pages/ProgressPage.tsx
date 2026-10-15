@@ -1,10 +1,4 @@
-import {
-  ArrowRightIcon,
-  ChartLineUpIcon,
-  LockKeyIcon,
-  TrashIcon,
-  UserCirclePlusIcon,
-} from '@phosphor-icons/react'
+import { ArrowRightIcon, CalendarBlankIcon, ChartLineUpIcon, GaugeIcon, LockKeyIcon, SparkleIcon, TrashIcon, UserCirclePlusIcon, WarningCircleIcon, WaveformIcon } from '@phosphor-icons/react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router'
@@ -31,13 +25,13 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
+import { MetricIcon } from '@/components/practice/ScoreSummary'
 import { ActivityRings } from '@/components/ui/score-ring'
 import { Skeleton } from '@/components/ui/skeleton'
 import { api, ApiError } from '@/lib/api'
 import { useScrollReveal, useStaggerIn } from '@/lib/gsap'
 import { keys, useAnalytics } from '@/lib/queries'
 import { SCORE_WORDS } from '@/lib/plain'
-import { cn } from '@/lib/utils'
 import { useSettings } from '@/store/settings'
 import { useUI } from '@/store/ui'
 
@@ -204,6 +198,7 @@ export default function ProgressPage() {
           <div className="grid gap-5 lg:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)]">
             <Panel className="progress-item p-6 sm:p-8">
               <SectionLabel
+                icon={<ChartLineUpIcon weight="fill" />}
                 action={
                   <Segmented<TrendMetric>
                     layoutId="trend-metric"
@@ -211,10 +206,10 @@ export default function ProgressPage() {
                     value={metric}
                     onChange={setMetric}
                     options={[
-                      { value: 'score', label: 'Overall' },
-                      { value: 'pronunciation', label: SCORE_WORDS.pronunciation.label },
-                      { value: 'fluency', label: SCORE_WORDS.fluency.label },
-                      { value: 'clarity', label: SCORE_WORDS.clarity.label },
+                      { value: 'score', label: 'Overall', icon: <ChartLineUpIcon weight="bold" /> },
+                      { value: 'pronunciation', label: SCORE_WORDS.pronunciation.label, icon: <WaveformIcon weight="bold" /> },
+                      { value: 'fluency', label: SCORE_WORDS.fluency.label, icon: <GaugeIcon weight="bold" /> },
+                      { value: 'clarity', label: SCORE_WORDS.clarity.label, icon: <SparkleIcon weight="bold" /> },
                     ]}
                   />
                 }
@@ -231,7 +226,7 @@ export default function ProgressPage() {
             </Panel>
 
             <Panel className="progress-item flex flex-col p-6 sm:p-8">
-              <SectionLabel>How you score</SectionLabel>
+              <SectionLabel icon={<GaugeIcon weight="fill" />}>How you score</SectionLabel>
               <div className="flex flex-1 flex-col items-center justify-center gap-6 sm:flex-row lg:flex-col xl:flex-row">
                 <ActivityRings
                   size={150}
@@ -246,7 +241,7 @@ export default function ProgressPage() {
                 <div className="w-full space-y-3">
                   {(['pronunciation', 'fluency', 'clarity'] as const).map((key, i) => (
                     <div key={key} className="flex items-start gap-2.5">
-                      <span className={cn('mt-1.5 size-2.5 shrink-0 rounded-full', ['bg-[#fa114f]', 'bg-[#92e82a]', 'bg-[#1eeaef]'][i])} />
+                      <MetricIcon Icon={[WaveformIcon, GaugeIcon, SparkleIcon][i]} color={['#fa114f', '#6fd12b', '#00b8d9'][i]} />
                       <div className="min-w-0 flex-1">
                         <div className="flex items-baseline justify-between gap-2">
                           <span className="text-[14px] font-medium">{SCORE_WORDS[key].label}</span>
@@ -263,19 +258,19 @@ export default function ProgressPage() {
 
           {!!analytics.sound_mastery?.length && (
             <Panel className="progress-item p-6 sm:p-8">
-              <SectionLabel>Sound mastery</SectionLabel>
+              <SectionLabel icon={<WaveformIcon weight="fill" />}>Sound mastery</SectionLabel>
               <SoundMasteryGrid sounds={analytics.sound_mastery} />
             </Panel>
           )}
 
           <div className="grid gap-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] lg:items-start">
             <Panel className="progress-item p-6 sm:p-8">
-              <SectionLabel>Practice calendar</SectionLabel>
+              <SectionLabel icon={<CalendarBlankIcon weight="fill" />}>Practice calendar</SectionLabel>
               <ActivityCalendar days={analytics.daily_activity ?? []} />
             </Panel>
             {!!analytics.tricky_words?.length && (
               <Panel className="progress-item p-6 sm:p-8">
-                <SectionLabel>Tricky words</SectionLabel>
+                <SectionLabel icon={<WarningCircleIcon weight="fill" />}>Tricky words</SectionLabel>
                 <TrickyWords words={analytics.tricky_words} />
               </Panel>
             )}
