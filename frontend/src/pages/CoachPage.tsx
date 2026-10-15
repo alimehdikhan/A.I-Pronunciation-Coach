@@ -1,17 +1,4 @@
-import {
-  ArrowClockwiseIcon,
-  ArrowLeftIcon,
-  ArrowRightIcon,
-  CheckCircleIcon,
-  LockKeyIcon,
-  MicrophoneIcon,
-  QuestionIcon,
-  SparkleIcon,
-  StopIcon,
-  TrendDownIcon,
-  TrendUpIcon,
-  XCircleIcon,
-} from '@phosphor-icons/react'
+import { ArrowClockwiseIcon, ArrowLeftIcon, ArrowRightIcon, CheckCircleIcon, ListChecksIcon, LockKeyIcon, MicrophoneIcon, QuestionIcon, SparkleIcon, StopIcon, TrendDownIcon, TrendUpIcon, WaveformIcon, XCircleIcon } from '@phosphor-icons/react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router'
@@ -214,7 +201,7 @@ function Session({ plan, username }: { plan: CoachPlan; username: string }) {
   return (
     <section className="surface p-6 sm:p-8">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <SectionLabel className="mb-0">Today&rsquo;s session</SectionLabel>
+        <SectionLabel className="mb-0" icon={<ListChecksIcon weight="fill" />}>Today&rsquo;s session</SectionLabel>
         <ol className="flex items-center gap-1.5" aria-label="Session progress">
           {plan.session.map((s, i) => (
             <li key={s.kind}>
@@ -465,7 +452,7 @@ export default function CoachPage() {
 
           {plan.mastery.length > 0 && (
             <section className="surface p-6 sm:p-8">
-              <SectionLabel>Your sounds</SectionLabel>
+              <SectionLabel icon={<WaveformIcon weight="fill" />}>Your sounds</SectionLabel>
               <div className="flex flex-wrap gap-2.5">
                 {plan.mastery.map((sound) => (
                   <SoundChip key={sound.phoneme} sound={sound} />
