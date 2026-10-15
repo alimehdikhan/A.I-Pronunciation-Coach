@@ -93,6 +93,21 @@ python scripts/eval_speechocean.py report    --split test --limit 500
 python scripts/eval_speechocean.py calibrate --split train --limit 700   # after: prepare --split train --no-asr
 ```
 
+## The learning journey
+
+A scorer tells you how you did. A coach gives you a route and a reason to come back. The **Journey** page (`backend/journey.py`) turns the attempts the app already stores into that, with no extra tables:
+
+| Part | What it does |
+|---|---|
+| **Check-up** | Six short sentences that between them cover the sounds learners most often miss. At the end it suggests a level (average under 60 is beginner, under 80 intermediate, otherwise advanced) and the path starts from real data. |
+| **Learning path** | The 41 sounds in teaching order (th, r, l, v, w, sh, ch, j, ng ... first). Each unit shows Got it / Practising / Started / Not started, and **Start** opens a coach session on exactly that sound (`/coach?focus=`). |
+| **Daily goal** | 3, 5 or 10 attempts a day, chosen in Settings, shown on the practice page as `2/5 today` with the streak. |
+| **Level and points** | 10 to 20 points per attempt (a little more for a good score). Level n needs 60 x (n-1)^2 points in total. |
+| **Badges** | Twelve milestones (first attempt, 10/50/100 attempts, scores of 80 and 90, 3/7/30-day streaks, first and fifth sound mastered, goal met on five days), with how far away each one is. |
+| **Time to review** | Words missed at least twice and at least a quarter of the time, not seen for 12 hours, most missed first. |
+
+`GET /api/journey/{username}` returns all of it in one call, and `GET /api/journey/placement` returns the check-up sentences.
+
 ## The coach's notes
 
 The tip text comes from a language model through [Groq](https://groq.com) when `GROQ_API_KEY` is set, and from the built-in knowledge base otherwise. The model only explains slips that the scorer already found. It never sees audio or your name, it cannot change a score, and its answer is validated before it is shown. If the call fails or times out, the knowledge-base tip appears instead. Replies are cached per set of slips, and the endpoint has its own rate limit.
@@ -346,6 +361,8 @@ All settings are environment variables. See [`.env.example`](.env.example).
 | `DELETE` | `/api/history/{username}` | Delete a user's history (needs the profile key) |
 | `GET` | `/api/analytics/{username}` | Averages, streaks, trend, top weaknesses, improvement, a twelve-week calendar, per-sound mastery and tricky words |
 | `GET` | `/api/coach/plan/{username}` | Mastery per sound, today's focus and a guided session |
+| `GET` | `/api/journey/{username}` | Level, points, daily goal, badges, the path through the sounds and the words to review |
+| `GET` | `/api/journey/placement` | The six check-up sentences |
 | `POST` | `/api/coach/chat` | Ask the coach a question (`message`, `history`), grounded in the learner's own data |
 | `POST` | `/api/coach/practice` | Fresh practice sentences for a sound (`phoneme`, `level`, `topic`), each verified to contain it |
 | `GET` | `/api/coach/report/{username}` | A short written progress note |
