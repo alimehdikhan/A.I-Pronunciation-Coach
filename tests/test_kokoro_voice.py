@@ -126,3 +126,16 @@ def test_the_default_voices_clips_keep_their_original_names(tmp_path):
     make_voice(tmp_path, engine).synthesize("Good morning.", 0.95)
     legacy = hashlib.sha1("af_heart|0.95|Good morning.".encode()).hexdigest()
     assert (tmp_path / f"{legacy}.wav").is_file()  # clips rendered before voice choice still hit
+
+
+def test_warm_up_renders_once_without_caching_and_never_raises(tmp_path):
+    engine = FakeEngine()
+    voice = make_voice(tmp_path, engine)
+    voice.warm_up()
+    assert len(engine.calls) == 1 and not list(tmp_path.glob("*.wav"))
+
+    class Broken:
+        def create(self, *args, **kwargs):
+            raise RuntimeError("no session")
+
+    make_voice(tmp_path, Broken()).warm_up()  # start-up must survive a failed warm-up
