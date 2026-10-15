@@ -217,6 +217,8 @@ function Sidebar() {
 function MobileHeader() {
   const setCommandOpen = useUI((s) => s.setCommandOpen)
   const setSettingsOpen = useUI((s) => s.setSettingsOpen)
+  const username = useSettings((s) => s.username)
+  const accountEmail = useSettings((s) => s.accountEmail)
   return (
     <header className="material sticky top-0 z-30 flex h-12 items-center justify-between border-b border-border px-4 lg:hidden">
       <div className="flex items-center gap-2">
@@ -231,6 +233,22 @@ function MobileHeader() {
         <button onClick={() => setSettingsOpen(true)} className="grid size-8 place-items-center rounded-full text-muted-foreground" aria-label="Settings">
           <GearSixIcon size={18} weight="bold" />
         </button>
+        {accountEmail ? (
+          <NavLink
+            to="/profile"
+            aria-label="Your profile"
+            className="ml-1 grid size-8 place-items-center rounded-full bg-gradient-to-b from-[#a1a1a6] to-[#6e6e73] text-[11px] font-semibold text-white"
+          >
+            {username ? initials(username) : <UserIcon size={16} weight="bold" />}
+          </NavLink>
+        ) : (
+          <NavLink
+            to="/login"
+            className="ml-1.5 inline-flex h-8 items-center gap-1.5 rounded-full bg-primary px-3 text-[13px] font-semibold text-primary-foreground"
+          >
+            <SignInIcon size={15} weight="bold" /> Sign in
+          </NavLink>
+        )}
       </div>
     </header>
   )
