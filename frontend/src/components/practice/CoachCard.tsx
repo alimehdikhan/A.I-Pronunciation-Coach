@@ -34,8 +34,9 @@ export function slipsOf(result: EvaluationResult): CoachSlip[] {
   return slips.slice(0, MAX_SLIPS)
 }
 
-export function CoachCard({ result }: { result: EvaluationResult }) {
+export function CoachCard({ result, previousScore }: { result: EvaluationResult; previousScore?: number }) {
   const username = useSettings((s) => s.username)
+  const nativeLanguage = useSettings((s) => s.nativeLanguage)
   const { data: analytics } = useAnalytics(username)
 
   const request = useMemo<CoachRequest | null>(() => {
@@ -46,8 +47,10 @@ export function CoachCard({ result }: { result: EvaluationResult }) {
       score: result.score,
       slips: slipsOf(result),
       weak_sounds: (analytics?.top_weaknesses ?? []).slice(0, 5).map((w) => ({ phoneme: w.phoneme, count: w.count })),
+      previous_score: previousScore ?? null,
+      native_language: nativeLanguage,
     }
-  }, [result, analytics])
+  }, [result, analytics, previousScore, nativeLanguage])
 
   const { data, isLoading } = useCoach(request)
   if (!request) return null
