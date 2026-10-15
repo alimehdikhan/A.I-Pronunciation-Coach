@@ -1,5 +1,6 @@
 """Tests for the FastAPI pronunciation coach API endpoints."""
 
+import numpy as np
 from fastapi.testclient import TestClient
 
 from backend import main
@@ -206,6 +207,43 @@ def test_spa_fallback_serves_routes_but_404s_missing_files(client, tmp_path):
     assert web.get("/assets/missing-old.js").status_code == 404
 
 
+def test_spa_unfingerprinted_files_are_revalidated(tmp_path):
+    from starlette.applications import Starlette
+
+    from backend.spa import SPAStaticFiles
+
+    (tmp_path / "index.html").write_text("<html>app</html>", encoding="utf-8")
+    (tmp_path / "favicon.svg").write_text("<svg/>", encoding="utf-8")
+    spa = Starlette()
+    spa.mount("/", SPAStaticFiles(directory=str(tmp_path), html=True))
+
+    assert TestClient(spa).get("/favicon.svg").headers["cache-control"] == "no-cache"
+
+
+def test_spa_reloads_browsers_stuck_on_the_cached_legacy_page(tmp_path):
+    from starlette.applications import Starlette
+
+    from backend.spa import SPAStaticFiles
+
+    (tmp_path / "index.html").write_text("<html>app</html>", encoding="utf-8")
+    spa = Starlette()
+    spa.mount("/", SPAStaticFiles(directory=str(tmp_path), html=True))
+    web = TestClient(spa)
+
+    script = web.get("/script.js")
+    assert script.status_code == 200
+    assert script.headers["content-type"].startswith("text/javascript")
+    assert script.headers["clear-site-data"] == '"cache"'
+    assert script.headers["cache-control"] == "no-store"
+    assert "location.replace" in script.text and "_reload=" in script.text
+    styles = web.get("/styles.css")
+    assert styles.status_code == 200 and styles.headers["content-type"].startswith("text/css")
+    assert styles.headers["clear-site-data"] == '"cache"'
+    # Only the legacy page's own files are answered; other missing files still 404.
+    assert web.get("/other.js").status_code == 404
+    assert web.get("/assets/script.js").status_code == 404
+
+
 class FakeVoice:
     def __init__(self):
         self.calls = []
@@ -236,3 +274,55 @@ def test_tts_unavailable_and_validation(client, monkeypatch):
     assert client.get("/api/tts", params={"text": "x" * 400}).status_code == 422
     assert client.get("/api/tts", params={"text": "Hello", "rate": 5}).status_code == 422
     assert client.get("/api/tts", params={"text": "!!!"}).status_code == 400
+
+
+class FakePhonemes:
+    def __init__(self, fail=False):
+        self.fail = fail
+        self.calls = 0
+
+    def log_probs(self, samples):
+        self.calls += 1
+        if self.fail:
+            raise RuntimeError("onnx exploded")
+        return np.zeros((10, 5), dtype=np.float32)
+
+
+def test_evaluate_passes_acoustic_posteriors_to_the_scorer(client, monkeypatch):
+    from backend.runtime import runtime
+
+    fake = FakePhonemes()
+    monkeypatch.setattr(runtime, "phonemes", fake)
+    seen = {}
+    original = runtime.scorer.score_pronunciation
+
+    def spy(*args, **kwargs):
+        seen["log_probs"] = args[5] if len(args) > 5 else kwargs.get("phoneme_log_probs")
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(runtime.scorer, "score_pronunciation", spy)
+
+    response = client.post(
+        "/api/evaluate",
+        files={"audio": ("clip.wav", wav_bytes(), "audio/wav")},
+        data={"target_text": "Hello world"},
+    )
+
+    assert response.status_code == 200 and fake.calls == 1
+    assert seen["log_probs"] is not None and seen["log_probs"].shape == (10, 5)
+    assert "phonemes;dur=" in response.headers["server-timing"]
+
+
+def test_evaluate_survives_a_failing_phoneme_model(client, monkeypatch):
+    from backend.runtime import runtime
+
+    monkeypatch.setattr(runtime, "phonemes", FakePhonemes(fail=True))
+
+    response = client.post(
+        "/api/evaluate",
+        files={"audio": ("clip.wav", wav_bytes(), "audio/wav")},
+        data={"target_text": "Hello world"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["score"] > 0
