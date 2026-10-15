@@ -14,6 +14,8 @@ interface SettingsState {
   username: string
   theme: Theme
   voiceURI: string | null
+  /** Attempts to aim for each day: 3, 5 or 10. */
+  dailyGoal: number
   /** The learner's first language, so the coach can say what is typically hard for them. Stays in this browser. */
   nativeLanguage: string | null
   /** Which neural voice the server speaks with; null is the server's default. */
@@ -34,6 +36,7 @@ interface SettingsState {
   setUsername: (username: string) => void
   setTheme: (theme: Theme) => void
   setVoiceURI: (uri: string | null) => void
+  setDailyGoal: (goal: number) => void
   setNativeLanguage: (language: string | null) => void
   setCoachVoice: (voice: string | null) => void
   setRate: (rate: number) => void
@@ -54,6 +57,7 @@ export const useSettings = create<SettingsState>()(
       username: '',
       theme: 'dark',
       voiceURI: null,
+      dailyGoal: 5,
       nativeLanguage: null,
       coachVoice: null,
       rate: 0.95,
@@ -68,6 +72,7 @@ export const useSettings = create<SettingsState>()(
       setUsername: (username) => set({ username: username.trim().slice(0, 40) }),
       setTheme: (theme) => set({ theme }),
       setVoiceURI: (voiceURI) => set({ voiceURI }),
+      setDailyGoal: (dailyGoal) => set({ dailyGoal }),
       setNativeLanguage: (nativeLanguage) => set({ nativeLanguage }),
       setCoachVoice: (coachVoice) => set({ coachVoice }),
       setRate: (rate) => set({ rate }),
