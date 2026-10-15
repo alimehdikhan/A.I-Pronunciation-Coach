@@ -154,14 +154,13 @@ Settings can live in a `.env` file at the project root (it is git-ignored; see `
 
 ### Turning on acoustic scoring
 
-The phoneme model is not downloaded automatically, because exporting it needs PyTorch, which the app itself does not use. Export it once into the cache directory:
+The phoneme model is not bundled with the repository. Download the exported int8 file (355 MB) from the Hub into the cache directory:
 
 ```bash
-pip install torch transformers onnx onnxscript --extra-index-url https://download.pytorch.org/whl/cpu
-python scripts/export_phoneme_model.py ~/.cache/pronunciation_coach/phonemes
+python -c "from huggingface_hub import snapshot_download; snapshot_download('Alimehdi973/wav2vec2-espeak-onnx-int8', local_dir='$HOME/.cache/pronunciation_coach/phonemes')"
 ```
 
-That downloads about 1.3 GB and writes a 355 MB int8 file. After a restart, `/health` reports `"acoustic_scoring": true`. On a 4-core CPU a four-second clip takes about one second.
+After a restart, `/health` reports `"acoustic_scoring": true`. On a 4-core CPU a four-second clip takes about one second. To rebuild the file from Meta's original weights instead, run `scripts/export_phoneme_model.py` (it needs PyTorch, `transformers`, `onnx` and `onnxscript`, which the app itself does not).
 
 ### Turning on the AI coach
 
@@ -190,11 +189,11 @@ docker run -p 7860:7860 -e NEON_DATABASE_URL="postgresql://…" -e GROQ_API_KEY=
 
 The image builds the frontend in a Node stage, installs the Python dependencies (no PyTorch), bakes in CMUDict, the Whisper weights and the Piper voice for fast cold starts, logs JSON, and runs as a non-root user. The baked Whisper size follows `WHISPER_MODEL_SIZE`; use `--build-arg PRELOAD_WHISPER=none` to skip it.
 
-Add `--build-arg PRELOAD_PHONEMES=1` to bake the phoneme model too. The build installs PyTorch temporarily, exports the model, then removes PyTorch again, so it adds a few minutes and needs about 6 GB of memory but leaves the image size close to the model file. Without it the app runs on Whisper's words only. Without `NEON_DATABASE_URL`, history is stored in SQLite inside the container and is lost when the container is replaced.
+The phoneme model is downloaded from the Hub during the build as well (`--build-arg PRELOAD_PHONEMES=0` skips it, and `PHONEME_MODEL_REPO` points at another copy). If that download fails the build still succeeds and the app scores from Whisper's words only. Without `NEON_DATABASE_URL`, history is stored in SQLite inside the container and is lost when the container is replaced.
 
 ### Hugging Face Spaces
 
-The front matter at the top of this file configures a Docker Space on port 7860. Pushing to the Space remote rebuilds it. Add `NEON_DATABASE_URL` and `GROQ_API_KEY` as secrets. Hugging Face passes Space variables to the build as build args, so `WHISPER_MODEL_SIZE` and `PRELOAD_PHONEMES` can be set under Settings → Variables.
+The front matter at the top of this file configures a Docker Space on port 7860. Pushing to the Space remote rebuilds it. Add `NEON_DATABASE_URL` and `GROQ_API_KEY` as secrets. Hugging Face passes Space variables to the build as build args, so `WHISPER_MODEL_SIZE` (and `PRELOAD_PHONEMES=0` to skip the phoneme model) can be set under Settings → Variables.
 
 Free Spaces sleep after 48 hours without traffic. The `Keep Space awake` workflow (`.github/workflows/keep-alive.yml`) pings the Space every 6 hours and waits for it to come back if it was asleep. GitHub pauses scheduled workflows after 60 days without repository activity; re-enable it from the Actions tab if that happens.
 
@@ -260,11 +259,11 @@ All settings are environment variables. See [`.env.example`](.env.example).
 | `GET` | `/api/history/{username}` | Recent attempts with sound mistakes |
 | `DELETE` | `/api/history/{username}` | Delete a user's history (needs the profile key) |
 | `GET` | `/api/analytics/{username}` | Averages, streaks, trend and top weaknesses |
-| `POST` | `/api/auth/register` | Create an account (`email`, `password`, `username`); upgrades a guest profile in place |
+| `POST` | `/api/auth/register` | Create an account (`email`, `password`, `username`, optional `display_name`); upgrades a guest profile in place |
 | `POST` | `/api/auth/login` | Sign this browser in to an account |
 | `POST` | `/api/auth/logout` | Sign this browser out |
 | `GET` | `/api/auth/me` | The account this browser is signed in to, or `{"account": false}` |
-| `PATCH` | `/api/auth/me` | Rename the account |
+| `PATCH` | `/api/auth/me` | Change the username (unique) and/or the display name (may be shared) |
 | `POST` | `/api/auth/password` | Change the password (signs out other devices) |
 | `POST` | `/api/auth/delete` | Delete the account and its history (needs the password) |
 
@@ -272,11 +271,11 @@ Interactive docs are at `/docs`. Every response carries an `X-Request-ID` (also 
 
 ### Accounts and profiles
 
-You can use the app as a guest or with an account.
+First-time visitors land on the sign-in page, which also offers "Practice without signing in". A guest can record and be analysed, but the score, the word-by-word breakdown, the coach's tips and the progress page are shown only to signed-in users. The result is kept in the browser, so signing in or creating an account brings that same recording's score straight back. This is an interface gate rather than an access control: the API still returns a result to any client that asks for it.
 
 **Guests.** There is no sign-up. Each browser keeps a random profile key and sends it as `X-Profile-Key`. The first browser to use a name claims it, and only that key can read, add to or delete its history afterwards. The server stores a SHA-256 hash of the key. If a name is claimed elsewhere, evaluation still returns feedback with `"saved": false, "save_error": "profile_locked"`, and the history endpoints return `403` with `"code": "profile_locked"`.
 
-**Accounts.** `/signup` and `/login` create and open an account with an email and password. Signing up from a guest profile upgrades it in place, so its history is kept. There are no server-side sessions: signing in binds that browser's profile key to the account, so every existing endpoint authorises the same way it does for guests. One account can be open on several devices, and signing out removes only the device you signed out on. Changing the password signs out every other device. `/profile` shows your stats and lets you rename the account, change the password, delete your history or delete the account.
+**Accounts.** `/signup` and `/login` create and open an account with an email and password. An account has two names: a **display name**, which several people can share, and a **username**, which is unique because practice history is stored and looked up under it. Signing up from a guest profile upgrades it in place, so its history is kept. There are no server-side sessions: signing in binds that browser's profile key to the account, so every existing endpoint authorises the same way it does for guests. One account can be open on several devices, and signing out removes only the device you signed out on. Changing the password signs out every other device. `/profile` shows your stats and lets you change both names, change the password, delete your history or delete the account.
 
 Passwords are hashed with scrypt (stdlib, per-password salt) and compared in constant time, login failures do not say whether the email exists, and the auth endpoints have their own stricter rate limit. There is no email verification and no password reset yet, because the app has no mail service; losing the password means losing access to the account's history.
 
