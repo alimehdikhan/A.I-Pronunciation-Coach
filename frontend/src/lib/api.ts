@@ -100,7 +100,8 @@ export const api = {
     return { result, audio: prepared.blob }
   },
 
-  pronounce: (text: string) => request<PronounceResponse>(`/api/pronounce?text=${enc(text)}`),
+  // `v` names the response shape: a cached copy from before the plain-letter respelling is never reused.
+  pronounce: (text: string) => request<PronounceResponse>(`/api/pronounce?text=${enc(text)}&v=2`),
 
   phonemes: () => request<{ phonemes: PhonemeSummary[] }>('/api/phonemes').then((r) => r.phonemes),
 
