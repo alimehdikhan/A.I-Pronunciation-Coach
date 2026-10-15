@@ -236,3 +236,17 @@ export interface CoachReply {
   tips: { word: string; phoneme: string; tip: string }[]
   practice_sentence: string | null
 }
+
+/** The signed-in account for this browser, or `{ account: false }` for a guest. */
+export type AccountProfile =
+  | { account: false }
+  | {
+      account: true
+      username: string
+      email: string
+      /** ISO timestamp. */
+      member_since: string | null
+      attempts: number
+      /** Browsers currently signed in to this account. */
+      devices: number
+    }
