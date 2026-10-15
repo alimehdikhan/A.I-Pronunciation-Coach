@@ -109,6 +109,27 @@ Beyond explaining one attempt, the model has three larger jobs. They share one r
 | **Fresh sentences** | Coach page, `POST /api/coach/practice` | Every sentence must fit the level's length and contain at least two words whose dictionary pronunciation has the target sound. The words listed come from our own check, not the model's claim. |
 | **Progress note** | Progress page, `GET /api/coach/report/{username}` | Written only from the numbers in the analytics, and cached per set of numbers. |
 
+### How the chat understands a question
+
+The chat is a floating button on every page. Before the model is called, the server works out what is being asked and attaches the right facts:
+
+| The learner asks | What the server adds |
+|---|---|
+| A word ("mitochondria", "how do I say thorough") | The word, spelling-corrected against the dictionary, with IPA, syllables and stress |
+| A sound ("the r sound") | The library's description of how that sound is made |
+| "Ship or sheep?" | Both words, their sounds, and the sounds that differ |
+| "How am I doing?" | The learner's real numbers: average, improvement, weakest and strongest sounds |
+| "Give me sentences with th" | Sentences written by the model and checked against the dictionary |
+| Something abusive | A respectful reply from `backend/moderation.py`, with no model call |
+
+The model is asked to talk like a coach sitting next to the learner: short sentences, no IPA unless the learner used it, and words broken into syllables with the stressed one in capitals (my-toh-KON-dree-uh). The practice chips under an answer are the word that was asked about, not whatever the model suggested.
+
+### Keeping the model reliable
+
+Groq's free tier allows about 8,000 tokens a minute per model, and reasoning models occasionally produce JSON the provider rejects. `CoachService` therefore tries `PRONUNCIATION_COACH_LLM_MODEL` first, then each model in `PRONUNCIATION_COACH_LLM_FALLBACKS` (default `qwen/qwen3.8-27b,openai/gpt-oss-20b`), and retries a rejected JSON reply as plain text. A bad key stops at once. If every model fails the template answer is used.
+
+`scripts/eval_coach.py` runs a fixed set of questions through any model and checks the answers (valid JSON, correct articulation, stays on topic, ignores prompt injection, no invented numbers). On the free tier all three usable models passed the same cases, with median latency 1.7 s (`gpt-oss-120b`), 1.2 s (`gpt-oss-20b`) and 0.4 s (`qwen3.8-27b`).
+
 ### Noise cleanup
 
 Recordings go through `backend/enhance.py` before scoring. A spectral filter removes steady room noise when the recording is audibly noisy, and stretches of speech far quieter than the learner (people talking behind them) are turned down. Clean recordings are left untouched. The results screen says when the room was noisy.
