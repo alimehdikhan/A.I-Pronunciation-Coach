@@ -42,7 +42,6 @@ import { useSettings } from '@/store/settings'
 import { useUI } from '@/store/ui'
 
 type TrendMetric = 'score' | 'pronunciation' | 'fluency' | 'clarity'
-type DetailTab = 'history' | 'sounds' | 'calendar' | 'words'
 
 const TREND_COLORS: Record<TrendMetric, string> = {
   score: 'var(--chart-1)',
@@ -58,7 +57,6 @@ export default function ProgressPage() {
   const { data: analytics, isLoading, error } = useAnalytics(username)
   const locked = error instanceof ApiError && error.code === 'profile_locked'
   const [metric, setMetric] = useState<TrendMetric>('score')
-  const [tab, setTab] = useState<DetailTab>('history')
   const queryClient = useQueryClient()
   const scope = useRef<HTMLDivElement>(null)
 
@@ -263,35 +261,27 @@ export default function ProgressPage() {
             </Panel>
           </div>
 
-          <Panel className="progress-item p-6 sm:p-8">
-            <SectionLabel
-              action={
-                <Segmented<DetailTab>
-                  layoutId="progress-detail"
-                  size="sm"
-                  value={tab}
-                  onChange={setTab}
-                  options={[
-                    { value: 'history', label: 'Recent practice' },
-                    { value: 'sounds', label: 'All sounds' },
-                    { value: 'calendar', label: 'Calendar' },
-                    ...(analytics.tricky_words?.length ? [{ value: 'words' as const, label: 'Tricky words' }] : []),
-                  ]}
-                />
-              }
-            >
-              More detail
-            </SectionLabel>
-            {tab === 'history' && <HistoryPanel username={username} bare />}
-            {tab === 'sounds' &&
-              (analytics.sound_mastery?.length ? (
-                <SoundMasteryGrid sounds={analytics.sound_mastery} />
-              ) : (
-                <p className="text-[15px] text-muted-foreground">Say each sound a few times and it will show up here.</p>
-              ))}
-            {tab === 'calendar' && <ActivityCalendar days={analytics.daily_activity ?? []} />}
-            {tab === 'words' && !!analytics.tricky_words?.length && <TrickyWords words={analytics.tricky_words} />}
-          </Panel>
+          {!!analytics.sound_mastery?.length && (
+            <Panel className="progress-item p-6 sm:p-8">
+              <SectionLabel>Sound mastery</SectionLabel>
+              <SoundMasteryGrid sounds={analytics.sound_mastery} />
+            </Panel>
+          )}
+
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] lg:items-start">
+            <Panel className="progress-item p-6 sm:p-8">
+              <SectionLabel>Practice calendar</SectionLabel>
+              <ActivityCalendar days={analytics.daily_activity ?? []} />
+            </Panel>
+            {!!analytics.tricky_words?.length && (
+              <Panel className="progress-item p-6 sm:p-8">
+                <SectionLabel>Tricky words</SectionLabel>
+                <TrickyWords words={analytics.tricky_words} />
+              </Panel>
+            )}
+          </div>
+
+          <HistoryPanel username={username} />
         </div>
       )}
     </div>
