@@ -14,6 +14,8 @@ interface SettingsState {
   username: string
   theme: Theme
   voiceURI: string | null
+  /** Which neural voice the server speaks with; null is the server's default. */
+  coachVoice: string | null
   rate: number
   level: Level
   showIpa: boolean
@@ -28,6 +30,7 @@ interface SettingsState {
   setUsername: (username: string) => void
   setTheme: (theme: Theme) => void
   setVoiceURI: (uri: string | null) => void
+  setCoachVoice: (voice: string | null) => void
   setRate: (rate: number) => void
   setLevel: (level: Level) => void
   setShowIpa: (show: boolean) => void
@@ -45,6 +48,7 @@ export const useSettings = create<SettingsState>()(
       username: '',
       theme: 'dark',
       voiceURI: null,
+      coachVoice: null,
       rate: 0.95,
       level: 'beginner',
       showIpa: true,
@@ -56,6 +60,7 @@ export const useSettings = create<SettingsState>()(
       setUsername: (username) => set({ username: username.trim().slice(0, 40) }),
       setTheme: (theme) => set({ theme }),
       setVoiceURI: (voiceURI) => set({ voiceURI }),
+      setCoachVoice: (coachVoice) => set({ coachVoice }),
       setRate: (rate) => set({ rate }),
       setLevel: (level) => set({ level }),
       setShowIpa: (showIpa) => set({ showIpa }),
