@@ -1,50 +1,57 @@
-import { PaperPlaneTiltIcon, SparkleIcon } from '@phosphor-icons/react'
+import { PaperPlaneTiltIcon } from '@phosphor-icons/react'
 import { useMutation } from '@tanstack/react-query'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { SectionLabel } from '@/components/common'
+import { useNavigate } from 'react-router'
 import { SpeakChip } from '@/components/tutor/SpeakButton'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { api } from '@/lib/api'
-import type { ChatTurn } from '@/lib/types'
 import { cn } from '@/lib/utils'
-
-interface Message extends ChatTurn {
-  words?: string[]
-  tryNext?: string | null
-  offline?: boolean
-}
+import { useChat } from '@/store/chat'
+import { usePractice } from '@/store/practice'
+import { useSettings } from '@/store/settings'
 
 const STARTERS = [
-  'Which sound should I fix first?',
-  'How do I make the th sound?',
-  'Why do I keep saying v instead of w?',
-  'Give me a trick for the r sound',
+  'How am I doing?',
+  'How do I say mitochondria?',
+  'What is the difference between ship and sheep?',
+  'Give me sentences with the r sound',
 ]
 
-/** Ask the coach anything about your pronunciation. Answers are grounded in your own sounds and attempts. */
-export function CoachChat({ username }: { username: string }) {
-  const [messages, setMessages] = useState<Message[]>([])
+/** The conversation itself: messages, suggestions and the box to type in. Lives inside the chat panel. */
+export function CoachChat() {
+  const username = useSettings((s) => s.username)
+  const messages = useChat((s) => s.messages)
+  const add = useChat((s) => s.add)
+  const setOpen = useChat((s) => s.setOpen)
   const [draft, setDraft] = useState('')
   const reduce = useReducedMotion()
   const end = useRef<HTMLDivElement>(null)
+  const setTarget = usePractice((s) => s.setTarget)
+  const navigate = useNavigate()
 
   const ask = useMutation({
     mutationFn: (text: string) =>
       api.coachChat({
         username,
         message: text,
-        history: messages.slice(-6).map(({ role, text: t }) => ({ role, text: t })),
+        history: useChat
+          .getState()
+          .messages.slice(-7, -1)
+          .map(({ role, text: t }) => ({ role, text: t })),
       }),
     meta: { silent: true },
     onSuccess: (reply) =>
-      setMessages((m) => [
-        ...m,
-        { role: 'coach', text: reply.reply, words: reply.words, tryNext: reply.try_next, offline: reply.source === 'template' },
-      ]),
-    onError: () =>
-      setMessages((m) => [...m, { role: 'coach', text: 'I could not reach the coach just now. Please try again in a moment.', offline: true }]),
+      add({
+        role: 'coach',
+        text: reply.reply,
+        words: reply.words,
+        sentences: reply.sentences,
+        tryNext: reply.try_next,
+        offline: reply.source === 'template',
+      }),
+    onError: () => add({ role: 'coach', text: 'I could not reach the coach just now. Please try again in a moment.', offline: true }),
   })
 
   useEffect(() => {
@@ -54,7 +61,7 @@ export function CoachChat({ username }: { username: string }) {
   const send = (text: string) => {
     const clean = text.trim()
     if (!clean || ask.isPending) return
-    setMessages((m) => [...m, { role: 'learner', text: clean }])
+    add({ role: 'learner', text: clean })
     setDraft('')
     ask.mutate(clean)
   }
@@ -65,29 +72,27 @@ export function CoachChat({ username }: { username: string }) {
   }
 
   return (
-    <section className="surface p-6 sm:p-8">
-      <SectionLabel icon={<SparkleIcon weight="fill" />}>Ask your coach</SectionLabel>
-
-      {messages.length === 0 ? (
-        <div className="mb-4">
-          <p className="mb-3 text-[15px] text-muted-foreground">
-            Ask about a sound, a word, or what to practise. I answer from your own attempts.
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {STARTERS.map((text) => (
-              <button
-                key={text}
-                type="button"
-                onClick={() => send(text)}
-                className="rounded-full bg-fill px-3.5 py-2 text-[14px] transition-colors hover:bg-fill-strong"
-              >
-                {text}
-              </button>
-            ))}
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4" aria-live="polite">
+        {messages.length === 0 ? (
+          <div>
+            <p className="mb-3 text-[15px] text-muted-foreground">
+              Hi! Ask me about a word, a sound, or what to practise. I answer from your own attempts.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {STARTERS.map((text) => (
+                <button
+                  key={text}
+                  type="button"
+                  onClick={() => send(text)}
+                  className="rounded-full bg-fill px-3.5 py-2 text-left text-[14px] transition-colors hover:bg-fill-strong"
+                >
+                  {text}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
-      ) : (
-        <div className="mb-4 max-h-[420px] space-y-3 overflow-y-auto pr-1" aria-live="polite">
+        ) : (
           <AnimatePresence initial={false}>
             {messages.map((message, index) => (
               <motion.div
@@ -99,7 +104,7 @@ export function CoachChat({ username }: { username: string }) {
               >
                 <div
                   className={cn(
-                    'max-w-[88%] rounded-[22px] px-4 py-3 text-[15px] leading-relaxed',
+                    'max-w-[90%] rounded-[20px] px-3.5 py-2.5 text-[15px] leading-relaxed',
                     message.role === 'learner' ? 'bg-primary text-primary-foreground' : 'bg-fill',
                   )}
                 >
@@ -118,30 +123,54 @@ export function CoachChat({ username }: { username: string }) {
                       ))}
                     </div>
                   )}
+                  {!!message.sentences?.length && (
+                    <ul className="mt-3 space-y-2">
+                      {message.sentences.map((sentence) => (
+                        <li key={sentence.text} className="flex flex-col gap-2 rounded-xl bg-background/60 p-3">
+                          <span className="text-[15px]">{sentence.text}</span>
+                          <span className="flex items-center gap-2">
+                            <SpeakChip text={sentence.text} rate={0.9}>
+                              Listen
+                            </SpeakChip>
+                            <Button
+                              size="sm"
+                              onClick={() => {
+                                setTarget({ text: sentence.text, source: 'custom' })
+                                setOpen(false)
+                                navigate('/')
+                              }}
+                            >
+                              Practise
+                            </Button>
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                   {message.offline && <p className="mt-1.5 text-xs text-subtle">Built-in answer: the language model was not reachable.</p>}
                 </div>
               </motion.div>
             ))}
           </AnimatePresence>
-          {ask.isPending && (
-            <div className="flex" aria-label="The coach is writing">
-              <div className="flex gap-1 rounded-[22px] bg-fill px-4 py-3.5">
-                {[0, 1, 2].map((i) => (
-                  <motion.span
-                    key={i}
-                    className="size-2 rounded-full bg-muted-foreground"
-                    animate={reduce ? undefined : { opacity: [0.3, 1, 0.3], y: [0, -3, 0] }}
-                    transition={{ duration: 0.9, repeat: Infinity, delay: i * 0.15 }}
-                  />
-                ))}
-              </div>
+        )}
+        {ask.isPending && (
+          <div className="flex" aria-label="The coach is writing">
+            <div className="flex gap-1 rounded-[20px] bg-fill px-4 py-3.5">
+              {[0, 1, 2].map((i) => (
+                <motion.span
+                  key={i}
+                  className="size-2 rounded-full bg-muted-foreground"
+                  animate={reduce ? undefined : { opacity: [0.3, 1, 0.3], y: [0, -3, 0] }}
+                  transition={{ duration: 0.9, repeat: Infinity, delay: i * 0.15 }}
+                />
+              ))}
             </div>
-          )}
-          <div ref={end} />
-        </div>
-      )}
+          </div>
+        )}
+        <div ref={end} />
+      </div>
 
-      <form onSubmit={onSubmit} className="flex gap-2">
+      <form onSubmit={onSubmit} className="flex gap-2 border-t border-border p-3">
         <Input
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
@@ -154,6 +183,6 @@ export function CoachChat({ username }: { username: string }) {
           <PaperPlaneTiltIcon weight="fill" />
         </Button>
       </form>
-    </section>
+    </div>
   )
 }
