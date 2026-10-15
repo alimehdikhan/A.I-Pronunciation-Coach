@@ -15,12 +15,14 @@ import hashlib
 import json
 import logging
 import threading
+import time
 from collections import OrderedDict
 from typing import Any, Callable, Literal, Sequence
 
 import httpx
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
+from backend.observability import LLM_CALLS, LLM_RESULTS, LLM_SECONDS  # noqa: E402
 from backend.phoneme_kb import get_phoneme
 from backend.tutor import explain_mistake
 
@@ -50,6 +52,17 @@ class CoachRequest(BaseModel):
     score: float = Field(ge=0, le=100)
     slips: list[Slip] = Field(default_factory=list, max_length=8)
     weak_sounds: list[WeakSound] = Field(default_factory=list, max_length=5)
+    # The score of the previous attempt at this same phrase, so the coach can say how it went.
+    previous_score: float | None = Field(default=None, ge=0, le=100)
+    # The learner's first language (from a fixed list), so advice fits what is hard for them.
+    native_language: str | None = Field(default=None, max_length=30)
+
+    @field_validator("native_language", mode="before")
+    @classmethod
+    def _language(cls, value: Any) -> str | None:
+        from backend.coach_tools import clean_language
+
+        return clean_language(value)
 
 
 class Tip(BaseModel):
@@ -86,6 +99,8 @@ Rules:
 - For a skipped, extra or unclear word, say what to do about the word instead of describing a sound.
 - "expected" is the sound that should have been said and "actual" is what was heard; an empty "actual" means the sound was dropped, and "?" means a sound that matched no standard English sound. Sounds are IPA.
 - Each tip is at most two sentences of plain language: say what the mouth, tongue, lips or voice should do, not just the symbol.
+- If "previous_score" is given, say in a few words how this attempt compares with the last one (better, about the same, lower) before the advice. Never guess a reason for a drop.
+- If "native_language" is given you may add one short clause about what speakers of that language often find hard about a slipped sound, but only when it is true and relevant. Never stereotype beyond pronunciation.
 - "sound_guides" is how the app's library says each relevant sound is made. Base every description of tongue, lips and air on it; do not describe a sound from memory when it is there.
 - If there are no slips, praise what went well and suggest one way to keep improving.
 - Use weak_sounds to say which sounds are worth extra time, if relevant.
@@ -198,6 +213,10 @@ class CoachService:
     def enabled(self) -> bool:
         return bool(self.api_key)
 
+    def describe(self) -> dict[str, Any]:
+        """What the health endpoint reports: which models are configured and who has been answering."""
+        return {"model": self.model, "fallbacks": self.models[1:], "answered": dict(self.answered_by)}
+
     async def close(self) -> None:
         await self._client.aclose()
 
@@ -226,18 +245,23 @@ class CoachService:
         """One JSON chat completion, trying each configured model in turn; returns the parsed object."""
         failure: Exception | None = None
         for model in self.models:
+            started = time.perf_counter()
             try:
                 data = await self._complete_with(model, system, user)
             except httpx.HTTPStatusError as exc:
                 failure = exc
+                LLM_CALLS.labels(model, f"http_{exc.response.status_code}").inc()
                 logger.warning("Coach model %s answered %s; trying the next one.", model, exc.response.status_code)
                 if exc.response.status_code in (401, 403):
                     break  # a bad key fails everywhere
                 continue
             except (httpx.TransportError, ValueError, KeyError) as exc:
                 failure = exc
+                LLM_CALLS.labels(model, "error").inc()
                 logger.warning("Coach model %s failed (%s); trying the next one.", model, type(exc).__name__)
                 continue
+            LLM_CALLS.labels(model, "ok").inc()
+            LLM_SECONDS.labels(model).observe(time.perf_counter() - started)
             self.answered_by[model] = self.answered_by.get(model, 0) + 1
             return data
         raise failure or RuntimeError("no model configured")
@@ -293,18 +317,22 @@ class CoachService:
         unusable answer; nothing the model says reaches a caller without passing it.
         """
         if not self.enabled:
+            LLM_RESULTS.labels(kind, "template").inc()
             return fallback(), "template"
         key = hashlib.sha256(json.dumps([self.model, kind, facts], sort_keys=True, ensure_ascii=False).encode()).hexdigest()
         if cache:
             with self._lock:
                 if key in self._generated:
                     self._generated.move_to_end(key)
+                    LLM_RESULTS.labels(kind, "cached").inc()
                     return self._generated[key], "groq"
         try:
             result = parse(await self._complete(system, facts))
         except Exception as exc:
             logger.warning("Coach %s unavailable (%s); using the template.", kind, type(exc).__name__)
+            LLM_RESULTS.labels(kind, "template").inc()
             return fallback(), "template"
+        LLM_RESULTS.labels(kind, "groq").inc()
         if cache:
             with self._lock:
                 self._generated[key] = result
