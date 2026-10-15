@@ -46,6 +46,14 @@ ASR_WAITING = Gauge("pc_asr_waiting", "Transcriptions waiting for a free slot")
 ASR_RUNNING = Gauge("pc_asr_running", "Transcriptions currently running")
 ASR_REJECTED = Counter("pc_asr_rejected_total", "Transcriptions rejected because the queue was full")
 TTS_CACHE = Counter("pc_tts_cache_total", "Coach voice cache lookups", ["result"])
+LLM_CALLS = Counter("pc_llm_calls_total", "Language model calls by model and outcome", ["model", "outcome"])
+LLM_SECONDS = Histogram(
+    "pc_llm_seconds",
+    "Language model call latency (successful calls)",
+    ["model"],
+    buckets=(0.25, 0.5, 1, 2, 3, 5, 8, 15, 30),
+)
+LLM_RESULTS = Counter("pc_llm_results_total", "What learners were shown, by feature and source", ["kind", "source"])
 RATE_LIMITED = Counter("pc_rate_limited_total", "Requests rejected by the rate limiter", ["limiter"])
 
 
