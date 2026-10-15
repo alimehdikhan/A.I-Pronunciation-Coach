@@ -110,6 +110,20 @@ KOKORO_SAMPLE_RATE = 24000
 KOKORO_MODEL_FILES = ("kokoro-v1.0.onnx", "kokoro-v1.0.fp16.onnx", "kokoro-v1.0.int8.onnx")
 KOKORO_VOICES_FILE = "voices-v1.0.bin"
 
+# The voices offered in the app: all ship in the Kokoro voice bundle and share one loaded model,
+# so choosing another costs nothing until its first clip is rendered. (id, name, accent, gender)
+KOKORO_VOICE_CATALOG: tuple[tuple[str, str, str, str], ...] = (
+    ("af_heart", "Heart", "American", "female"),
+    ("af_bella", "Bella", "American", "female"),
+    ("af_nicole", "Nicole", "American", "female"),
+    ("af_sarah", "Sarah", "American", "female"),
+    ("am_michael", "Michael", "American", "male"),
+    ("am_adam", "Adam", "American", "male"),
+    ("bf_emma", "Emma", "British", "female"),
+    ("bm_george", "George", "British", "male"),
+)
+KOKORO_VOICE_IDS = frozenset(entry[0] for entry in KOKORO_VOICE_CATALOG)
+
 
 def kokoro_dir() -> Path:
     configured = os.getenv("PRONUNCIATION_COACH_KOKORO_DIR")
@@ -153,24 +167,30 @@ class KokoroVoice:
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self._synth_lock = threading.Lock()
         self._cache_lock = threading.Lock()
-        self._cache: OrderedDict[tuple[str, float], bytes] = OrderedDict()
+        self._cache: OrderedDict[tuple[str, str, float], bytes] = OrderedDict()
         self._cache_size = cache_size
         logger.info("Kokoro voice %s loaded (%s).", voice_name, model.name)
 
-    def _clip_path(self, text: str, rate: float) -> Path:
+    def _voice(self, voice: str | None) -> str:
+        """The requested catalog voice, or this engine's default for anything else."""
+        return voice if voice in KOKORO_VOICE_IDS else self.voice_name
+
+    def _clip_path(self, text: str, rate: float, voice: str | None = None) -> Path:
         import hashlib
 
-        digest = hashlib.sha1(f"{self.voice_name}|{rate:.2f}|{text}".encode("utf-8")).hexdigest()
+        digest = hashlib.sha1(f"{self._voice(voice)}|{rate:.2f}|{text}".encode("utf-8")).hexdigest()
         return self.cache_dir / f"{digest}.wav"
 
-    def has_clip(self, text: str, rate: float = 1.0) -> bool:
-        return self._clip_path(text, round(min(MAX_RATE, max(MIN_RATE, rate)), 2)).is_file()
+    def has_clip(self, text: str, rate: float = 1.0, voice: str | None = None) -> bool:
+        return self._clip_path(text, round(min(MAX_RATE, max(MIN_RATE, rate)), 2), voice).is_file()
 
-    def synthesize(self, text: str, rate: float = 1.0) -> bytes:
+    def synthesize(self, text: str, rate: float = 1.0, voice: str | None = None) -> bytes:
         import numpy as np
 
         rate = round(min(MAX_RATE, max(MIN_RATE, rate)), 2)
-        key = (text, rate)
+        name = self._voice(voice)
+        lang = "en-gb" if name[:1] == "b" else "en-us"
+        key = (name, text, rate)
         with self._cache_lock:
             cached = self._cache.get(key)
             if cached is not None:
@@ -178,7 +198,7 @@ class KokoroVoice:
                 TTS_CACHE.labels("hit").inc()
                 return cached
 
-        path = self._clip_path(text, rate)
+        path = self._clip_path(text, rate, name)
         if path.is_file():
             audio = path.read_bytes()
             TTS_CACHE.labels("hit").inc()
@@ -188,7 +208,7 @@ class KokoroVoice:
                     audio = path.read_bytes()
                 else:
                     TTS_CACHE.labels("miss").inc()
-                    samples, sample_rate = self.engine.create(text, voice=self.voice_name, speed=rate, lang=self.lang)
+                    samples, sample_rate = self.engine.create(text, voice=name, speed=rate, lang=lang)
                     pcm = (np.clip(samples, -1.0, 1.0) * 32767).astype("<i2")
                     buffer = io.BytesIO()
                     with wave.open(buffer, "wb") as wav_file:
