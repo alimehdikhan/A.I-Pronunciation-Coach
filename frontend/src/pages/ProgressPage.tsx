@@ -3,6 +3,7 @@ import {
   CalendarCheckIcon,
   ChartLineUpIcon,
   FireIcon,
+  LockKeyIcon,
   TargetIcon,
   TrashIcon,
   TrophyIcon,
@@ -15,6 +16,7 @@ import { Link, useNavigate } from 'react-router'
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from 'recharts'
 import { toast } from 'sonner'
 import { EmptyState, Panel, Pill, Segmented, SectionLabel } from '@/components/common'
+import { SignInActions } from '@/components/auth/SignInGate'
 import { PageHeader } from '@/components/layout/AppShell'
 import {
   AlertDialog,
@@ -108,6 +110,7 @@ function SessionRow({ record }: { record: HistoryRecord }) {
 
 export default function ProgressPage() {
   const username = useSettings((s) => s.username)
+  const signedIn = useSettings((s) => !!s.accountEmail)
   const setSettingsOpen = useUI((s) => s.setSettingsOpen)
   const openPhoneme = useUI((s) => s.openPhoneme)
   const { data: analytics, isLoading, error } = useAnalytics(username)
@@ -140,6 +143,22 @@ export default function ProgressPage() {
   const hasData = !!analytics && analytics.total_practice_sessions > 0
   useStaggerIn(scope, '.progress-item', [hasData])
   useScrollReveal(scope, '.session-row', [history?.length])
+
+  if (!signedIn) {
+    return (
+      <>
+        <PageHeader eyebrow="Progress" title="Your progress" description="Streaks, trends and the sounds to work on." />
+        <div className="surface">
+          <EmptyState
+            icon={<LockKeyIcon weight="fill" />}
+            title="Sign in to see your progress"
+            description="Scores, streaks and history are part of your account."
+            action={<SignInActions />}
+          />
+        </div>
+      </>
+    )
+  }
 
   if (!username) {
     return (
