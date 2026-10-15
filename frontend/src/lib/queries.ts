@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from './api'
+import type { CoachRequest } from './types'
 
 export const keys = {
   health: ['health'] as const,
@@ -70,4 +71,15 @@ export function useHistory(username: string) {
 
 export function usePracticeDrills(username: string) {
   return useQuery({ queryKey: keys.practice(username), queryFn: () => api.practice(username) })
+}
+
+/** Personalised coaching text for one attempt (keyed by its diagnosed slips). */
+export function useCoach(request: CoachRequest | null) {
+  return useQuery({
+    queryKey: ['coach', request],
+    queryFn: () => api.coach(request!),
+    enabled: !!request,
+    staleTime: Infinity,
+    retry: false,
+  })
 }
