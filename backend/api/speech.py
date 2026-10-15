@@ -15,6 +15,7 @@ from backend.api.deps import profile_key, require_models
 from backend.audio import decode_audio, normalize_loudness, read_upload, validate_upload
 from backend.config import settings
 from backend.database import get_db
+from backend.enhance import enhance
 from backend.observability import StageTimer
 from backend.repositories import ProfileLocked, save_attempt
 from backend.runtime import get_fallback_voice, get_quick_voice, runtime
@@ -41,7 +42,11 @@ tts_rate_limiter = RateLimiter(settings.rate_limit_per_minute * 4, name="tts")
 
 def _prepare(data: bytes, suffix: str):
     samples = decode_audio(data, suffix, settings.max_audio_seconds)
-    return normalize_loudness(samples)
+    cleanup = None
+    if settings.noise_cleanup:
+        samples, cleanup = enhance(samples)
+    samples, gain_db = normalize_loudness(samples)
+    return samples, gain_db, cleanup
 
 
 def _phoneme_posteriors(samples):
@@ -65,13 +70,14 @@ async def transcribe_upload(audio: UploadFile, asr, timer: StageTimer, *, phonem
         with timer.stage("upload"):
             data = await read_upload(audio, settings.max_upload_bytes)
         with timer.stage("decode"):
-            samples, gain_db = await run_in_threadpool(_prepare, data, suffix)
+            samples, gain_db, cleanup = await run_in_threadpool(_prepare, data, suffix)
         with timer.stage("asr"):
             result = await run_in_threadpool(asr.transcribe, samples)
         if phonemes and runtime.phonemes is not None and str(result.get("text", "")).strip():
             with timer.stage("phonemes"):
                 result["phoneme_log_probs"] = await run_in_threadpool(_phoneme_posteriors, samples)
     result["input_gain_db"] = gain_db
+    result["audio_cleanup"] = cleanup
     return result
 
 
@@ -141,6 +147,7 @@ async def evaluate_pronunciation(
         "reference_text": reference_text,
         "record_id": record_id,
         "saved": record_id is not None,
+        "audio_cleanup": transcription.get("audio_cleanup"),
         **score_result,
     }
     if save_error:
