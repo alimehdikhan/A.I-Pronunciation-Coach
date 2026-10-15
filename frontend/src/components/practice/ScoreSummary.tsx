@@ -1,20 +1,29 @@
-import { ArrowDownRightIcon, ArrowUpRightIcon, MinusIcon } from '@phosphor-icons/react'
+import { ArrowDownRightIcon, ArrowUpRightIcon, CheckCircleIcon, GaugeIcon, type Icon, MinusIcon, SparkleIcon, WaveformIcon } from '@phosphor-icons/react'
 import { Pill, Tip } from '@/components/common'
 import { ActivityRings, CountUp } from '@/components/ui/score-ring'
 import type { EvaluationResult, MetricKey } from '@/lib/types'
 import { METRIC_META, cn, scoreLabel, scoreTone, toneText } from '@/lib/utils'
 
-const RINGS: { key: MetricKey; from: string; to: string; dot: string }[] = [
-  { key: 'pronunciation', from: 'var(--ring-move-a)', to: 'var(--ring-move-b)', dot: 'bg-[#fa114f]' },
-  { key: 'fluency', from: 'var(--ring-exercise-a)', to: 'var(--ring-exercise-b)', dot: 'bg-[#92e82a]' },
-  { key: 'clarity', from: 'var(--ring-stand-a)', to: 'var(--ring-stand-b)', dot: 'bg-[#1eeaef]' },
+const RINGS: { key: MetricKey; from: string; to: string; color: string; Icon: Icon }[] = [
+  { key: 'pronunciation', from: 'var(--ring-move-a)', to: 'var(--ring-move-b)', color: '#fa114f', Icon: WaveformIcon },
+  { key: 'fluency', from: 'var(--ring-exercise-a)', to: 'var(--ring-exercise-b)', color: '#6fd12b', Icon: GaugeIcon },
+  { key: 'clarity', from: 'var(--ring-stand-a)', to: 'var(--ring-stand-b)', color: '#00b8d9', Icon: SparkleIcon },
 ]
 
-function MetricRow({ label, hint, value, dot }: { label: string; hint: string; value: number | null; dot: string }) {
+/** A small tinted tile holding the metric's icon, in the same colour as its ring. */
+export function MetricIcon({ Icon: IconComp, color }: { Icon: Icon; color: string }) {
+  return (
+    <span className="grid size-8 shrink-0 place-items-center rounded-[10px]" style={{ color, backgroundColor: `${color}22` }}>
+      <IconComp size={17} weight="fill" />
+    </span>
+  )
+}
+
+function MetricRow({ label, hint, value, color, Icon: IconComp }: { label: string; hint: string; value: number | null; color: string; Icon: Icon }) {
   return (
     <Tip content={hint} side="left">
       <div className="flex items-center gap-3 py-2.5">
-        <span className={cn('size-2.5 shrink-0 rounded-full', dot)} />
+        <MetricIcon Icon={IconComp} color={color} />
         <span className="flex-1 text-[15px] text-muted-foreground">{label}</span>
         <span className="text-[17px] font-semibold tabular-nums">
           {value == null ? <span className="text-subtle">—</span> : <CountUp value={value} />}
@@ -63,11 +72,13 @@ export function ScoreSummary({ result, previous }: { result: EvaluationResult; p
 
         <div className="mt-5 divide-y divide-border border-t border-border">
           {RINGS.map((r) => (
-            <MetricRow key={r.key} label={METRIC_META[r.key].label} hint={METRIC_META[r.key].hint} value={metrics[r.key]} dot={r.dot} />
+            <MetricRow key={r.key} label={METRIC_META[r.key].label} hint={METRIC_META[r.key].hint} value={metrics[r.key]} color={r.color} Icon={r.Icon} />
           ))}
           <Tip content={METRIC_META.completeness.hint} side="left">
             <div className="flex items-center gap-3 py-2.5">
-              <span className="size-2.5 shrink-0 rounded-full bg-subtle" />
+              <span className="grid size-8 shrink-0 place-items-center rounded-[10px] bg-fill text-muted-foreground">
+                <CheckCircleIcon size={17} weight="fill" />
+              </span>
               <span className="flex-1 text-[15px] text-muted-foreground">Words correct</span>
               <span className="text-[17px] font-semibold tabular-nums">
                 {correctWords}
