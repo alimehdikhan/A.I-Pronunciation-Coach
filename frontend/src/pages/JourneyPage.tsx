@@ -29,7 +29,8 @@ import { Button } from '@/components/ui/button'
 import { CountUp, ScoreRing } from '@/components/ui/score-ring'
 import { Skeleton } from '@/components/ui/skeleton'
 import { describeSound } from '@/lib/plain'
-import { useJourney } from '@/lib/queries'
+import { useHealth, useJourney } from '@/lib/queries'
+import { useVoiceUI } from '@/store/voice'
 import type { Badge, Journey, PathUnit } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { usePractice } from '@/store/practice'
@@ -275,6 +276,26 @@ function BadgeTile({ badge, index }: { badge: Badge; index: number }) {
   )
 }
 
+function TalkBanner() {
+  const open = useVoiceUI((s) => s.setOpen)
+  return (
+    <Panel className="progress-item flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:p-8">
+      <span className="grid size-14 shrink-0 place-items-center rounded-2xl bg-primary-soft text-primary">
+        <MicrophoneIcon size={28} weight="fill" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="headline text-[20px]">Talk to your coach</div>
+        <p className="mt-0.5 text-[14px] text-muted-foreground">
+          Have a real conversation. The coach answers out loud and helps with the words you find hard as you go.
+        </p>
+      </div>
+      <Button size="lg" onClick={() => open(true)}>
+        Start talking <ArrowRightIcon weight="bold" />
+      </Button>
+    </Panel>
+  )
+}
+
 function CheckupBanner() {
   return (
     <Panel className="progress-item flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:p-8">
@@ -302,6 +323,7 @@ export default function JourneyPage() {
   const signedIn = useSettings((s) => !!s.accountEmail)
   const goal = useSettings((s) => s.dailyGoal)
   const { data, isLoading } = useJourney(signedIn ? username : '', goal)
+  const { data: health } = useHealth()
 
   if (!signedIn) {
     return (
@@ -337,6 +359,7 @@ export default function JourneyPage() {
             <LevelCard journey={data} />
             <GoalCard journey={data} />
           </div>
+          {health?.voice_agent && <TalkBanner />}
           {!data.checkup_done && <CheckupBanner />}
           <PathCard journey={data} />
           {data.review.length > 0 && <ReviewCard journey={data} />}
