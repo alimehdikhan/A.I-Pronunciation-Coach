@@ -92,6 +92,22 @@ export interface EvaluationResult {
   }
 }
 
+/** One coach voice the server offers (`GET /api/voices`). */
+export interface VoiceOption {
+  id: string
+  name: string
+  accent: string
+  gender: string
+  /** "instant" voices render fast; "natural" ones sound best but take a moment on the first play. */
+  speed: 'natural' | 'instant'
+}
+
+export interface VoiceCatalog {
+  engine: string | null
+  default: string | null
+  voices: VoiceOption[]
+}
+
 export interface Health {
   status: 'healthy' | 'loading'
   models_loaded: boolean
