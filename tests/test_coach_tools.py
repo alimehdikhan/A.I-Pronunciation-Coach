@@ -212,7 +212,216 @@ def test_a_typed_word_is_answered_from_the_dictionary_and_the_library(client, mo
     assert [w["word"] for w in facts["words_in_message"]] == ["mitochondria"]
 
 
-def test_a_misspelt_word_is_flagged_as_not_in_the_dictionary(client, model):
+def test_a_misspelt_word_is_corrected_before_anything_is_looked_up(client, model):
     model.reply = {"reply": "Did you mean mitochondria?", "try_next": None, "words": []}
-    client.post("/api/coach/chat", json={"username": "", "message": "mitochondriaa"})
-    assert sent_facts(model)["words_in_message"][0]["from_dictionary"] is False
+    client.post("/api/coach/chat", json={"username": "", "message": "mitochoindria"})
+
+    word = sent_facts(model)["words_in_message"][0]
+    assert word["word"] == "mitochondria" and word["typed"] == "mitochoindria" and word["corrected"] is True
+    assert word["from_dictionary"] is True and word["ipa"]
+
+
+def test_an_unknown_word_is_marked_unknown_and_no_sounds_are_guessed(client, model):
+    model.reply = {"reply": "I do not know that word.", "try_next": None, "words": []}
+    client.post("/api/coach/chat", json={"username": "", "message": "zzqxkv"})
+
+    facts = sent_facts(model)
+    word = facts["words_in_message"][0]
+    assert word["from_dictionary"] is False and word["ipa"] is None and word["corrected"] is False
+    assert [g["ipa"] for g in facts["sound_guides"]] == ["θ"]  # only the focus sound, nothing from the guess
+
+
+# --- the model chain -------------------------------------------------------------------------------
+
+
+def chain(*steps, models=("main", "backup", "last")):
+    """A coach whose models answer according to `steps`: ("status", body) per call, in order."""
+    calls = []
+    script = list(steps)
+
+    def handler(request):
+        payload = json.loads(request.content)
+        calls.append((payload["model"], "response_format" in payload))
+        status, body = script.pop(0)
+        if status == 200:
+            return llm(body)
+        return httpx.Response(status, text=json.dumps(body) if isinstance(body, dict) else str(body))
+
+    return CoachService("k", models[0], fallback_models=models[1:], transport=httpx.MockTransport(handler)), calls
+
+
+@pytest.mark.anyio
+async def test_a_rate_limited_model_hands_over_to_the_next_one():
+    service, calls = chain((429, {"error": "rate"}), (200, {"note": "from the backup"}))
+
+    note, source = await service.briefing({"focus_sound": "r"}, "template note")
+
+    assert (note, source) == ("from the backup", "groq")
+    assert [m for m, _ in calls] == ["main", "backup"]
+    assert service.answered_by == {"backup": 1}
+
+
+@pytest.mark.anyio
+async def test_rejected_json_is_retried_as_plain_text_on_the_same_model():
+    service, calls = chain(
+        (400, {"error": {"code": "json_validate_failed"}}),
+        (200, {"note": "repaired"}),
+    )
+
+    note, _ = await service.briefing({"focus_sound": "r"}, "template note")
+
+    assert note == "repaired"
+    assert calls == [("main", True), ("main", False)]  # same model, JSON mode off the second time
+
+
+@pytest.mark.anyio
+async def test_every_model_failing_falls_back_to_the_template():
+    service, calls = chain((429, "x"), (500, "x"), (503, "x"))
+
+    assert await service.briefing({"focus_sound": "r"}, "template note") == ("template note", "template")
+    assert len(calls) == 3
+
+
+@pytest.mark.anyio
+async def test_a_bad_key_stops_the_chain_at_once():
+    service, calls = chain((401, {"error": "invalid key"}))
+    assert await service.briefing({"focus_sound": "r"}, "template note") == ("template note", "template")
+    assert len(calls) == 1
+
+
+def test_json_wrapped_in_text_is_still_read():
+    from backend.coach import _json_object
+
+    assert _json_object('Here you go:\n```json\n{"note": "hi"}\n```') == {"note": "hi"}
+    with pytest.raises(ValueError):
+        _json_object("no object here")
+
+
+@pytest.mark.anyio
+async def test_attempt_feedback_is_grounded_in_the_sound_library():
+    from backend.coach import CoachRequest
+
+    seen = {}
+
+    def handler(request):
+        seen.update(json.loads(request.content))
+        return llm({"summary": "Close.", "one_thing": "Put the tongue between the teeth.", "tips": []})
+
+    service = CoachService("k", "test-model", transport=httpx.MockTransport(handler))
+    request = CoachRequest(
+        target_text="I think so.", score=60, slips=[{"word": "think", "kind": "substitution", "expected": "θ", "actual": "s"}]
+    )
+
+    await service.coach(request)
+
+    facts = json.loads(seen["messages"][1]["content"])
+    guide = facts["sound_guides"][0]
+    assert guide["ipa"] == "θ" and "teeth" in guide["how"].lower()
+
+
+def test_practice_chips_are_the_word_that_was_asked_about(client, model):
+    model.reply = {"reply": "Say mi-to-KON-dree-uh.", "try_next": None, "words": ["think", "thin", "bath"]}
+
+    body = client.post("/api/coach/chat", json={"username": "", "message": "mitochoindria"}).json()
+
+    assert body["words"] == ["mitochondria"]  # the corrected word, not the model's unrelated suggestions
+
+
+def test_a_named_sound_is_explained_and_its_words_are_kept(client, model):
+    model.reply = {"reply": "Curl your tongue back a little.", "try_next": None, "words": ["red", "think", "right"]}
+
+    body = client.post("/api/coach/chat", json={"username": "", "message": "Give me a trick for the r sound"}).json()
+
+    facts = sent_facts(model)
+    assert facts["words_in_message"] == []  # "trick" is not the word being asked about
+    assert facts["sound_guides"][0]["ipa"] == "r"  # what they asked about comes first, ahead of the focus sound
+    assert body["words"] == ["red", "right"]  # "think" has no /r/ and is dropped
+
+
+def test_sounds_are_recognised_from_how_people_name_them():
+    from backend.coach_tools import sounds_mentioned
+
+    assert sounds_mentioned("How do I make the th sound?") == ["θ"]
+    assert sounds_mentioned("the r sound and the sh sound") == ["r", "ʃ"]
+    assert sounds_mentioned("what about /v/?") == ["v"]
+    assert sounds_mentioned("How do I say hello") == []
+
+
+def test_the_prompt_asks_for_a_human_voice_without_jargon():
+    prompt = coach_tools.CHAT_PROMPT
+    assert "Talk like a person" in prompt and "No IPA symbols" in prompt
+    assert "syllables with the stressed one in capitals" in prompt
+
+
+def test_relevant_words_prefers_the_asked_word_and_drops_the_rest():
+    typed = [{"word": "mitochondria", "from_dictionary": True}]
+    assert coach_tools.relevant_words(["think"], typed, [{"ipa": "θ"}]) == ["mitochondria"]
+    assert coach_tools.relevant_words(["think", "red"], [], [{"ipa": "r"}]) == ["red"]
+    assert coach_tools.relevant_words(["think"], [{"word": "zzqxkv", "from_dictionary": False}], [{"ipa": "r"}]) == []
+
+
+def test_a_general_question_has_no_subject_word():
+    from backend.coach_tools import words_in_message
+
+    assert words_in_message("Where should I start?") == []
+    assert words_in_message("Which sound should I fix first?") == []
+    assert [w["word"] for w in words_in_message("How do I say thorough?")] == ["thorough"]
+    assert [w["word"] for w in words_in_message("Why do I keep getting 'world' wrong?")] == ["world"]
+    assert [w["word"] for w in words_in_message("mitochondria")] == ["mitochondria"]
+
+
+# --- abuse, intents and the tools the chat uses ----------------------------------------------------
+
+
+def test_abuse_gets_a_respectful_reply_without_calling_the_model(client, model):
+    body = client.post("/api/coach/chat", json={"username": "", "message": "madarchod"}).json()
+
+    assert body["source"] == "guard" and "respectful" in body["reply"].lower()
+    assert body["words"] == [] and body["sentences"] == []
+    assert model.seen == []  # nothing was sent to the model
+
+
+def test_questions_are_understood_by_their_wording():
+    assert coach_tools.intents("How am I doing?") == {"progress"}
+    assert coach_tools.intents("Give me sentences with the r sound") == {"sentences"}
+    assert coach_tools.intents("What is the difference between ship and sheep") == {"compare"}
+    assert coach_tools.intents("How do I say mitochondria?") == set()
+    assert coach_tools.compared_words("live vs leave") == ["live", "leave"]
+    assert coach_tools.compared_words("hello") == []
+
+
+def test_a_comparison_names_the_sounds_that_differ(client, model):
+    model.reply = {"reply": "Ship is short, sheep is long.", "try_next": None, "words": []}
+
+    body = client.post("/api/coach/chat", json={"username": "", "message": "ship or sheep?"}).json()
+
+    facts = sent_facts(model)
+    assert [w["word"] for w in facts["comparison"]["words"]] == ["ship", "sheep"]
+    assert facts["comparison"]["sounds_that_differ"]  # the vowels
+    assert body["words"] == ["ship", "sheep"]  # both words, to hear side by side
+
+
+def test_asking_about_progress_sends_the_learners_real_numbers(client, model, fake_asr):
+    fake_asr.text, fake_asr.words = "Hello word", timed_words("Hello word")
+    for _ in range(3):
+        client.post(
+            "/api/evaluate",
+            files={"audio": ("clip.wav", wav_bytes(), "audio/wav")},
+            data={"target_text": "Hello world", "username": "Sam", "difficulty": "beginner"},
+            headers=HEADERS,
+        )
+    model.reply = {"reply": "You are on a roll.", "try_next": None, "words": []}
+
+    client.post("/api/coach/chat", json={"username": "Sam", "message": "How am I doing?"}, headers=HEADERS)
+
+    progress = sent_facts(model)["progress"]
+    assert progress["sessions"] == 3 and "average_score" in progress
+
+
+def test_asking_for_sentences_returns_checked_sentences(client, model):
+    model.reply = {"sentences": ["I think three thick things.", "The cat sat on the mat.", "Both of them thought about it."]}
+
+    body = client.post("/api/coach/chat", json={"username": "", "message": "give me sentences with the th sound"}).json()
+
+    assert [s["text"] for s in body["sentences"]] == ["I think three thick things.", "Both of them thought about it."]
+    assert body["source"] == "groq" and body["words"] == []
