@@ -12,5 +12,7 @@ nltk>=3.8,<4
 imageio-ffmpeg>=0.5.1,<1
 piper-tts>=1.8,<2
 prometheus-client>=0.21,<1
+# Calls the language model that writes the personalised coaching tips.
+httpx>=0.28,<1
 # Optional: `pip install epitran` (plus the Flite lex_lookup binary) adds a
 # G2P fallback for words missing from CMUDict; the built-in rules cover it otherwise.
