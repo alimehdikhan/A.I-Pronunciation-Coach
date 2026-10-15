@@ -95,6 +95,14 @@ class Settings:
     # key the knowledge-base templates are used.
     groq_api_key: str = field(default_factory=lambda: os.getenv("GROQ_API_KEY", "").strip())
     groq_model: str = field(default_factory=lambda: os.getenv("PRONUNCIATION_COACH_LLM_MODEL", "openai/gpt-oss-120b"))
+    # Tried in order when the main model is rate limited or fails (each has its own token budget).
+    groq_fallback_models: tuple[str, ...] = field(
+        default_factory=lambda: tuple(
+            m.strip()
+            for m in os.getenv("PRONUNCIATION_COACH_LLM_FALLBACKS", "qwen/qwen3.8-27b,openai/gpt-oss-20b").split(",")
+            if m.strip()
+        )
+    )
     llm_timeout: float = field(default_factory=lambda: _float("PRONUNCIATION_COACH_LLM_TIMEOUT", 8.0))
 
     # Acoustic phoneme scoring (backend.phoneme_model). Without the model files
