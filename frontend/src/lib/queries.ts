@@ -14,6 +14,7 @@ export const keys = {
   practice: (username: string) => ['practice', username] as const,
   account: ['account'] as const,
   coachPlan: (username: string) => ['coach-plan', username] as const,
+  report: (username: string) => ['coach-report', username] as const,
 }
 
 /** The coach voices the server can speak with. Fixed for a deploy, so it is fetched once. */
@@ -74,6 +75,17 @@ export function useHistory(username: string) {
     queryKey: keys.history(username),
     queryFn: () => api.history(username),
     enabled: !!username,
+  })
+}
+
+/** The coach's written note on progress. Refreshed when new attempts change the numbers it is built from. */
+export function useProgressReport(username: string, sessions: number) {
+  return useQuery({
+    queryKey: [...keys.report(username), sessions],
+    queryFn: () => api.coachReport(username),
+    enabled: !!username && sessions > 0,
+    staleTime: 10 * 60_000,
+    retry: false,
   })
 }
 
