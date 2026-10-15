@@ -1,4 +1,5 @@
 import type {
+  AccountProfile,
   Analytics,
   CoachReply,
   CoachRequest,
@@ -122,6 +123,45 @@ export const api = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
+    }),
+
+  me: () => request<AccountProfile>('/api/auth/me', { headers: profileHeaders() }),
+
+  register: (input: { email: string; password: string; username: string }) =>
+    request<Extract<AccountProfile, { account: true }>>('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...profileHeaders() },
+      body: JSON.stringify(input),
+    }),
+
+  login: (input: { email: string; password: string }) =>
+    request<Extract<AccountProfile, { account: true }>>('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...profileHeaders() },
+      body: JSON.stringify(input),
+    }),
+
+  logout: () => request<{ signed_out: boolean }>('/api/auth/logout', { method: 'POST', headers: profileHeaders() }),
+
+  rename: (username: string) =>
+    request<Extract<AccountProfile, { account: true }>>('/api/auth/me', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...profileHeaders() },
+      body: JSON.stringify({ username }),
+    }),
+
+  changePassword: (input: { current_password: string; new_password: string }) =>
+    request<Extract<AccountProfile, { account: true }>>('/api/auth/password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...profileHeaders() },
+      body: JSON.stringify(input),
+    }),
+
+  deleteAccount: (password: string) =>
+    request<{ deleted: boolean }>('/api/auth/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...profileHeaders() },
+      body: JSON.stringify({ password }),
     }),
 
   resetHistory: (username: string) =>
