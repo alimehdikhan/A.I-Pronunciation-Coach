@@ -1,0 +1,4 @@
+# Optional: the Kokoro voice (more natural than the default Piper voice).
+# The app runs without it and falls back to Piper. Also needs the model files,
+# see "Voices" in the README.
+kokoro-onnx>=0.4,<1
