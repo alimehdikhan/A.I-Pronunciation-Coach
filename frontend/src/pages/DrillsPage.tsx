@@ -1,4 +1,4 @@
-import { ArrowRightIcon, CheckCircleIcon, MicrophoneIcon, SparkleIcon, XCircleIcon } from '@phosphor-icons/react'
+import { ArrowRightIcon, BarbellIcon, CheckCircleIcon, MicrophoneIcon, SparkleIcon, XCircleIcon } from '@phosphor-icons/react'
 import { useMutation } from '@tanstack/react-query'
 import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -124,6 +124,7 @@ function PairChallenge({ phoneme }: { phoneme: PhonemeDetail }) {
   return (
     <Panel className="drill-item p-6 sm:p-8">
       <SectionLabel
+        icon={<BarbellIcon weight="fill" />}
         action={
           <ScoreRing value={total ? (passed / total) * 100 : 0} size={40} stroke={4.5}>
             <span className="text-[11px] font-semibold tabular-nums">
