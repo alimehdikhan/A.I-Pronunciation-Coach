@@ -236,10 +236,14 @@ function Session({ plan, username }: { plan: CoachPlan; username: string }) {
                 {line}
               </li>
             ))}
-            {focus.confused_with.length > 0 && (
+            {(focus.why_wrong || focus.confused_with.length > 0) && (
               <li className="rounded-2xl bg-warn-soft p-4 text-[14px] leading-relaxed">
-                {focus.why_wrong || 'Learners often replace this sound with'}{' '}
-                <span className="ipa font-semibold">{focus.confused_with.map((c) => `/${c}/`).join(', ')}</span>
+                {focus.why_wrong || (
+                  <>
+                    Learners often replace this sound with{' '}
+                    <span className="ipa font-semibold">{focus.confused_with.map((c) => `/${c}/`).join(', ')}</span>.
+                  </>
+                )}
               </li>
             )}
           </ol>
