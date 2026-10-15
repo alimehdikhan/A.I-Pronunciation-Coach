@@ -62,16 +62,17 @@ class AudioEngine {
     return this.context
   }
 
-  private cacheKey(text: string, rate: number) {
-    return `${rate.toFixed(2)}|${text}`
+  private cacheKey(text: string, rate: number, voice = '') {
+    return `${voice}|${rate.toFixed(2)}|${text}`
   }
 
   /** Fetch (and cache) neural speech audio for `text`. */
-  fetchSpeech(text: string, rate = 1): Promise<ArrayBuffer> {
-    const key = this.cacheKey(text, rate)
+  fetchSpeech(text: string, rate = 1, voice = ''): Promise<ArrayBuffer> {
+    const key = this.cacheKey(text, rate, voice)
     let pending = this.raw.get(key)
     if (!pending) {
-      pending = fetch(`${BASE}/api/tts?text=${encodeURIComponent(text)}&rate=${rate.toFixed(2)}`).then((response) => {
+      const choice = voice ? `&voice=${encodeURIComponent(voice)}` : ''
+      pending = fetch(`${BASE}/api/tts?text=${encodeURIComponent(text)}&rate=${rate.toFixed(2)}${choice}`).then((response) => {
         if (!response.ok) throw new Error(`Speech unavailable (${response.status})`)
         return response.arrayBuffer()
       })
@@ -82,8 +83,8 @@ class AudioEngine {
   }
 
   /** Warm the cache so a later `speak` starts instantly. */
-  prefetch(text: string, rate = 1) {
-    void this.fetchSpeech(text, rate).catch(() => undefined)
+  prefetch(text: string, rate = 1, voice = '') {
+    void this.fetchSpeech(text, rate, voice).catch(() => undefined)
   }
 
   /**
@@ -91,17 +92,17 @@ class AudioEngine {
    * audio finishes (or is interrupted); rejects if speech is unavailable so the
    * caller can fall back.
    */
-  async speak(text: string, { key, rate = 1 }: { key: string; rate?: number }): Promise<void> {
+  async speak(text: string, { key, rate = 1, voice = '' }: { key: string; rate?: number; voice?: string }): Promise<void> {
     const context = this.ensure()
     this.stop()
     const token = ++this.token
     useVoiceStore.setState({ speakingKey: key, active: false, preparing: true })
 
     try {
-      const cacheKey = this.cacheKey(text, rate)
+      const cacheKey = this.cacheKey(text, rate, voice)
       let buffer = this.decoded.get(cacheKey)
       if (!buffer) {
-        const bytes = await this.fetchSpeech(text, rate)
+        const bytes = await this.fetchSpeech(text, rate, voice)
         buffer = await context.decodeAudioData(bytes.slice(0))
         remember(this.decoded, cacheKey, buffer)
       }
