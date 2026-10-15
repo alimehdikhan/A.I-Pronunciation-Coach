@@ -13,6 +13,7 @@ from backend.api.deps import profile_key
 from backend.coach import CoachReply, CoachRequest
 from backend.config import settings
 from backend.database import get_db
+from backend.moderation import RESPECT_REPLY, RESPECT_TRY, is_abusive
 from backend.phoneme_kb import get_phoneme
 from backend.repositories import analytics, authorize, find_user, history, observations
 from backend.runtime import get_coach
@@ -102,6 +103,9 @@ async def chat(
 ) -> dict[str, Any]:
     """Answer a learner's question, grounded in their own sounds and latest attempts."""
     coach_rate_limiter.check(client_key(request))
+    if is_abusive(body.message):
+        # Answered here, without the model: it cannot be argued with and costs nothing.
+        return {"reply": RESPECT_REPLY, "try_next": RESPECT_TRY, "words": [], "sentences": [], "source": "guard"}
     user, rows = _learner(db, body.username, key)
     plan = teaching.build_plan(rows)
     focus = plan["focus"]
@@ -129,7 +133,48 @@ async def chat(
     }
     typed = coach_tools.words_in_message(body.message)
     facts["words_in_message"] = [{k: v for k, v in w.items() if not k.startswith("_")} for w in typed]
-    facts["sound_guides"] = coach_tools.sound_guides(focus["phoneme"], typed)
+    named = coach_tools.sounds_mentioned(body.message)
+    wanted = coach_tools.intents(body.message)
+
+    if "compare" in wanted:
+        pair = coach_tools.compared_words(body.message)
+        typed = [{"word": w, "from_dictionary": True} for w in pair]
+        facts["words_in_message"] = []
+        facts["comparison"] = {
+            "words": coach_tools.compare_facts(pair),
+            "sounds_that_differ": coach_tools.differing_sounds(coach_tools.compare_facts(pair)),
+        }
+        named = [s for s in facts["comparison"]["sounds_that_differ"] if s][:3] or named
+
+    if "progress" in wanted and user is not None:
+        data = analytics(db, user, 0)
+        if data:
+            facts["progress"] = coach_tools.report_facts(data)
+
+    facts["sound_guides"] = coach_tools.sound_guides(focus["phoneme"], typed, named)
+
+    if "sentences" in wanted and "compare" not in wanted:
+        # A request for sentences is answered with sentences: written by the model, then checked.
+        symbol = named[0] if named else focus["phoneme"]
+        level = "intermediate"
+        entry = get_phoneme(symbol) or {}
+        found, source = await get_coach().generate(
+            "sentences",
+            coach_tools.PRACTICE_PROMPT,
+            {"sound": {"ipa": symbol, "example": (entry.get("examples") or [""])[0], "how": entry.get("placement", "")},
+             "level": level, "topic": None, "count": 3},
+            lambda data: coach_tools.parse_sentences(data, symbol, level, 3),
+            lambda: coach_tools.sentences_fallback(symbol, level, 3),
+            cache=False,
+        )
+        label = entry.get("label") or f"/{symbol}/"
+        return {
+            "reply": f"Here are a few sentences to try for {label}. Say them slowly first, then at your normal speed.",
+            "try_next": "Pick one and say it three times.",
+            "words": [],
+            "sentences": found,
+            "source": source,
+        }
     fallback_facts = {"focus_sound": focus["phoneme"]}
     result, source = await get_coach().generate(
         "chat",
@@ -139,7 +184,8 @@ async def chat(
         lambda: coach_tools.chat_fallback(fallback_facts),
         cache=False,
     )
-    return {**result, "source": source}
+    words = coach_tools.relevant_words(result.get("words", []), typed, facts["sound_guides"], named)
+    return {**result, "words": words, "sentences": [], "source": source}
 
 
 class PracticeBody(BaseModel):
