@@ -37,7 +37,7 @@ from backend.database import init_db
 from backend.observability import RequestContextMiddleware, configure_logging
 from backend.repositories import ProfileLocked
 from backend.runtime import load_all, runtime
-from backend.security import BodySizeLimitMiddleware, SecurityHeadersMiddleware
+from backend.security import AuthError, BodySizeLimitMiddleware, SecurityHeadersMiddleware
 from backend.spa import SPAStaticFiles
 
 configure_logging(settings.log_level, settings.log_format)
@@ -94,6 +94,11 @@ async def profile_locked_handler(request: Request, exc: ProfileLocked) -> JSONRe
         {"detail": "This name is in use on another device. Choose a different name in Settings.", "code": "profile_locked"},
         status_code=403,
     )
+
+
+@app.exception_handler(AuthError)
+async def auth_error_handler(request: Request, exc: AuthError) -> JSONResponse:
+    return JSONResponse({"detail": exc.detail, "code": exc.code}, status_code=exc.status_code)
 
 
 for router in routers:
