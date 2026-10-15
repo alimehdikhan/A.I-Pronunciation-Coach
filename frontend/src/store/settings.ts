@@ -19,6 +19,8 @@ interface SettingsState {
   showIpa: boolean
   onboarded: boolean
   profileKey: string
+  /** Set while this browser is signed in to an account. */
+  accountEmail: string | null
   setUsername: (username: string) => void
   setTheme: (theme: Theme) => void
   setVoiceURI: (uri: string | null) => void
@@ -26,6 +28,10 @@ interface SettingsState {
   setLevel: (level: Level) => void
   setShowIpa: (show: boolean) => void
   completeOnboarding: (username?: string) => void
+  /** Adopt the account's name after signing in or signing up. */
+  signIn: (account: { username: string; email: string }) => void
+  /** Leave the account on this browser and start a fresh guest profile. */
+  signOut: () => void
 }
 
 export const useSettings = create<SettingsState>()(
@@ -39,6 +45,7 @@ export const useSettings = create<SettingsState>()(
       showIpa: true,
       onboarded: false,
       profileKey: newProfileKey(),
+      accountEmail: null,
       setUsername: (username) => set({ username: username.trim().slice(0, 40) }),
       setTheme: (theme) => set({ theme }),
       setVoiceURI: (voiceURI) => set({ voiceURI }),
@@ -47,6 +54,10 @@ export const useSettings = create<SettingsState>()(
       setShowIpa: (showIpa) => set({ showIpa }),
       completeOnboarding: (username) =>
         set((s) => ({ onboarded: true, username: username !== undefined ? username.trim().slice(0, 40) : s.username })),
+      signIn: ({ username, email }) => set({ username, accountEmail: email, onboarded: true }),
+      // A new key matters: the old one was just unbound server-side, and reusing
+      // it would leave this browser looking like the account's owner.
+      signOut: () => set({ username: '', accountEmail: null, profileKey: newProfileKey() }),
     }),
     {
       name: 'pc-settings',
