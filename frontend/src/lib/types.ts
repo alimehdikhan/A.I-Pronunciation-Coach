@@ -29,8 +29,24 @@ export interface WordResult {
   spoken_phonemes: string[]
   alignment: AlignmentOp[]
   syllables: Syllable[]
-  source: 'cmudict' | 'epitran' | 'spelling'
+  source: 'cmudict' | 'epitran' | 'rules' | 'spelling'
   pause_before: number | null
+  /** True when the sounds were scored from the audio itself, not just Whisper's words. */
+  acoustic?: boolean
+  /** Per-sound evidence, one entry per expected sound (acoustic scoring only). */
+  phonemes?: PhonemeEvidence[]
+}
+
+export interface PhonemeEvidence {
+  phoneme: string
+  /** 0-100: probability the sound would be rated clean. Most clean sounds score above 90. */
+  score: number
+  /** True when the sound is reported as a slip. */
+  flagged: boolean
+  /** What it most likely was instead ('?' = no standard English sound, '' = dropped). */
+  alternative: string | null
+  start: number | null
+  end: number | null
 }
 
 export interface Insight {
@@ -83,6 +99,10 @@ export interface Health {
   language: string
   phoneme_backend: string
   tts_ready: boolean
+  /** Sounds are scored from the audio (phoneme model loaded). */
+  acoustic_scoring?: boolean
+  /** Coaching tips are written by a language model. */
+  coach_llm?: boolean
   version: string
 }
 
@@ -192,4 +212,27 @@ export interface Analytics {
   metric_averages: Partial<Record<MetricKey, number>>
   score_trend: ({ date: string; score: number } & Partial<Record<MetricKey, number | null>>)[]
   top_weaknesses: { phoneme: string; count: number; name: string | null; label: string | null }[]
+}
+
+export interface CoachSlip {
+  word: string
+  kind: 'substitution' | 'deletion' | 'insertion' | 'missing' | 'unclear' | 'extra'
+  expected: string
+  actual: string
+}
+
+export interface CoachRequest {
+  target_text: string
+  level: Level
+  score: number
+  slips: CoachSlip[]
+  weak_sounds: { phoneme: string; count: number }[]
+}
+
+export interface CoachReply {
+  /** 'groq' when a language model wrote it, 'template' for the built-in tips. */
+  source: 'groq' | 'template'
+  summary: string
+  tips: { word: string; phoneme: string; tip: string }[]
+  practice_sentence: string | null
 }
