@@ -1,5 +1,5 @@
 """HTTP API routers."""
 
-from backend.api import health, library, progress, speech
+from backend.api import coach, health, library, progress, speech
 
-routers = (health.router, speech.router, library.router, progress.router)
+routers = (health.router, speech.router, library.router, progress.router, coach.router)
