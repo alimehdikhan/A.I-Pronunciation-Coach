@@ -13,6 +13,29 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
+
+def _load_dotenv(path: Path) -> None:
+    """Read KEY=value lines from a local .env into the environment.
+
+    Real environment variables always win, so hosts that inject secrets
+    (Hugging Face Spaces, Render, Docker) are unaffected.
+    """
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return
+    for line in lines:
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        name, _, value = line.partition("=")
+        name, value = name.strip(), value.strip().strip("'\"")
+        if name and value:
+            os.environ.setdefault(name, value)
+
+
+_load_dotenv(PROJECT_ROOT / ".env")
+
 DEFAULT_CORS_ORIGINS = [
     "http://localhost:3000",
     "http://localhost:5173",
@@ -67,6 +90,20 @@ class Settings:
     asr_queue_limit: int = field(default_factory=lambda: max(0, _int("PRONUNCIATION_COACH_ASR_QUEUE_LIMIT", 8)))
     language: str = field(default_factory=lambda: os.getenv("PRONUNCIATION_LANGUAGE", "eng-Latn"))
     load_models_on_startup: bool = field(default_factory=lambda: _flag("PRONUNCIATION_COACH_LOAD_MODELS_ON_STARTUP", "1"))
+
+    # Personalised coaching text from a language model (backend.coach). Without a
+    # key the knowledge-base templates are used.
+    groq_api_key: str = field(default_factory=lambda: os.getenv("GROQ_API_KEY", "").strip())
+    groq_model: str = field(default_factory=lambda: os.getenv("PRONUNCIATION_COACH_LLM_MODEL", "openai/gpt-oss-120b"))
+    llm_timeout: float = field(default_factory=lambda: _float("PRONUNCIATION_COACH_LLM_TIMEOUT", 8.0))
+
+    # Acoustic phoneme scoring (backend.phoneme_model). Without the model files
+    # the scorer falls back to comparing Whisper's words.
+    phoneme_scoring: bool = field(default_factory=lambda: _flag("PRONUNCIATION_COACH_PHONEME_SCORING", "1"))
+    phoneme_model_dir: str = field(
+        default_factory=lambda: os.getenv("PRONUNCIATION_COACH_PHONEME_DIR", str(_cache_dir() / "phonemes"))
+    )
+    phoneme_threads: int = field(default_factory=lambda: _int("PRONUNCIATION_COACH_PHONEME_THREADS", 0))
 
     # Uploads
     max_upload_bytes: int = field(default_factory=lambda: _int("PRONUNCIATION_COACH_MAX_UPLOAD_BYTES", 25 * 1024 * 1024))
