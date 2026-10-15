@@ -79,9 +79,19 @@ def account_for_key(db: Session, key: str | None) -> User | None:
     if not key:
         return None
     digest = hash_profile_key(key)
-    return db.scalar(
+    via_device = db.scalar(
         select(User).join(UserKey, UserKey.user_id == User.id).where(UserKey.key_hash == digest, User.password_hash.is_not(None))
     )
+    if via_device is not None:
+        return via_device
+    # The first account release kept the browser's key in users.key_hash with no
+    # device row. Those accounts are still accounts: recognise them and move the
+    # key into the device table so they behave like every other account from now on.
+    legacy = db.scalar(select(User).where(User.key_hash == digest, User.password_hash.is_not(None)))
+    if legacy is not None:
+        add_device(db, legacy, key)
+        db.commit()
+    return legacy
 
 
 def _unusable_key_hash() -> str:
