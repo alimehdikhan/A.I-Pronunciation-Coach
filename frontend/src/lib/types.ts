@@ -235,6 +235,8 @@ export interface CoachReply {
   summary: string
   tips: { word: string; phoneme: string; tip: string }[]
   practice_sentence: string | null
+  /** The single most useful change to try on the next attempt. */
+  one_thing: string | null
 }
 
 /** The signed-in account for this browser, or `{ account: false }` for a guest. */
@@ -253,3 +255,58 @@ export type AccountProfile =
       /** Browsers currently signed in to this account. */
       devices: number
     }
+
+
+export type MasteryStatus = 'new' | 'needs_work' | 'getting_there' | 'solid'
+
+export interface SoundMastery {
+  phoneme: string
+  label: string
+  name: string
+  attempts: number
+  clean: number
+  clean_rate: number
+  avg_score: number | null
+  recent_rate: number
+  trend: 'new' | 'improving' | 'steady' | 'slipping'
+  status: MasteryStatus
+  last_seen: string | null
+}
+
+export interface SessionStep {
+  kind: 'learn' | 'listen' | 'words' | 'sentence' | 'review'
+  title: string
+  instruction: string
+  steps?: string[]
+  pairs?: string[][]
+  words?: string[]
+  your_words?: string[]
+  sentence?: string
+}
+
+export interface CoachPlan {
+  has_history: boolean
+  observations: number
+  focus: {
+    phoneme: string
+    label: string
+    name: string
+    category: string
+    why: 'history' | 'starter' | 'maintenance'
+    reason: string
+    stats: SoundMastery | null
+    placement: string
+    steps: string[]
+    confused_with: string[]
+    why_wrong: string
+    minimal_pairs: string[][]
+    your_words: string[]
+    words: string[]
+    sentence: string
+  }
+  also_work_on: SoundMastery[]
+  strengths: SoundMastery[]
+  mastery: SoundMastery[]
+  session: SessionStep[]
+  briefing: { text: string; source: 'groq' | 'template' }
+}
