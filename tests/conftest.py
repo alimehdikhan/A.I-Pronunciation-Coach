@@ -9,6 +9,9 @@ import wave
 # engine at a throwaway file before any backend module is imported.
 os.environ["NEON_DATABASE_URL"] = f"sqlite:///{os.path.join(tempfile.mkdtemp(prefix='pc-tests-'), 'app.db')}"
 os.environ.setdefault("PRONUNCIATION_COACH_LOAD_MODELS_ON_STARTUP", "0")
+# Tests must never reach a real language model, even when a developer has a key
+# in .env (the settings loader would otherwise pick it up and spend quota).
+os.environ["GROQ_API_KEY"] = ""
 
 import numpy as np
 import pytest
