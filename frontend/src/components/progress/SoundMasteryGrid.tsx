@@ -16,10 +16,13 @@ export function SoundMasteryGrid({ sounds }: { sounds: SoundMastery[] }) {
   const openPhoneme = useUI((s) => s.openPhoneme)
   const reduce = useReducedMotion()
   return (
+    <>
     <ul className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 xl:grid-cols-4">
       {sounds.map((s, index) => {
         const status = STATUS[s.status]
-        const percent = Math.round(s.clean_rate * 100)
+        // Rounded down on purpose: 89.7% must not read "90%" next to a sound that is "Solid" at 90%.
+        const percent = Math.floor(s.clean_rate * 100 + 1e-9)
+        const example = s.label.replace(/^.*?\bas in\s*/i, '').replace(/[“”"]/g, '')
         return (
           <motion.li
             key={s.phoneme}
@@ -35,7 +38,10 @@ export function SoundMasteryGrid({ sounds }: { sounds: SoundMastery[] }) {
               className="group flex w-full flex-col gap-2 rounded-2xl bg-fill p-3 text-left transition-colors hover:bg-fill-strong"
             >
               <div className="flex items-center justify-between">
-                <span className="ipa text-[22px] leading-none">{s.phoneme}</span>
+                <span className="flex min-w-0 items-baseline gap-2">
+                  <span className="ipa text-[22px] leading-none">{s.phoneme}</span>
+                  {example && <span className="truncate text-[12px] text-subtle">as in {example}</span>}
+                </span>
                 {s.trend === 'improving' && <ArrowUpRightIcon size={16} weight="bold" className="text-good" aria-label="Improving" />}
                 {s.trend === 'slipping' && <ArrowDownRightIcon size={16} weight="bold" className="text-bad" aria-label="Slipping" />}
               </div>
@@ -58,5 +64,9 @@ export function SoundMasteryGrid({ sounds }: { sounds: SoundMastery[] }) {
         )
       })}
     </ul>
+    <p className="mt-3 text-xs text-subtle">
+      The first number is how often the sound came out clean; the second is how many times you have tried it. Weakest first.
+    </p>
+    </>
   )
 }
