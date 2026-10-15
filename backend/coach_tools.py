@@ -412,16 +412,24 @@ _IPA_SYMBOLS = sorted({s for s in PHONEMES if not s.isascii()}, key=len, reverse
 _IPA_BARE = re.compile("(" + "|".join(re.escape(s) for s in _IPA_SYMBOLS) + ")") if _IPA_SYMBOLS else None
 
 
-def humanize_sounds(text: str) -> str:
-    """Replace IPA symbols in text with how the sound is spelled ("/θ/" -> "th"). Letters are left alone."""
+def humanize_sounds(text: str, *, quote: bool = False) -> str:
+    """Replace IPA symbols in text with how the sound is spelled ("/θ/" -> "th"). Letters are left alone.
+
+    With `quote=True` the spelling is wrapped in quotes ("/s/" -> "“s”"), which keeps a single
+    letter readable inside a sentence.
+    """
+
+    def spelled(symbol: str) -> str:
+        word = _spelling(symbol)
+        return f"\u201c{word}\u201d" if quote else word
 
     def slashed(match: re.Match[str]) -> str:
         inner = match.group(1)
-        return _spelling(inner) if get_phoneme(inner) else match.group(0)
+        return spelled(inner) if get_phoneme(inner) else match.group(0)
 
     out = _IPA_SLASHED.sub(slashed, text)
     if _IPA_BARE is not None:
-        out = _IPA_BARE.sub(lambda m: _spelling(m.group(1)), out)
+        out = _IPA_BARE.sub(lambda m: spelled(m.group(1)), out)
     return out
 
 
