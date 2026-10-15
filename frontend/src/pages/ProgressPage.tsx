@@ -17,6 +17,7 @@ import { EmptyState, Panel, Segmented, SectionLabel } from '@/components/common'
 import { SignInActions } from '@/components/auth/SignInGate'
 import { PageHeader } from '@/components/layout/AppShell'
 import { ActivityCalendar } from '@/components/progress/ActivityCalendar'
+import { CoachNote } from '@/components/progress/CoachNote'
 import { HistoryPanel } from '@/components/progress/HistoryPanel'
 import { ImprovementCard } from '@/components/progress/ImprovementCard'
 import { SoundMasteryGrid } from '@/components/progress/SoundMasteryGrid'
@@ -238,6 +239,8 @@ export default function ProgressPage() {
               sub={`${analytics.practice_days} practice ${analytics.practice_days === 1 ? 'day' : 'days'}`}
             />
           </div>
+
+          <CoachNote username={username} sessions={analytics.total_practice_sessions} />
 
           {analytics.improvement && <ImprovementCard improvement={analytics.improvement} />}
 
