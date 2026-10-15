@@ -4,7 +4,6 @@ import {
   ChartLineUpIcon,
   FireIcon,
   LockKeyIcon,
-  TargetIcon,
   TrashIcon,
   TrophyIcon,
   UserCirclePlusIcon,
@@ -12,12 +11,17 @@ import {
 } from '@phosphor-icons/react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router'
-import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from 'recharts'
+import { Link } from 'react-router'
 import { toast } from 'sonner'
-import { EmptyState, Panel, Pill, Segmented, SectionLabel } from '@/components/common'
+import { EmptyState, Panel, Segmented, SectionLabel } from '@/components/common'
 import { SignInActions } from '@/components/auth/SignInGate'
 import { PageHeader } from '@/components/layout/AppShell'
+import { ActivityCalendar } from '@/components/progress/ActivityCalendar'
+import { HistoryPanel } from '@/components/progress/HistoryPanel'
+import { ImprovementCard } from '@/components/progress/ImprovementCard'
+import { SoundMasteryGrid } from '@/components/progress/SoundMasteryGrid'
+import { TrendChart } from '@/components/progress/TrendChart'
+import { TrickyWords } from '@/components/progress/TrickyWords'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -30,15 +34,12 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
-import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart'
-import { ActivityRings, CountUp, ScoreRing } from '@/components/ui/score-ring'
+import { ActivityRings, CountUp } from '@/components/ui/score-ring'
 import { Skeleton } from '@/components/ui/skeleton'
 import { api, ApiError } from '@/lib/api'
 import { useScrollReveal, useStaggerIn } from '@/lib/gsap'
-import { keys, useAnalytics, useHistory } from '@/lib/queries'
-import type { HistoryRecord } from '@/lib/types'
-import { METRIC_META, cn, relativeTime, scoreTone, toneText } from '@/lib/utils'
-import { usePractice } from '@/store/practice'
+import { keys, useAnalytics } from '@/lib/queries'
+import { METRIC_META, cn } from '@/lib/utils'
 import { useSettings } from '@/store/settings'
 import { useUI } from '@/store/ui'
 
@@ -69,45 +70,6 @@ function StatTile({ icon: IconComp, color, label, value, suffix, sub }: { icon: 
   )
 }
 
-function SessionRow({ record }: { record: HistoryRecord }) {
-  const setTarget = usePractice((s) => s.setTarget)
-  const navigate = useNavigate()
-  const openPhoneme = useUI((s) => s.openPhoneme)
-  const sounds = [...new Set(record.mistakes.map((m) => m.expected_phoneme))].slice(0, 4)
-  return (
-    <div className="session-row flex items-center gap-4 py-3.5">
-      <ScoreRing value={record.score} size={44} stroke={4}>
-        <span className={cn('text-[13px] font-semibold tabular-nums', toneText[scoreTone(record.score)])}>{Math.round(record.score)}</span>
-      </ScoreRing>
-      <button
-        type="button"
-        className="min-w-0 flex-1 text-left"
-        onClick={() => {
-          setTarget({ text: record.target_text, source: 'custom' })
-          navigate('/')
-        }}
-      >
-        <div className="truncate text-[15px] font-medium hover:text-primary">{record.target_text}</div>
-        <div className="mt-0.5 flex items-center gap-2 text-[13px] text-subtle">
-          <span>{relativeTime(record.created_at)}</span>
-          {record.difficulty && <span className="capitalize">· {record.difficulty}</span>}
-        </div>
-      </button>
-      <div className="hidden shrink-0 gap-1 sm:flex">
-        {sounds.map((symbol) => (
-          <button
-            key={symbol}
-            onClick={() => openPhoneme(symbol)}
-            className="ipa grid h-7 min-w-7 place-items-center rounded-full bg-bad-soft px-2 text-[13px] text-bad hover:brightness-110"
-          >
-            {symbol}
-          </button>
-        ))}
-      </div>
-    </div>
-  )
-}
-
 export default function ProgressPage() {
   const username = useSettings((s) => s.username)
   const signedIn = useSettings((s) => !!s.accountEmail)
@@ -115,7 +77,6 @@ export default function ProgressPage() {
   const openPhoneme = useUI((s) => s.openPhoneme)
   const { data: analytics, isLoading, error } = useAnalytics(username)
   const locked = error instanceof ApiError && error.code === 'profile_locked'
-  const { data: history } = useHistory(username)
   const [metric, setMetric] = useState<TrendMetric>('score')
   const queryClient = useQueryClient()
   const scope = useRef<HTMLDivElement>(null)
@@ -142,7 +103,7 @@ export default function ProgressPage() {
 
   const hasData = !!analytics && analytics.total_practice_sessions > 0
   useStaggerIn(scope, '.progress-item', [hasData])
-  useScrollReveal(scope, '.session-row', [history?.length])
+  useScrollReveal(scope, '.session-row', [hasData])
 
   if (!signedIn) {
     return (
@@ -181,7 +142,6 @@ export default function ProgressPage() {
   }
 
   const maxCount = Math.max(1, ...(analytics?.top_weaknesses ?? []).map((w) => w.count))
-  const chartConfig = { value: { label: metric === 'score' ? 'Overall' : METRIC_META[metric].label, color: TREND_COLORS[metric] } } satisfies ChartConfig
   const averages = analytics?.metric_averages ?? {}
 
   return (
@@ -279,6 +239,8 @@ export default function ProgressPage() {
             />
           </div>
 
+          {analytics.improvement && <ImprovementCard improvement={analytics.improvement} />}
+
           <div className="grid gap-5 lg:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)]">
             <Panel className="progress-item p-6 sm:p-8">
               <SectionLabel
@@ -304,30 +266,7 @@ export default function ProgressPage() {
                   Practise a little more to see your trend.
                 </div>
               ) : (
-                <ChartContainer config={chartConfig} className="aspect-auto h-[240px] w-full">
-                  <AreaChart data={trend} margin={{ left: -24, right: 8, top: 8, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="trendFill" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="var(--color-value)" stopOpacity={0.35} />
-                        <stop offset="100%" stopColor="var(--color-value)" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid vertical={false} strokeDasharray="3 3" />
-                    <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={10} minTickGap={24} />
-                    <YAxis domain={[0, 100]} tickLine={false} axisLine={false} tickCount={5} />
-                    <ChartTooltip cursor={false} content={<ChartTooltipContent indicator="line" />} />
-                    <Area
-                      dataKey="value"
-                      type="monotone"
-                      stroke="var(--color-value)"
-                      strokeWidth={2.5}
-                      fill="url(#trendFill)"
-                      connectNulls
-                      dot={false}
-                      activeDot={{ r: 5, strokeWidth: 2, stroke: 'var(--card)' }}
-                    />
-                  </AreaChart>
-                </ChartContainer>
+                <TrendChart points={trend.map((p) => ({ label: p.label, value: p.value }))} color={TREND_COLORS[metric]} />
               )}
             </Panel>
 
@@ -355,6 +294,26 @@ export default function ProgressPage() {
                 </div>
               </div>
             </Panel>
+          </div>
+
+          {!!analytics.sound_mastery?.length && (
+            <Panel className="progress-item p-6 sm:p-8">
+              <SectionLabel>Sound mastery</SectionLabel>
+              <SoundMasteryGrid sounds={analytics.sound_mastery} />
+            </Panel>
+          )}
+
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] lg:items-start">
+            <Panel className="progress-item p-6 sm:p-8">
+              <SectionLabel>Practice calendar</SectionLabel>
+              <ActivityCalendar days={analytics.daily_activity ?? []} />
+            </Panel>
+            {!!analytics.tricky_words?.length && (
+              <Panel className="progress-item p-6 sm:p-8">
+                <SectionLabel>Tricky words</SectionLabel>
+                <TrickyWords words={analytics.tricky_words} />
+              </Panel>
+            )}
           </div>
 
           <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.7fr)] lg:items-start">
@@ -398,18 +357,7 @@ export default function ProgressPage() {
               )}
             </Panel>
 
-            <Panel className="progress-item p-6 sm:p-8">
-              <SectionLabel action={<Pill>{history?.length ?? 0} recent</Pill>}>Recent sessions</SectionLabel>
-              <div className="divide-y divide-border">
-                {history?.map((record) => <SessionRow key={record.id} record={record} />)}
-              </div>
-              {history && history.length === 0 && <p className="text-[15px] text-muted-foreground">Nothing here yet.</p>}
-              <Button asChild variant="secondary" className="mt-5 w-full">
-                <Link to="/drills">
-                  <TargetIcon weight="bold" /> Work on your weakest sound
-                </Link>
-              </Button>
-            </Panel>
+            <HistoryPanel username={username} />
           </div>
         </div>
       )}
