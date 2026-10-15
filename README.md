@@ -93,6 +93,27 @@ python scripts/eval_speechocean.py report    --split test --limit 500
 python scripts/eval_speechocean.py calibrate --split train --limit 700   # after: prepare --split train --no-asr
 ```
 
+## Talking to the coach
+
+The coach can hold a spoken conversation (`backend/voice_agent.py`, `GET /ws/voice`), powered by Gemini Live:
+
+```
+mic --16 kHz PCM--> this server --> Gemini Live --24 kHz PCM--> this server --> speakers
+                       |  |
+                       |  +-- the abuse check runs on what was said
+                       +----- the same audio goes to our own phoneme model; a mispronounced word is
+                              passed to the coach, which mentions it kindly
+```
+
+- **The key stays on the server.** The browser only ever talks to our own WebSocket; `GEMINI_API_KEY` is read on the server.
+- **It hears how you said it, not only what.** After each turn the audio is scored with the same Whisper and phoneme models used for practice. If a word was clearly mispronounced, the coach is told, at most once every 25 seconds, so it can say the word and invite another try. A generic voice assistant cannot do this.
+- **Grounded.** The coach is told the learner's level, first language and weak and strong sounds, and is instructed to speak plainly, in one to three short sentences, about everyday topics.
+- **Safe.** Abusive speech is caught by `backend/moderation.py` and answered calmly; at most 3 conversations run at once, a conversation lasts at most 6 minutes, and the model is told to stay on speaking practice.
+- **Models.** `PRONUNCIATION_COACH_VOICE_MODEL` (default `gemini-3.1-flash-live-preview`) is tried first, then `PRONUNCIATION_COACH_VOICE_FALLBACKS` (default `gemini-3.8-live,gemini-2.5-flash-native-audio-latest`). Google renames live models often, so the names are settings.
+- **Privacy.** On Google's free tier, audio and text sent to Gemini may be used to improve their products. The talking screen says so before the first conversation, and this app does not store the audio.
+
+Set `GEMINI_API_KEY` to switch it on (`/health` then reports `voice_agent: true`); without it the Talk buttons are hidden.
+
 ## The learning journey
 
 A scorer tells you how you did. A coach gives you a route and a reason to come back. The **Journey** page (`backend/journey.py`) turns the attempts the app already stores into that, with no extra tables:
@@ -366,6 +387,7 @@ All settings are environment variables. See [`.env.example`](.env.example).
 | `POST` | `/api/coach/chat` | Ask the coach a question (`message`, `history`), grounded in the learner's own data |
 | `POST` | `/api/coach/practice` | Fresh practice sentences for a sound (`phoneme`, `level`, `topic`), each verified to contain it |
 | `GET` | `/api/coach/report/{username}` | A short written progress note |
+| `WS` | `/ws/voice` | A live spoken conversation with the coach (first message `start`, then PCM audio up and down) |
 | `GET` | `/api/voices` | The coach voices on offer; `/api/tts?voice=` picks one |
 | `POST` | `/api/auth/register` | Create an account (`email`, `password`, `username`, optional `display_name`); upgrades a guest profile in place |
 | `POST` | `/api/auth/login` | Sign this browser in to an account |
