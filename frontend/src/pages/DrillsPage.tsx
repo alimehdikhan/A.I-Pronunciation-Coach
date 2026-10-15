@@ -1,3 +1,4 @@
+import { describeSound } from '@/lib/plain'
 import { ArrowRightIcon, BarbellIcon, CheckCircleIcon, MicrophoneIcon, SparkleIcon, XCircleIcon } from '@phosphor-icons/react'
 import { useMutation } from '@tanstack/react-query'
 import { AnimatePresence, motion } from 'motion/react'
@@ -258,7 +259,9 @@ export default function DrillsPage() {
                   active && 'ring-ai',
                 )}
               >
-                <span className="ipa text-[34px] leading-none font-medium">{item.symbol}</span>
+                <span className="text-[30px] leading-none font-semibold" title={item.symbol}>
+                  {describeSound({ label: item.label, phoneme: item.symbol }).spelled}
+                </span>
                 <div className="min-w-0">
                   <div className="truncate text-[14px] font-semibold">
                     {(item.label.split(' as in ')[1] ?? item.label).replace(/[“”"]/g, '')}
