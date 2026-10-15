@@ -79,10 +79,10 @@ export function useHistory(username: string) {
 }
 
 /** The coach's written note on progress. Refreshed when new attempts change the numbers it is built from. */
-export function useProgressReport(username: string, sessions: number) {
+export function useProgressReport(username: string, sessions: number, language: string | null = null) {
   return useQuery({
-    queryKey: [...keys.report(username), sessions],
-    queryFn: () => api.coachReport(username),
+    queryKey: [...keys.report(username), sessions, language],
+    queryFn: () => api.coachReport(username, language),
     enabled: !!username && sessions > 0,
     staleTime: 10 * 60_000,
     retry: false,
