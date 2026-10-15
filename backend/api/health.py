@@ -29,6 +29,8 @@ async def health_check(request: Request) -> dict[str, Any]:
         "language": settings.language,
         "phoneme_backend": "cmudict" if phonetics.dictionary_available() else "spelling",
         "tts_ready": runtime.voice is not None,
+        "acoustic_scoring": runtime.phonemes is not None,
+        "coach_llm": bool(settings.groq_api_key),
         "version": request.app.version,
     }
 
