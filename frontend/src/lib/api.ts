@@ -1,6 +1,7 @@
 import type {
   AccountProfile,
   Analytics,
+  CoachPlan,
   CoachReply,
   CoachRequest,
   EvaluationResult,
@@ -124,6 +125,9 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     }),
+
+  coachPlan: (username: string) =>
+    request<CoachPlan>(`/api/coach/plan/${enc(username)}`, { headers: profileHeaders() }),
 
   me: () => request<AccountProfile>('/api/auth/me', { headers: profileHeaders() }),
 
