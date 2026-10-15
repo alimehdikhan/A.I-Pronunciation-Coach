@@ -1,6 +1,7 @@
 import type {
   AccountProfile,
   Analytics,
+  CheckupItem,
   ChatReply,
   ChatTurn,
   CoachPlan,
@@ -9,6 +10,7 @@ import type {
   EvaluationResult,
   Health,
   HistoryPage,
+  Journey,
   HistoryRecord,
   PhonemeDetail,
   PhonemeSummary,
@@ -174,8 +176,15 @@ export const api = {
       },
     ),
 
-  coachPlan: (username: string) =>
-    request<CoachPlan>(`/api/coach/plan/${enc(username)}`, { headers: profileHeaders() }),
+  coachPlan: (username: string, focus?: string | null) =>
+    request<CoachPlan>(`/api/coach/plan/${enc(username)}${focus ? `?focus=${enc(focus)}` : ''}`, { headers: profileHeaders() }),
+
+  journey: (username: string, goal: number) =>
+    request<Journey>(`/api/journey/${enc(username)}?goal=${goal}&tz_offset=${new Date().getTimezoneOffset()}`, {
+      headers: profileHeaders(),
+    }),
+
+  checkup: () => request<{ items: CheckupItem[] }>('/api/journey/placement'),
 
   me: () => request<AccountProfile>('/api/auth/me', { headers: profileHeaders() }),
 
