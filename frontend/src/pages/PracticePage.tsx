@@ -72,13 +72,14 @@ export default function PracticePage() {
   const busy = evaluate.isPending
   const voiceURI = useSettings((s) => s.voiceURI)
   const speechRate = useSettings((s) => s.rate)
+  const coachVoice = useSettings((s) => s.coachVoice) ?? ''
 
   // Warm the coach's voice for this phrase so "Listen" starts instantly.
   useEffect(() => {
     if (health?.tts_ready && usesNeuralVoice(voiceURI)) {
-      audioEngine.prefetch(target.text, Math.min(1.6, Math.max(0.5, speechRate)))
+      audioEngine.prefetch(target.text, Math.min(1.6, Math.max(0.5, speechRate)), coachVoice)
     }
-  }, [health?.tts_ready, target.text, voiceURI, speechRate])
+  }, [health?.tts_ready, target.text, voiceURI, speechRate, coachVoice])
 
   // Never let the coach's voice bleed into the microphone.
   const toggleRecording = useCallback(() => {
