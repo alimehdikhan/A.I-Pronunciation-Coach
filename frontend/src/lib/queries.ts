@@ -1,6 +1,6 @@
-import { useQuery } from '@tanstack/react-query'
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { api } from './api'
-import type { CoachRequest } from './types'
+import type { CoachRequest, HistoryFilters } from './types'
 
 export const keys = {
   health: ['health'] as const,
@@ -74,6 +74,26 @@ export function useHistory(username: string) {
     queryKey: keys.history(username),
     queryFn: () => api.history(username),
     enabled: !!username,
+  })
+}
+
+const HISTORY_PAGE = 15
+
+/** Past attempts, newest first, fetched a page at a time with the filters applied on the server. */
+export function useHistoryPages(username: string, filters: HistoryFilters) {
+  const minScore = filters.band === 'high' ? 85 : undefined
+  const maxScore = filters.band === 'low' ? 70 : undefined
+  return useInfiniteQuery({
+    queryKey: [...keys.history(username), 'pages', filters.band, filters.text.trim().toLowerCase()],
+    queryFn: ({ pageParam }) =>
+      api.historyPage(username, { offset: pageParam, limit: HISTORY_PAGE, minScore, maxScore, text: filters.text }),
+    initialPageParam: 0,
+    getNextPageParam: (last, pages) => {
+      const loaded = pages.reduce((n, p) => n + p.records.length, 0)
+      return loaded < last.total && last.records.length > 0 ? loaded : undefined
+    },
+    enabled: !!username,
+    placeholderData: (previous) => previous,
   })
 }
 
