@@ -24,7 +24,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     XDG_CACHE_HOME=/app/.cache \
     NLTK_DATA=/app/.cache/nltk_data \
-    NEON_DATABASE_URL=sqlite:////app/data/pronunciation_coach.db \
+    PRONUNCIATION_COACH_SQLITE_URL=sqlite:////app/data/pronunciation_coach.db \
     PRONUNCIATION_COACH_TTS_DIR=/app/.cache/piper \
     PRONUNCIATION_COACH_ASR_DIR=/app/.cache/whisper     PRONUNCIATION_COACH_PHONEME_DIR=/app/.cache/phonemes \
     PRONUNCIATION_COACH_KOKORO_DIR=/app/.cache/kokoro \
