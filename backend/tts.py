@@ -99,3 +99,110 @@ class CoachVoice:
             if cached is not None:
                 self._cache.move_to_end(key)
             return cached
+
+
+# ---------------------------------------------------------------------------
+# Kokoro (82M parameters): the more natural voice, but heavy on a small CPU.
+# ---------------------------------------------------------------------------
+
+KOKORO_SAMPLE_RATE = 24000
+# Largest file first: the full-precision model is usually faster on CPUs than int8.
+KOKORO_MODEL_FILES = ("kokoro-v1.0.onnx", "kokoro-v1.0.fp16.onnx", "kokoro-v1.0.int8.onnx")
+KOKORO_VOICES_FILE = "voices-v1.0.bin"
+
+
+def kokoro_dir() -> Path:
+    configured = os.getenv("PRONUNCIATION_COACH_KOKORO_DIR")
+    if configured:
+        return Path(configured)
+    cache = os.getenv("XDG_CACHE_HOME") or str(Path.home() / ".cache")
+    return Path(cache) / "pronunciation_coach" / "kokoro"
+
+
+def kokoro_available(directory: Path | None = None) -> bool:
+    directory = directory or kokoro_dir()
+    return (directory / KOKORO_VOICES_FILE).is_file() and any((directory / name).is_file() for name in KOKORO_MODEL_FILES)
+
+
+class KokoroVoice:
+    """Same interface as CoachVoice (``synthesize(text, rate) -> WAV bytes``).
+
+    Rendering is slow on a small CPU, so every clip is kept on disk as well as
+    in memory, and ``scripts/prerender_voice.py`` can fill that cache ahead of
+    time for the fixed phrase library; only unseen text is rendered live.
+    """
+
+    def __init__(self, voice_name: str = "af_heart", directory: Path | None = None, cache_dir: Path | None = None,
+                 cache_size: int = 256, threads: int = 0):
+        import onnxruntime as ort
+        from kokoro_onnx import Kokoro
+
+        directory = directory or kokoro_dir()
+        model = next((directory / name for name in KOKORO_MODEL_FILES if (directory / name).is_file()), None)
+        if model is None or not (directory / KOKORO_VOICES_FILE).is_file():
+            raise FileNotFoundError(f"Kokoro model files not found in {directory}")
+        options = ort.SessionOptions()
+        if threads > 0:
+            options.intra_op_num_threads = threads
+        session = ort.InferenceSession(str(model), sess_options=options, providers=["CPUExecutionProvider"])
+        self.engine = Kokoro.from_session(session, str(directory / KOKORO_VOICES_FILE))
+        self.voice_name = voice_name
+        self.lang = "en-gb" if voice_name[:1] == "b" else "en-us"
+        self.model_file = model.name
+        self.cache_dir = cache_dir if cache_dir is not None else directory / "clips"
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self._synth_lock = threading.Lock()
+        self._cache_lock = threading.Lock()
+        self._cache: OrderedDict[tuple[str, float], bytes] = OrderedDict()
+        self._cache_size = cache_size
+        logger.info("Kokoro voice %s loaded (%s).", voice_name, model.name)
+
+    def _clip_path(self, text: str, rate: float) -> Path:
+        import hashlib
+
+        digest = hashlib.sha1(f"{self.voice_name}|{rate:.2f}|{text}".encode("utf-8")).hexdigest()
+        return self.cache_dir / f"{digest}.wav"
+
+    def has_clip(self, text: str, rate: float = 1.0) -> bool:
+        return self._clip_path(text, round(min(MAX_RATE, max(MIN_RATE, rate)), 2)).is_file()
+
+    def synthesize(self, text: str, rate: float = 1.0) -> bytes:
+        import numpy as np
+
+        rate = round(min(MAX_RATE, max(MIN_RATE, rate)), 2)
+        key = (text, rate)
+        with self._cache_lock:
+            cached = self._cache.get(key)
+            if cached is not None:
+                self._cache.move_to_end(key)
+                TTS_CACHE.labels("hit").inc()
+                return cached
+
+        path = self._clip_path(text, rate)
+        if path.is_file():
+            audio = path.read_bytes()
+            TTS_CACHE.labels("hit").inc()
+        else:
+            with self._synth_lock:
+                if path.is_file():
+                    audio = path.read_bytes()
+                else:
+                    TTS_CACHE.labels("miss").inc()
+                    samples, sample_rate = self.engine.create(text, voice=self.voice_name, speed=rate, lang=self.lang)
+                    pcm = (np.clip(samples, -1.0, 1.0) * 32767).astype("<i2")
+                    buffer = io.BytesIO()
+                    with wave.open(buffer, "wb") as wav_file:
+                        wav_file.setnchannels(1)
+                        wav_file.setsampwidth(2)
+                        wav_file.setframerate(int(sample_rate))
+                        wav_file.writeframes(pcm.tobytes())
+                    audio = buffer.getvalue()
+                    tmp = path.with_suffix(".tmp")
+                    tmp.write_bytes(audio)
+                    tmp.replace(path)  # atomic: a half-written clip is never served
+
+        with self._cache_lock:
+            self._cache[key] = audio
+            while len(self._cache) > self._cache_size:
+                self._cache.popitem(last=False)
+        return audio
