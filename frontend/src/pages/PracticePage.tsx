@@ -52,6 +52,22 @@ export default function PracticePage() {
     },
   })
 
+  // A new sentence aimed at the learner's own weakest sound, written by the coach and checked
+  // against the dictionary. Falls back to the sound library when the model is unavailable.
+  const nativeLanguage = useSettings((s) => s.nativeLanguage)
+  const suggest = useMutation({
+    mutationFn: () => api.coachSentences({ username, level, count: 1, native_language: nativeLanguage }),
+    meta: { silent: true },
+    onSuccess: (data) => {
+      const sentence = data.sentences[0]
+      if (!sentence) return toast.info('No new sentence this time. Try again in a moment.')
+      clearAttempt()
+      setTarget({ text: sentence.text, source: 'custom' })
+      toast.success(`A sentence for ${data.label || `/${data.phoneme}/`}`)
+    },
+    onError: () => toast.error('Could not write a sentence just now.'),
+  })
+
   const onRecorded = useCallback(
     ({ blob, filename }: Recording) =>
       evaluate.mutate({ audio: blob, filename, text: target.text, difficulty: level, username: username || undefined }),
@@ -138,6 +154,8 @@ export default function PracticePage() {
         onPrev={() => go(-1)}
         onNext={() => go(1)}
         onBrowse={() => setLibraryOpen(true)}
+        onSuggest={() => suggest.mutate()}
+        suggesting={suggest.isPending}
       >
         <Recorder
           state={recorder.state}
