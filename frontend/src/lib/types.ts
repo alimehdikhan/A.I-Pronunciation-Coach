@@ -99,6 +99,8 @@ export interface Health {
   language: string
   phoneme_backend: string
   tts_ready: boolean
+  /** Where accounts and history are kept, and whether they survive a restart. */
+  database?: { engine: 'sqlite' | 'postgresql'; persistent: boolean; source?: string }
   /** Sounds are scored from the audio (phoneme model loaded). */
   acoustic_scoring?: boolean
   /** Coaching tips are written by a language model. */
