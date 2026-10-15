@@ -14,7 +14,7 @@ from sqlalchemy import case, delete, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
-from backend.database import PhonemeMistake, PronunciationRecord, User, UserKey, as_utc, utcnow
+from backend.database import PhonemeMistake, PhonemeObservation, PronunciationRecord, User, UserKey, as_utc, utcnow
 from backend.phoneme_kb import get_phoneme
 from backend.security import hash_profile_key, profile_key_matches
 
@@ -161,6 +161,24 @@ def save_attempt(
                 record.mistakes.append(
                     PhonemeMistake(word=word["reference"], expected_phoneme=op["expected"], actual_phoneme=op["actual"] or "")
                 )
+    for word in result.get("words", []):
+        if not word.get("reference") or word.get("status") in ("missing", "extra"):
+            continue
+        detailed = word.get("phonemes")
+        if detailed:
+            for sound in detailed:
+                record.observations.append(
+                    PhonemeObservation(
+                        phoneme=sound["phoneme"], word=word["reference"], ok=not sound.get("flagged"), score=sound.get("score")
+                    )
+                )
+        else:
+            for op in word.get("alignment", []):
+                if op["op"] == "insert" or not op["expected"]:
+                    continue
+                record.observations.append(
+                    PhonemeObservation(phoneme=op["expected"], word=word["reference"], ok=op["op"] == "equal")
+                )
     db.add(record)
     db.commit()
     return record.id
@@ -186,12 +204,35 @@ def delete_history(db: Session, user: User) -> int:
         delete(PhonemeMistake).where(PhonemeMistake.record_id.in_(record_ids)).execution_options(synchronize_session=False)
     )
     db.execute(
+        delete(PhonemeObservation)
+        .where(PhonemeObservation.record_id.in_(record_ids))
+        .execution_options(synchronize_session=False)
+    )
+    db.execute(
         delete(PronunciationRecord)
         .where(PronunciationRecord.user_id == user.id)
         .execution_options(synchronize_session=False)
     )
     db.commit()
     return int(count or 0)
+
+
+def observations(db: Session, user: User, limit: int = 800) -> list[tuple[str, bool, float | None, str, Any]]:
+    """The learner's most recent sound attempts, newest first."""
+    rows = db.execute(
+        select(
+            PhonemeObservation.phoneme,
+            PhonemeObservation.ok,
+            PhonemeObservation.score,
+            PhonemeObservation.word,
+            PronunciationRecord.created_at,
+        )
+        .join(PronunciationRecord, PhonemeObservation.record_id == PronunciationRecord.id)
+        .where(PronunciationRecord.user_id == user.id)
+        .order_by(PronunciationRecord.created_at.desc(), PhonemeObservation.id.desc())
+        .limit(limit)
+    ).all()
+    return [(p, bool(ok), s, w or "", t) for p, ok, s, w, t in rows]
 
 
 def weakness_rows(db: Session, user: User, limit: int) -> list[tuple[str, int]]:
