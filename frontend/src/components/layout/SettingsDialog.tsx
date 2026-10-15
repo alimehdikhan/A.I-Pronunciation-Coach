@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Slider } from '@/components/ui/slider'
 import { Switch } from '@/components/ui/switch'
+import { useVoiceCatalog } from '@/lib/queries'
 import { NEURAL_VOICE, rankVoice, useSpeaker, usesNeuralVoice, useVoices } from '@/lib/speech'
 import { useSettings, type Theme } from '@/store/settings'
 import { useUI } from '@/store/ui'
@@ -39,6 +40,7 @@ export function SettingsDialog() {
   const setOpen = useUI((s) => s.setSettingsOpen)
   const settings = useSettings()
   const voices = useVoices()
+  const { data: catalog } = useVoiceCatalog()
   const { speak } = useSpeaker()
   const [name, setName] = useState(settings.username)
 
@@ -49,6 +51,7 @@ export function SettingsDialog() {
   const sortedVoices = [...voices].sort((a, b) => rankVoice(b) - rankVoice(a))
   const voiceValue = usesNeuralVoice(settings.voiceURI) ? NEURAL_VOICE : settings.voiceURI!
   const nameValid = USERNAME_RE.test(name.trim())
+  const coachChoice = settings.coachVoice ?? catalog?.default ?? ''
 
   const saveName = () => {
     if (!nameValid || name.trim() === settings.username) return
@@ -122,6 +125,29 @@ export function SettingsDialog() {
               </Button>
             </div>
           </Row>
+          {voiceValue === NEURAL_VOICE && catalog && catalog.voices.length > 1 && (
+            <Row label="Coach">
+              <Select
+                value={coachChoice}
+                onValueChange={(value) => {
+                  settings.setCoachVoice(value === catalog.default ? null : value)
+                  speak('Hello, I am your pronunciation coach.', { key: 'settings-preview' })
+                }}
+              >
+                <SelectTrigger className="h-8 max-w-[220px] min-w-0 border-0 bg-transparent text-muted-foreground shadow-none dark:bg-transparent">
+                  <SelectValue placeholder="Choose" />
+                </SelectTrigger>
+                <SelectContent position="popper" align="end" className="max-h-72">
+                  {catalog.voices.map((voice) => (
+                    <SelectItem key={voice.id} value={voice.id}>
+                      {voice.name} · {voice.accent} {voice.gender}
+                      {voice.speed === 'instant' ? ' · instant' : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Row>
+          )}
           <div className="px-4 py-3.5">
             <div className="mb-3 flex items-center justify-between text-[15px]">
               <span>Speaking rate</span>
