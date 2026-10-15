@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
@@ -82,6 +83,8 @@ class Runtime:
     scorer: PronunciationScorer | None = None
     voice: CoachVoice | None = None
     voice_engine: str | None = None
+    # Piper, created only if the primary voice fails while serving a request.
+    fallback_voice: CoachVoice | None = None
     coach: CoachService | None = None
     phonemes: PhonemeRecognizer | None = None
     db_ready: bool = False
@@ -144,6 +147,26 @@ def load_phonemes() -> None:
         runtime.phonemes = recognizer
     except Exception:
         logger.exception("Phoneme model failed to load; scoring will use Whisper's words only.")
+
+
+_fallback_lock = threading.Lock()
+
+
+def get_fallback_voice() -> CoachVoice | None:
+    """Piper, built on first use. None when it is not installed or the primary already is Piper."""
+    if runtime.voice_engine == "piper" or not settings.tts_enabled:
+        return None
+    with _fallback_lock:
+        if runtime.fallback_voice is None:
+            try:
+                from backend.tts import CoachVoice
+
+                runtime.fallback_voice = CoachVoice(settings.tts_voice)
+                logger.warning("Primary voice failed; loaded the Piper fallback.")
+            except Exception:
+                logger.exception("Piper fallback voice is not available.")
+                return None
+        return runtime.fallback_voice
 
 
 def load_scorer() -> None:
