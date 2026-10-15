@@ -326,3 +326,55 @@ def test_evaluate_survives_a_failing_phoneme_model(client, monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["score"] > 0
+
+
+class BrokenVoice:
+    def synthesize(self, text, rate=1.0):
+        raise RuntimeError("kokoro exploded")
+
+
+def test_a_failing_primary_voice_falls_back_to_piper(client, monkeypatch):
+    piper = FakeVoice()
+    monkeypatch.setattr(runtime, "voice", BrokenVoice())
+    monkeypatch.setattr(runtime, "voice_engine", "kokoro")
+    monkeypatch.setattr(speech, "get_fallback_voice", lambda: piper)
+
+    response = client.get("/api/tts", params={"text": "Hello there"})
+
+    assert response.status_code == 200 and response.content.startswith(b"RIFF")
+    assert response.headers["x-voice-fallback"] == "piper"
+    assert response.headers["cache-control"] == "no-store"  # do not pin the worse voice in caches
+    assert piper.calls == [("Hello there", 1.0)]
+
+
+def test_the_fallback_is_untouched_while_the_primary_voice_works(client, monkeypatch):
+    primary = FakeVoice()
+    monkeypatch.setattr(runtime, "voice", primary)
+    monkeypatch.setattr(runtime, "voice_engine", "kokoro")
+
+    def must_not_be_called():
+        raise AssertionError("Piper must not be loaded while Kokoro works")
+
+    monkeypatch.setattr(speech, "get_fallback_voice", must_not_be_called)
+
+    response = client.get("/api/tts", params={"text": "Hello there"})
+
+    assert response.status_code == 200 and "x-voice-fallback" not in response.headers
+    assert "immutable" in response.headers["cache-control"]
+
+
+def test_when_both_voices_fail_the_client_gets_a_clean_error(client, monkeypatch):
+    monkeypatch.setattr(runtime, "voice", BrokenVoice())
+    monkeypatch.setattr(runtime, "voice_engine", "kokoro")
+    monkeypatch.setattr(speech, "get_fallback_voice", lambda: BrokenVoice())
+
+    assert client.get("/api/tts", params={"text": "Hello there"}).status_code == 500
+    monkeypatch.setattr(speech, "get_fallback_voice", lambda: None)
+    assert client.get("/api/tts", params={"text": "Hello there"}).status_code == 500
+
+
+def test_piper_is_not_its_own_fallback(monkeypatch):
+    from backend import runtime as runtime_module
+
+    monkeypatch.setattr(runtime_module.runtime, "voice_engine", "piper")
+    assert runtime_module.get_fallback_voice() is None
