@@ -11,6 +11,7 @@ export const keys = {
   analytics: (username: string) => ['analytics', username] as const,
   history: (username: string) => ['history', username] as const,
   practice: (username: string) => ['practice', username] as const,
+  account: ['account'] as const,
 }
 
 export function useHealth() {
@@ -82,4 +83,9 @@ export function useCoach(request: CoachRequest | null) {
     staleTime: Infinity,
     retry: false,
   })
+}
+
+/** Whether this browser is signed in, and to what. */
+export function useAccount() {
+  return useQuery({ queryKey: keys.account, queryFn: api.me, staleTime: 60_000, retry: false })
 }
