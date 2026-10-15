@@ -91,6 +91,7 @@ class ChatTurn(BaseModel):
 class ChatBody(BaseModel):
     username: str = Field(default="", max_length=80)
     message: str = Field(min_length=1, max_length=400)
+    native_language: str | None = Field(default=None, max_length=30)
     history: list[ChatTurn] = Field(default_factory=list, max_length=8)
 
 
@@ -127,6 +128,7 @@ async def chat(
             "strengths": [s["phoneme"] for s in plan["strengths"]],
             "also_work_on": [s["phoneme"] for s in plan["also_work_on"]],
             "recent_attempts": recent,
+            "native_language": coach_tools.clean_language(body.native_language),
         },
         "conversation": [t.model_dump() for t in body.history[-6:]],
         "learner_message": " ".join(body.message.split()),
@@ -194,6 +196,7 @@ class PracticeBody(BaseModel):
     level: Literal["beginner", "intermediate", "advanced"] = "intermediate"
     topic: str | None = Field(default=None, max_length=40)
     count: int = Field(default=4, ge=1, le=6)
+    native_language: str | None = Field(default=None, max_length=30)
 
 
 @router.post("/api/coach/practice")
@@ -211,6 +214,8 @@ async def practice_sentences(
         symbol = teaching.build_plan(rows)["focus"]["phoneme"]
     entry = get_phoneme(symbol) or {}
     topic = " ".join((body.topic or "").split()) or None
+    if topic and is_abusive(topic):
+        topic = None  # a rude topic is simply not used
     facts = {
         "sound": {
             "ipa": symbol,
@@ -220,6 +225,7 @@ async def practice_sentences(
         "level": body.level,
         "topic": topic,
         "count": body.count,
+        "native_language": coach_tools.clean_language(body.native_language),
     }
     result, source = await get_coach().generate(
         "sentences",
@@ -237,6 +243,7 @@ async def progress_report(
     username: str,
     request: Request,
     tz_offset: int = Query(0, ge=-14 * 60, le=14 * 60),
+    language: str | None = Query(None, max_length=30),
     key: str | None = Depends(profile_key),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
@@ -253,7 +260,7 @@ async def progress_report(
     result, source = await get_coach().generate(
         "report",
         coach_tools.REPORT_PROMPT,
-        {"facts": facts},
+        {"facts": facts, "native_language": coach_tools.clean_language(language)},
         coach_tools.parse_report,
         lambda: coach_tools.report_fallback(facts),
     )
