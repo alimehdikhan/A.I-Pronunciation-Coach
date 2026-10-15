@@ -7,6 +7,7 @@ import { useStaggerIn } from '@/lib/gsap'
 import type { Attempt } from '@/store/practice'
 import { CoachCard } from './CoachCard'
 import { InsightsPanel } from './InsightsPanel'
+import { RoomNotice } from './RoomNotice'
 import { ScoreSummary } from './ScoreSummary'
 import { TranscriptPanel } from './TranscriptPanel'
 import { WordInspector } from './WordInspector'
@@ -49,6 +50,7 @@ export function Results({
   return (
     <div ref={scope} className="scroll-mt-6 space-y-5">
       <ScoreSummary result={result} previous={previousScore} />
+      <RoomNotice cleanup={result.audio_cleanup} />
       <TranscriptPanel result={result} blob={attempt.audioBlob} playback={playback} selected={selected} onSelect={setSelected} />
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] lg:items-start">
         <WordInspector word={word} playback={playback} />
