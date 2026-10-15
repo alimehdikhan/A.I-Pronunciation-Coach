@@ -15,109 +15,169 @@ pinned: false
 ![React 19](https://img.shields.io/badge/React-19-149eca?logo=react)
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 
-Speak a phrase and see exactly which **sounds** slipped, not just a score. The coach transcribes your speech with Whisper, aligns it against the target sentence word by word and phoneme by phoneme, and then teaches you how to fix each mistake with mouth-placement guides, minimal pairs and targeted drills.
+You say a sentence. The coach tells you which sounds were off, not just a score, and then helps you fix them. It transcribes your speech with Whisper, listens for the individual sounds with a phoneme recogniser, compares both against the target sentence, and explains each slip.
 
 **Live demo:** [Hugging Face Space](https://alimehdi973-ai-pronunciation-coach.hf.space)
 
----
+![Practice page: a target sentence with IPA under every word, listen buttons and the microphone orb](assets/practice.jpg)
 
-## Features
+![Results: overall score, the four metrics, and the word-by-word transcript with the slip highlighted in the waveform](assets/results.jpg)
 
-- **Practice studio**: curated phrases at three levels, or your own text. IPA appears under every word, with reference audio at normal and slow speed.
-- **Siri-style voice orb**: a WebGL glass orb modelled on the new Siri. Twisting silk ribbons of light are driven by real audio: your microphone while listening, and the coach's neural voice or your recording playback while speaking. It shows a calm loading comet while it analyses.
-- **Four scores per attempt**: Pronunciation, Fluency, Clarity and Completeness, shown as activity rings.
-- **Word-by-word transcript**: words are coloured as correct, unclear, mispronounced, skipped or extra. Play your recording with live word highlighting, or tap a word to hear just that segment.
-- **Word inspector**: a sound-by-sound comparison (target vs. what was heard), syllables with stress, and an inline tutor for the exact slip (for example */θ/ → /s/*).
-- **Targeted drills**: built from your most frequent mistakes. Record each minimal pair, and the coach checks which word it heard.
-- **Sound library**: all 41 American English sounds with articulation steps, examples and minimal pairs you can listen to.
-- **Progress**: averages, best score, streaks, score trend, trouble sounds and session history.
-- **Polish**: dark and light themes, a ⌘K command palette, keyboard shortcuts (`Space` record, `R` retry, `N` next, `L` listen), a responsive mobile layout and respect for reduced motion.
+![Word inspector: target and heard IPA, the chance each sound would be rated clean, and the tutor's fix](assets/inspector.jpg)
 
-## How scoring works
+![Coach card: a short summary, one tip per slip and a sentence to try next](assets/coach.jpg)
 
-1. **Transcription.** The browser levels your recording (quiet microphones are boosted up to +24 dB with a soft limiter) and sends 16 kHz WAV. Whisper (faster-whisper, int8) transcribes it with word-level timestamps and confidence, and voice-activity detection skips silence so empty clips aren't "heard" as words.
-2. **Word alignment.** A weighted edit-distance alignment pairs spoken words with target words, so one skipped word doesn't shift every later word. Numbers are spelled out ("10" = "ten"), and homophones count as correct.
-3. **Phoneme alignment.** Each word pair is compared as IPA phoneme tokens from **CMUDict**. Words the dictionary doesn't know (Whisper often writes mispronunciations as non-words like *"tings"*) use a rule-based letter-to-sound fallback. Near sounds (*ship/sheep*, voicing slips) get partial credit.
-4. **Metrics** (each 0–100):
-   - **Pronunciation**: phoneme accuracy of the words you said.
-   - **Completeness**: share of target words you attempted.
-   - **Fluency**: speaking rate, long pauses and filler words (from the timestamps).
-   - **Clarity**: Whisper's confidence on the target words. This catches words it recognised but that sounded unclear.
+The screenshots come from the running app. The recording was the built-in Piper voice saying "I think this is the furd time" against the target "I think this is the third time", so the slip is deliberate.
 
-   The overall score is a weighted blend, capped by completeness and curved by difficulty (Beginner is lenient, Advanced is strict).
+## What you get
 
-> These are heuristics built on ASR output rather than a forced-alignment acoustic model: they measure how intelligible your speech was to Whisper, at the level of words and sounds.
+The practice page offers sentences at three levels, or your own text. Every word shows its IPA, and you can hear the sentence at normal or slow speed in a neural voice. The orb in the middle is a WebGL shader that follows the real audio: your microphone while you record, the coach's voice or your own playback otherwise.
+
+After you speak, you get four scores (pronunciation, fluency, clarity, completeness) and a transcript where each word is marked correct, unclear, mispronounced, skipped or extra. Tap a word to see it sound by sound, with the chance each sound would be rated clean, and to hear just that segment of your recording. A word shows as *unclear* when the sounds look fine but Whisper heard a different word, and the card says what it heard. Under the transcript, a coach card gives a short summary, one tip per slip and a sentence to try next.
+
+Three more pages: drills built from the sounds you miss most often (you record each minimal pair and the coach checks which word it heard), a library of all 41 American English sounds with articulation steps and minimal pairs, and a progress page with streaks, trends and history.
+
+Keyboard: `Space` records, `R` retries, `N` moves to the next phrase, `L` plays the sentence, `Ctrl/⌘ K` opens the command palette. Dark and light themes, a layout for phones, and reduced-motion support.
+
+## How a recording is scored
+
+1. **The browser levels the audio.** Quiet microphones are boosted by up to 24 dB with a soft limiter, then the clip is encoded as 16 kHz mono WAV, so the server rarely needs ffmpeg.
+2. **Whisper transcribes it** (faster-whisper, int8) with word timestamps and confidence. Voice activity detection drops silence, which stops Whisper from inventing words on empty clips.
+3. **A phoneme model hears the sounds.** wav2vec 2.0 fine-tuned for espeak IPA runs on ONNX Runtime and returns a probability for every sound in every 20 ms frame. It has no language model, so it does not "correct" a wrong sound into the right word the way Whisper tends to.
+4. **Goodness of pronunciation per sound.** For each expected sound the scorer computes how likely it is, given everything else in the sentence, against every alternative, including "dropped". The strongest alternative becomes the diagnosis (`/θ/ came out as /s/`). The method is the alignment-free GOP of Cao et al. (Interspeech 2024).
+5. **Words are aligned** with a weighted edit distance, so one skipped word does not shift the rest. Numbers are spelled out and homophones count as correct. Each word's score blends what Whisper heard with what the audio sounded like.
+6. **The four metrics** are pronunciation (sound accuracy of the words you said), completeness (share of target words you attempted), fluency (speaking rate, long pauses, extra words) and clarity (Whisper's confidence on the target words). The overall score is a weighted blend, capped by completeness and curved by difficulty.
+
+When the phoneme model is not installed, steps 3 and 4 are skipped and scoring uses Whisper's words and CMUDict alone. Everything still works, with less precise sound-level feedback.
+
+### How well it works
+
+Scoring was checked against expert ratings on [speechocean762](https://huggingface.co/datasets/mispeech/speechocean762) (Apache-2.0): 5,000 English sentences read by Mandarin speakers, rated per sentence, word and sound by trained annotators. The blend weights, sound threshold and fluency curve were fitted on its training split. The figures below are on recordings from the test split that were not used for fitting. Correlations are Pearson's r with the human rating.
+
+| Test split, 500 recordings | Before | Now |
+|---|---:|---:|
+| Sentence accuracy | 0.514 | **0.651** |
+| Sentence overall score | 0.507 | **0.697** |
+| Sentence fluency | −0.084 | **0.627** |
+| Word accuracy | 0.422 | **0.555** |
+| Sound agreement (per sound) | n/a | 0.536 |
+| "Was this sound wrong?" (AUC) | n/a | 0.939 |
+
+"Before" is the app as it was: Whisper's words and CMUDict only, with a fluency score that penalised fast speech. On a second set of 300 recordings the same code scores 0.717 sentence accuracy, 0.626 word accuracy and 0.744 fluency; the blend weights were fitted on that second set, so treat those as optimistic.
+
+The fluency rule changed because human raters in this data score *faster* readers as more fluent (word rate correlates at +0.56 with their fluency rating), while the old rule punished anything over 180 words per minute. The audio model also rescues words Whisper drops: when Whisper reports a word as missing but the sounds are there, the word is scored from the sounds instead of getting zero. That one change moved word accuracy from 0.398 to 0.555.
+
+#### What these numbers do not say
+
+The recordings are scripted reading by one first-language group, so they say little about spontaneous speech or other accents. Only about 4% of sounds in the data are rated less than clean, which makes "was this sound wrong" a rare-event problem. At the threshold the app uses, about one flagged sound in three is a real slip, and many slips go unflagged.
+
+The phoneme model also leans toward the sound you were supposed to make. In a separate check I had the Piper voice say twelve deliberate substitutions inside full sentences (θ→s, ð→d, v→b, r→l, ʃ→s and similar). The sound model flagged four of them, and Whisper hearing a different word caught two more, so half were reported as less than clean. When the same sounds are spoken alone the model separates them (it hears `think` and `sink` differently), but inside a familiar phrase it often hears the intended sound: `berry` read as `very` came back clean both times. Synthetic speech is not learner speech, so this is not a recall figure for real users, but it is the main weakness to know about. A model fine-tuned on non-native speech would be the next step.
+
+The scores estimate how a human rater would hear you. They are not a measurement of your accent, and the absolute level is generous: a sentence with one wrong sound in seven words can still score in the nineties.
+
+To reproduce:
+
+```bash
+pip install pyarrow scipy
+python scripts/export_phoneme_model.py ~/.cache/pronunciation_coach/phonemes
+python scripts/eval_speechocean.py prepare   --split test --limit 500
+python scripts/eval_speechocean.py report    --split test --limit 500
+python scripts/eval_speechocean.py calibrate --split train --limit 700   # after: prepare --split train --no-asr
+```
+
+## The coach's notes
+
+The tip text comes from a language model through [Groq](https://groq.com) when `GROQ_API_KEY` is set, and from the built-in knowledge base otherwise. The model only explains slips that the scorer already found. It never sees audio or your name, it cannot change a score, and its answer is validated before it is shown. If the call fails or times out, the knowledge-base tip appears instead. Replies are cached per set of slips, and the endpoint has its own rate limit.
+
+The default model is `openai/gpt-oss-120b` at medium reasoning effort, which answered in about two seconds on Groq's free tier. High effort took about 18 seconds without better tips.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
     subgraph Browser["React app (Vite)"]
-        Rec[Recorder + Siri orb] -->|levelled 16 kHz WAV| API
+        Rec[Recorder + orb] -->|levelled 16 kHz WAV| API
         UI[Results · Drills · Sounds · Progress]
     end
 
     subgraph Server["FastAPI"]
-        API[/api/evaluate/] --> Gate[Work gate<br/>bounded queue] --> Whisper[faster-whisper + VAD<br/>word timestamps + confidence]
-        Whisper --> Scorer[Scorer<br/>word + phoneme alignment]
+        API[/api/evaluate/] --> Gate[Work gate<br/>bounded queue]
+        Gate --> Whisper[faster-whisper + VAD]
+        Gate --> Phon[wav2vec 2.0 phonemes<br/>ONNX int8]
+        Whisper --> Scorer[Scorer<br/>word alignment + GOP]
+        Phon --> Scorer
         Scorer --> CMU[(CMUDict IPA<br/>+ letter-to-sound rules)]
-        Scorer --> Tutor[Tutor KB<br/>41 phonemes · 50 swap tips]
-        TTS[/api/tts<br/>Piper neural voice/] -->|WAV| Engine
-        Engine[Web Audio engine<br/>analyser] --> Orb[Siri orb]
-        API --> DB[(PostgreSQL / SQLite<br/>history & weak sounds)]
-        Static[Static SPA host] -.serves.-> Browser
+        Scorer --> DB[(PostgreSQL / SQLite<br/>history, weak sounds)]
+        Coach[/api/coach/] -->|diagnosed slips only| Groq[Groq LLM]
+        Coach -.fallback.-> KB[Tutor knowledge base]
+        TTS[/api/tts<br/>Piper voice/]
     end
 
-    Scorer -->|JSON result| UI
+    Scorer -->|JSON| UI
+    UI --> Coach
 ```
-
-## Tech stack
 
 | Layer | Tools |
 |---|---|
-| Frontend | React 19, TypeScript, Vite, Tailwind CSS v4, shadcn/ui (Radix), Motion (Framer Motion), GSAP (SplitText, ScrollTrigger), Phosphor Icons, Recharts, TanStack Query, Zustand, cmdk, Sonner |
-| Backend | Python 3.11, FastAPI, Uvicorn, SQLAlchemy, Prometheus client |
-| Speech & phonetics | faster-whisper (CTranslate2, Silero VAD), NLTK CMUDict, Piper neural TTS, Epitran (optional fallback) |
-| Data | PostgreSQL (e.g. Neon) in production, SQLite locally |
-| Delivery | Docker (multi-stage), GitHub Actions CI |
+| Frontend | React 19, TypeScript, Vite, Tailwind CSS v4, shadcn/ui (Radix), Motion, GSAP, Three.js (orb), TanStack Query, Zustand, Recharts |
+| Backend | Python 3.11, FastAPI, SQLAlchemy, Prometheus client |
+| Speech | faster-whisper (CTranslate2, Silero VAD), wav2vec 2.0 phoneme model on ONNX Runtime, Piper TTS, NLTK CMUDict |
+| Coaching | Groq chat API (optional), built-in knowledge base of 41 sounds, 50 substitution tips and 16 deletion tips |
+| Data | PostgreSQL (for example Neon) in production, SQLite locally |
+| Delivery | Docker multi-stage build, GitHub Actions CI |
 
----
+## Run it locally
 
-## Getting started
-
-**Prerequisites:** Python 3.11+, Node.js 20+. `ffmpeg` is used if it's on your `PATH`; otherwise the bundled `imageio-ffmpeg` binary is used automatically.
+You need Python 3.11+ and Node 20+. ffmpeg is used if it is on your `PATH`; otherwise the bundled `imageio-ffmpeg` binary is used.
 
 ```bash
 git clone https://github.com/alimehdikhan/A.I-Pronunciation-Coach.git
 cd A.I-Pronunciation-Coach
 
-# Backend
 python -m venv .venv
 source .venv/bin/activate            # Windows: .venv\Scripts\activate
 pip install -r backend/requirements.txt -r backend/requirements-dev.txt
 
-# Frontend
 cd frontend && npm ci && cd ..
 ```
 
-### Development (hot reload)
-
-Run the API and the Vite dev server in two terminals, then open **http://localhost:5173**:
+Run the API and the Vite dev server in two terminals, then open http://localhost:5173:
 
 ```bash
-make dev-api     # or: python -m uvicorn backend.main:app --reload --port 8000
-make dev-web     # or: cd frontend && npm run dev
+make dev-api     # python -m uvicorn backend.main:app --reload --port 8000
+make dev-web     # cd frontend && npm run dev
 ```
 
-Vite proxies `/api` and `/health` to the backend. The first start downloads the Whisper model (about 140 MB for `base`). The server starts accepting requests immediately and loads models in the background; speech endpoints answer `503` with `Retry-After` until they're ready. Set `PRONUNCIATION_COACH_LOAD_MODELS_ON_STARTUP=0` to work on the UI without loading them.
+The first start downloads Whisper (about 140 MB for `base`). The server accepts requests straight away and loads models in the background; speech endpoints return `503` with `Retry-After` until they are ready. `PRONUNCIATION_COACH_LOAD_MODELS_ON_STARTUP=0` skips model loading, which is handy for UI work.
+
+Settings can live in a `.env` file at the project root (it is git-ignored; see `.env.example`). Real environment variables take precedence over it.
+
+### Turning on acoustic scoring
+
+The phoneme model is not downloaded automatically, because exporting it needs PyTorch, which the app itself does not use. Export it once into the cache directory:
+
+```bash
+pip install torch transformers onnx onnxscript --extra-index-url https://download.pytorch.org/whl/cpu
+python scripts/export_phoneme_model.py ~/.cache/pronunciation_coach/phonemes
+```
+
+That downloads about 1.3 GB and writes a 355 MB int8 file. After a restart, `/health` reports `"acoustic_scoring": true`. On a 4-core CPU a four-second clip takes about one second.
+
+### Turning on the AI coach
+
+Create a key at console.groq.com and add it to `.env`:
+
+```
+GROQ_API_KEY=your-key
+```
 
 ### Production build
 
 ```bash
-make run         # builds frontend/dist, then FastAPI serves UI + API on :8000
+make run         # builds frontend/dist, then FastAPI serves UI and API on :8000
 ```
 
-FastAPI serves the built app with client-side routing, a strict Content-Security-Policy, long-lived caching for fingerprinted assets, gzip, and JSON 404s for unknown API routes.
+FastAPI serves the built app with client-side routing, a Content-Security-Policy derived from the built `index.html`, long-lived caching for fingerprinted assets, `no-cache` for the shell, gzip, and JSON 404s for unknown API routes.
 
 ## Deployment
 
@@ -125,16 +185,18 @@ FastAPI serves the built app with client-side routing, a strict Content-Security
 
 ```bash
 docker build -t pronunciation-coach .
-docker run -p 7860:7860 -e NEON_DATABASE_URL="postgresql://…" pronunciation-coach
+docker run -p 7860:7860 -e NEON_DATABASE_URL="postgresql://…" -e GROQ_API_KEY="…" pronunciation-coach
 ```
 
-The image builds the frontend in a Node stage, installs the Python dependencies (no PyTorch: faster-whisper runs on CTranslate2), bakes in CMUDict, the Whisper weights and the coach's voice for fast cold starts, logs JSON, and runs as a non-root user. The baked model follows `WHISPER_MODEL_SIZE` (also accepted as a build arg; Hugging Face passes Space variables as build args); use `--build-arg PRELOAD_WHISPER=none` to skip baking it. Without `NEON_DATABASE_URL`, history is stored in SQLite inside the container and is lost when it's replaced.
+The image builds the frontend in a Node stage, installs the Python dependencies (no PyTorch), bakes in CMUDict, the Whisper weights and the Piper voice for fast cold starts, logs JSON, and runs as a non-root user. The baked Whisper size follows `WHISPER_MODEL_SIZE`; use `--build-arg PRELOAD_WHISPER=none` to skip it.
+
+Add `--build-arg PRELOAD_PHONEMES=1` to bake the phoneme model too. The build installs PyTorch temporarily, exports the model, then removes PyTorch again, so it adds a few minutes and needs about 6 GB of memory but leaves the image size close to the model file. Without it the app runs on Whisper's words only. Without `NEON_DATABASE_URL`, history is stored in SQLite inside the container and is lost when the container is replaced.
 
 ### Hugging Face Spaces
 
-The front matter at the top of this README configures a Docker Space on port 7860. Push to your Space remote and add `NEON_DATABASE_URL` as a secret to keep history across restarts.
+The front matter at the top of this file configures a Docker Space on port 7860. Pushing to the Space remote rebuilds it. Add `NEON_DATABASE_URL` and `GROQ_API_KEY` as secrets. Hugging Face passes Space variables to the build as build args, so `WHISPER_MODEL_SIZE` and `PRELOAD_PHONEMES` can be set under Settings → Variables.
 
-Free Spaces sleep after 48 hours without traffic. The `Keep Space awake` workflow (`.github/workflows/keep-alive.yml`) pings the Space every 6 hours and, if it was asleep, waits until it's serving again. GitHub pauses scheduled workflows after 60 days without repository activity; re-enable it from the Actions tab if that happens.
+Free Spaces sleep after 48 hours without traffic. The `Keep Space awake` workflow (`.github/workflows/keep-alive.yml`) pings the Space every 6 hours and waits for it to come back if it was asleep. GitHub pauses scheduled workflows after 60 days without repository activity; re-enable it from the Actions tab if that happens.
 
 ### Render
 
@@ -146,28 +208,35 @@ All settings are environment variables. See [`.env.example`](.env.example).
 
 | Variable | Default | Description |
 |---|---|---|
-| `NEON_DATABASE_URL` | `sqlite:///./pronunciation_coach.db` | PostgreSQL URL (e.g. Neon) or SQLite path |
+| `NEON_DATABASE_URL` | `sqlite:///./pronunciation_coach.db` | PostgreSQL URL (for example Neon) or SQLite path |
 | `WHISPER_MODEL_SIZE` | `base` | `tiny`, `base`, `small`, `medium`, `large` |
+| `PRONUNCIATION_COACH_PHONEME_SCORING` | `1` | `0` ignores the phoneme model even if it is installed |
+| `PRONUNCIATION_COACH_PHONEME_DIR` | `~/.cache/pronunciation_coach/phonemes` | Where `phonemes.onnx` and `vocab.json` live |
+| `PRONUNCIATION_COACH_PHONEME_THREADS` | `0` | CPU threads for the phoneme model (`0` = all cores) |
+| `GROQ_API_KEY` | unset | Enables AI-written coaching tips. Unset uses the built-in tips |
+| `PRONUNCIATION_COACH_LLM_MODEL` | `openai/gpt-oss-120b` | Groq chat model for the tips |
+| `PRONUNCIATION_COACH_LLM_TIMEOUT` | `8` | Seconds to wait before falling back to built-in tips |
 | `PRONUNCIATION_LANGUAGE` | `eng-Latn` | Epitran code for the out-of-dictionary fallback |
-| `PRONUNCIATION_COACH_LOAD_MODELS_ON_STARTUP` | `1` | `0` skips loading Whisper (UI work, tests) |
-| `PRONUNCIATION_COACH_MAX_UPLOAD_BYTES` | `26214400` | Max upload size (25 MB) |
+| `PRONUNCIATION_COACH_LOAD_MODELS_ON_STARTUP` | `1` | `0` skips loading models (UI work, tests) |
+| `PRONUNCIATION_COACH_MAX_UPLOAD_BYTES` | `26214400` | Largest accepted upload (25 MB) |
+| `PRONUNCIATION_COACH_MAX_AUDIO_SECONDS` | `60` | Longest accepted recording |
 | `PRONUNCIATION_COACH_RATE_LIMIT` | `30` | Audio requests per client IP per minute (`0` disables) |
-| `PRONUNCIATION_COACH_TTS` | `1` | Neural coach voice at `/api/tts` (`0` falls back to browser speech, without orb sync) |
-| `PRONUNCIATION_COACH_TTS_VOICE` | `en_US-lessac-medium` | Piper voice, downloaded on first start if not cached |
-| `PRONUNCIATION_COACH_TTS_DIR` | `~/.cache/pronunciation_coach/piper` | Voice model cache directory |
+| `PRONUNCIATION_COACH_TTS` | `1` | Neural coach voice at `/api/tts` (`0` falls back to browser speech) |
+| `PRONUNCIATION_COACH_TTS_VOICE` | `en_US-lessac-medium` | Piper voice, downloaded on first start if missing |
+| `PRONUNCIATION_COACH_TTS_DIR` | `~/.cache/pronunciation_coach/piper` | Voice cache directory |
 | `PRONUNCIATION_COACH_ASR_DEVICE` | `auto` | `cpu`, `cuda` or `auto` |
-| `PRONUNCIATION_COACH_ASR_COMPUTE_TYPE` | `auto` | CTranslate2 precision (`int8` on CPU, `float16` on GPU by default) |
-| `PRONUNCIATION_COACH_ASR_BEAM_SIZE` | `5` | Whisper beam size (`1` is slightly faster) |
+| `PRONUNCIATION_COACH_ASR_COMPUTE_TYPE` | `auto` | CTranslate2 precision (`int8` on CPU, `float16` on GPU) |
+| `PRONUNCIATION_COACH_ASR_BEAM_SIZE` | `5` | Whisper beam size (`1` is a little faster) |
 | `PRONUNCIATION_COACH_ASR_THREADS` | `0` | CPU threads per transcription (`0` = all cores) |
 | `PRONUNCIATION_COACH_ASR_CONCURRENCY` | `1` | Transcriptions run at once |
-| `PRONUNCIATION_COACH_ASR_QUEUE_LIMIT` | `8` | Transcriptions allowed to wait; beyond that requests get `503` + `Retry-After` |
-| `PRONUNCIATION_COACH_ASR_DIR` | `~/.cache/pronunciation_coach/whisper` | Whisper model cache directory |
-| `PRONUNCIATION_COACH_MAX_AUDIO_SECONDS` | `60` | Longest accepted recording |
+| `PRONUNCIATION_COACH_ASR_QUEUE_LIMIT` | `8` | Transcriptions allowed to wait; beyond that, `503` + `Retry-After` |
+| `PRONUNCIATION_COACH_ASR_DIR` | `~/.cache/pronunciation_coach/whisper` | Whisper cache directory |
 | `PRONUNCIATION_COACH_CORS_ORIGINS` | localhost | Comma-separated allowed origins |
 | `PRONUNCIATION_COACH_FRONTEND_DIR` | `frontend/dist` | Location of the built UI |
-| `PRONUNCIATION_COACH_FRAME_ANCESTORS` | `'self' https://huggingface.co https://*.hf.space` | Pages allowed to embed the app (CSP `frame-ancestors`) |
+| `PRONUNCIATION_COACH_FRAME_ANCESTORS` | `'self' https://huggingface.co https://*.hf.space` | Pages allowed to embed the app |
 | `PRONUNCIATION_COACH_METRICS` | `1` | Expose Prometheus metrics at `/metrics` |
 | `PRONUNCIATION_COACH_METRICS_TOKEN` | unset | If set, `/metrics` requires `Authorization: Bearer <token>` |
+| `PRONUNCIATION_COACH_ENABLE_AGENT` | `0` | Enables the development-only `/api/agent/analyze` code scanner |
 | `PRONUNCIATION_COACH_LOG_LEVEL` | `INFO` | Log level |
 | `PRONUNCIATION_COACH_LOG_FORMAT` | `text` | `json` for structured logs (the Docker image uses `json`) |
 | `VITE_API_URL` | same origin | Build-time API origin if the UI is hosted separately |
@@ -176,67 +245,73 @@ All settings are environment variables. See [`.env.example`](.env.example).
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/health` | Liveness, model status and phoneme backend |
+| `GET` | `/health` | Liveness, model status, whether acoustic scoring and the AI coach are on |
 | `GET` | `/ready` | `200` only when models are loaded and the database is reachable |
-| `GET` | `/metrics` | Prometheus metrics (request latency by route, Whisper queue, TTS cache, rate limiting) |
+| `GET` | `/metrics` | Prometheus metrics: request latency by route, Whisper queue, TTS cache, rate limiting |
 | `POST` | `/api/evaluate` | Score a recording (`audio`, `target_text`, optional `difficulty`, `username`) |
+| `POST` | `/api/coach` | Tips for an attempt, from the sentence, score and diagnosed slips (JSON) |
 | `POST` | `/api/transcribe` | Transcribe with word timings, no scoring |
-| `GET` | `/api/tts?text=&rate=` | The coach's neural voice as WAV (cached), played through Web Audio so the orb follows it |
+| `GET` | `/api/tts?text=&rate=` | The coach's voice as WAV (cached), played through Web Audio so the orb follows it |
 | `GET` | `/api/pronounce?text=` | IPA, syllables and stress for each word of a sentence |
-| `GET` | `/api/phonemes` | All 41 phonemes (summary) |
-| `GET` | `/api/phonemes/{symbol}` | Full tutor entry for one phoneme |
-| `GET` | `/api/tutor/card?word=&expected=&actual=` | Tutor card for a specific slip |
+| `GET` | `/api/phonemes` | All 41 sounds (summary) |
+| `GET` | `/api/phonemes/{symbol}` | Full tutor entry for one sound |
+| `GET` | `/api/tutor/card?word=&expected=&actual=` | Tutor card for one slip |
 | `GET` | `/api/tutor/personalized-practice/{username}` | Drills for a user's weakest sounds |
-| `GET` | `/api/history/{username}` | Recent attempts with phoneme mistakes |
-| `DELETE` | `/api/history/{username}` | Delete a user's history (requires the profile key) |
+| `GET` | `/api/history/{username}` | Recent attempts with sound mistakes |
+| `DELETE` | `/api/history/{username}` | Delete a user's history (needs the profile key) |
 | `GET` | `/api/analytics/{username}` | Averages, streaks, trend and top weaknesses |
 
-Interactive docs are available at `/docs`.
+Interactive docs are at `/docs`. Every response carries an `X-Request-ID` (also in the logs), and `/api/evaluate` reports `Server-Timing` for upload, decode, asr, phonemes, score and save.
 
-**Profiles.** There are no accounts. Each browser keeps a random profile key and sends it as `X-Profile-Key`; the first browser to use a name claims it, and only that key can read, add to or delete its history afterwards (the server stores only a SHA-256 hash). Names created before this existed stay readable until their owner's browser claims them. If a name is claimed elsewhere, evaluation still returns feedback with `"saved": false, "save_error": "profile_locked"`, and the history endpoints return `403` with `"code": "profile_locked"`. To release a name (for example after clearing browser data), run `python -m backend.manage unlock "<name>"`; `python -m backend.manage users` lists names and their claim status.
+### Profiles
 
-Every response carries an `X-Request-ID` (also in the logs), and `/api/evaluate` reports `Server-Timing` for its upload, decode, asr, score and save stages.
+There are no accounts. Each browser keeps a random profile key and sends it as `X-Profile-Key`. The first browser to use a name claims it, and only that key can read, add to or delete its history afterwards. The server stores a SHA-256 hash of the key. Names created before this existed stay readable until their owner's browser claims them. If a name is claimed elsewhere, evaluation still returns feedback with `"saved": false, "save_error": "profile_locked"`, and the history endpoints return `403` with `"code": "profile_locked"`.
 
-```bash
-./scripts/test_evaluate.sh my-recording.wav "Today is a beautiful day."
-```
+To release a name, for example after clearing browser data, run `python -m backend.manage unlock "<name>"`. `python -m backend.manage users` lists names and whether they are claimed.
 
-## Testing
+## Tests
 
 ```bash
-make test        # pytest (models mocked, real scorer and phonetics)
+make test        # pytest: scorer, phonetics, GOP, coach, security, audio, API (models mocked)
 make lint        # ruff
 make typecheck   # TypeScript
 ```
 
-CI runs the backend lint and tests plus the frontend typecheck and production build on every push and pull request.
+The GOP implementation is checked against brute-force enumeration of CTC paths on small inputs, so the dynamic programming is tested against the definition, not against itself. CI runs backend lint and tests plus the frontend typecheck and production build on every push and pull request.
 
-## Project structure
+## Project layout
 
 ```
 backend/
-  main.py           App assembly: middleware, routers, startup, SPA mount
-  config.py         Settings from the environment
-  api/              Routes: health, speech (evaluate/transcribe/tts), library, progress
-  runtime.py        Loaded models and the bounded transcription queue
-  audio.py          Upload validation, WAV fast path, hardened ffmpeg, loudness normalisation
-  asr.py            faster-whisper wrapper (VAD, word timestamps)
-  tts.py            Piper neural voice with an LRU cache
-  repositories.py   Database queries (SQL aggregates for analytics)
-  security.py       Rate limiting, profile keys, security headers, body size limit
-  observability.py  Logging, request IDs, Prometheus metrics, Server-Timing
-  spa.py            React app hosting with CSP
-  pronunciation.py  Scoring: alignment, metrics, insights
-  phonetics.py      Tokenising, CMUDict→IPA, letter-to-sound rules, syllables, alignment
-  phoneme_kb.py     Tutor knowledge base (41 phonemes, substitution and deletion tips)
-  tutor.py          Tutor cards and personalised drills
-  database.py       SQLAlchemy models, indexes, additive migrations, schemas
+  main.py             App assembly: middleware, routers, startup, SPA mount
+  config.py           Settings from the environment and .env
+  api/                Routes: health, speech, library, progress, coach
+  runtime.py          Loaded models and the bounded transcription queue
+  audio.py            Upload validation, WAV fast path, hardened ffmpeg, loudness
+  asr.py              faster-whisper wrapper (VAD, word timestamps)
+  phoneme_model.py    wav2vec 2.0 phoneme recogniser on ONNX Runtime
+  gop.py              Alignment-free goodness of pronunciation from CTC posteriors
+  acoustic.py         Per-word acoustic evidence and the score blend
+  pronunciation.py    Scoring: word alignment, metrics, insights
+  phonetics.py        Tokenising, CMUDict to IPA, letter-to-sound rules, alignment
+  coach.py            Groq tips with validation, cache and template fallback
+  tutor.py            Tutor cards and personalised drills
+  phoneme_kb.py       Knowledge base: 41 sounds, substitution and deletion tips
+  tts.py              Piper voice with an LRU cache
+  repositories.py     Database queries (SQL aggregates for analytics)
+  security.py         Rate limiting, profile keys, security headers, body limit
+  observability.py    Logging, request IDs, Prometheus metrics, Server-Timing
+  spa.py              Serving the built app, CSP, legacy-cache recovery
+  database.py         Models, indexes, additive migrations, schemas
 frontend/src/
-  pages/            Practice, Drills, Sounds, Progress
-  components/       practice/ (orb, results, inspector), tutor/, layout/, ui/ (shadcn)
-  hooks/            Recorder, playback, audio peaks, hotkeys
-  lib/              API client, queries, speech synthesis, GSAP helpers
-tests/              API, security, audio, analytics/migration, scorer, phonetics and tutor tests
+  pages/              Practice, Drills, Sounds, Progress
+  components/         practice/ (orb, results, inspector, coach), tutor/, layout/, ui/
+  hooks/              Recorder, playback, audio peaks, hotkeys
+  lib/                API client, queries, speech, audio engine, GSAP helpers
+scripts/
+  export_phoneme_model.py   One-time ONNX export of the phoneme model
+  eval_speechocean.py       Benchmark, calibration and blend fitting
+tests/
 ```
 
 ## License
