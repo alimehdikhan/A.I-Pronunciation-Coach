@@ -1,4 +1,4 @@
-import { ArrowRightIcon } from '@phosphor-icons/react'
+import { ArrowRightIcon, TargetIcon } from '@phosphor-icons/react'
 import { motion, useReducedMotion } from 'motion/react'
 import { Link } from 'react-router'
 import { Panel, SectionLabel } from '@/components/common'
@@ -16,7 +16,7 @@ export function FocusSounds({ sounds }: { sounds: SoundMastery[] }) {
   if (focus.length === 0) {
     return (
       <Panel className="progress-item p-6 sm:p-8">
-        <SectionLabel>What to practise next</SectionLabel>
+        <SectionLabel icon={<TargetIcon weight="fill" />}>What to practise next</SectionLabel>
         <p className="text-[15px] text-muted-foreground">Every sound you have tried is going well. Try a harder phrase to keep growing.</p>
       </Panel>
     )
@@ -24,6 +24,7 @@ export function FocusSounds({ sounds }: { sounds: SoundMastery[] }) {
   return (
     <Panel className="progress-item p-6 sm:p-8">
       <SectionLabel
+        icon={<TargetIcon weight="fill" />}
         action={
           <Button asChild size="sm">
             <Link to="/coach">
