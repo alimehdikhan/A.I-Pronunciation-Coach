@@ -21,6 +21,8 @@ interface SettingsState {
   rate: number
   level: Level
   showIpa: boolean
+  /** What to show under each word: plain letters ("uh-BOWT"), IPA symbols, or nothing. */
+  phoneticStyle: 'simple' | 'ipa' | 'off'
   onboarded: boolean
   profileKey: string
   /** Set while this browser is signed in to an account. */
@@ -37,6 +39,7 @@ interface SettingsState {
   setRate: (rate: number) => void
   setLevel: (level: Level) => void
   setShowIpa: (show: boolean) => void
+  setPhoneticStyle: (style: 'simple' | 'ipa' | 'off') => void
   completeOnboarding: (username?: string) => void
   continueAsGuest: () => void
   /** Adopt the account's name after signing in or signing up. */
@@ -56,6 +59,7 @@ export const useSettings = create<SettingsState>()(
       rate: 0.95,
       level: 'beginner',
       showIpa: true,
+      phoneticStyle: 'simple',
       onboarded: false,
       profileKey: newProfileKey(),
       accountEmail: null,
@@ -69,6 +73,7 @@ export const useSettings = create<SettingsState>()(
       setRate: (rate) => set({ rate }),
       setLevel: (level) => set({ level }),
       setShowIpa: (showIpa) => set({ showIpa }),
+      setPhoneticStyle: (phoneticStyle) => set({ phoneticStyle }),
       completeOnboarding: (username) =>
         set((s) => ({ onboarded: true, username: username !== undefined ? username.trim().slice(0, 40) : s.username })),
       continueAsGuest: () => set({ guestChosen: true }),
@@ -80,11 +85,13 @@ export const useSettings = create<SettingsState>()(
     }),
     {
       name: 'pc-settings',
-      version: 3,
+      version: 4,
       migrate: (persisted, version) => {
         let state = (persisted ?? {}) as Partial<SettingsState>
         // v2 introduced the neural coach voice; move everyone onto it once.
         if (version < 2) state = { ...state, voiceURI: null }
+        // v4 shows plain-letter pronunciations by default; anyone who had turned the line off keeps it off.
+        if (version < 4) state = { ...state, phoneticStyle: state.showIpa === false ? 'off' : 'simple' }
         // v3 protects saved progress with a per-browser profile key.
         if (!state.profileKey) state = { ...state, profileKey: newProfileKey() }
         return state
