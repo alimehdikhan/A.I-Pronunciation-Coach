@@ -9,6 +9,7 @@ import { LogoMark } from '@/components/layout/Logo'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { api, ApiError } from '@/lib/api'
+import { keys } from '@/lib/queries'
 import { cn } from '@/lib/utils'
 import { useSettings } from '@/store/settings'
 
@@ -137,6 +138,9 @@ export default function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
         : api.login({ identifier: identifier.trim(), password }),
     meta: { silent: true },
     onSuccess: (profile) => {
+      // Replace the cached "not signed in" answer first: the account sync in AppShell would
+      // otherwise read it as proof that this browser was signed out and rotate its key.
+      queryClient.setQueryData(keys.account, profile)
       signIn({ username: profile.username, displayName: profile.display_name, email: profile.email })
       void queryClient.invalidateQueries()
       toast.success(signup ? `Welcome, ${profile.display_name}` : `Signed in as ${profile.display_name}`)
