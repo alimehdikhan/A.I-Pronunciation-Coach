@@ -16,7 +16,7 @@ import json
 import logging
 import threading
 from collections import OrderedDict
-from typing import Any, Callable, Literal
+from typing import Any, Callable, Literal, Sequence
 
 import httpx
 from pydantic import BaseModel, Field, ValidationError, field_validator
@@ -86,6 +86,7 @@ Rules:
 - For a skipped, extra or unclear word, say what to do about the word instead of describing a sound.
 - "expected" is the sound that should have been said and "actual" is what was heard; an empty "actual" means the sound was dropped, and "?" means a sound that matched no standard English sound. Sounds are IPA.
 - Each tip is at most two sentences of plain language: say what the mouth, tongue, lips or voice should do, not just the symbol.
+- "sound_guides" is how the app's library says each relevant sound is made. Base every description of tongue, lips and air on it; do not describe a sound from memory when it is there.
 - If there are no slips, praise what went well and suggest one way to keep improving.
 - Use weak_sounds to say which sounds are worth extra time, if relevant.
 - Match the tone of the summary to the score: 85+ praise, 60-84 encouraging with one focus, below 60 supportive and honest. Never call a score below 70 "solid", "great" or "excellent".
@@ -149,6 +150,17 @@ def template_reply(request: CoachRequest) -> CoachReply:
     )
 
 
+def _json_object(text: str) -> Any:
+    """Parse a JSON object from model output, tolerating text or code fences around it."""
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        start, end = text.find("{"), text.rfind("}")
+        if start < 0 or end <= start:
+            raise
+        return json.loads(text[start : end + 1])
+
+
 def _cache_key(request: CoachRequest, model: str) -> str:
     payload = json.dumps([model, request.model_dump()], sort_keys=True, ensure_ascii=False)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
@@ -163,12 +175,17 @@ class CoachService:
         model: str,
         *,
         timeout: float = 8.0,
+        fallback_models: Sequence[str] = (),
         url: str = GROQ_URL,
         transport: httpx.AsyncBaseTransport | None = None,
         cache_size: int = 256,
     ):
         self.api_key = api_key.strip()
         self.model = model
+        # Tried in order when the model above is rate limited or fails: each model has its own
+        # token budget on the free tier, so a second one is usually available.
+        self.models = [model, *[m for m in fallback_models if m and m != model]]
+        self.answered_by: dict[str, int] = {}
         self.url = url
         self._client = httpx.AsyncClient(timeout=timeout, transport=transport)
         self._cache: OrderedDict[str, CoachReply] = OrderedDict()
@@ -206,25 +223,56 @@ class CoachService:
         return reply
 
     async def _complete(self, system: str, user: dict[str, Any]) -> dict[str, Any]:
-        """One JSON-mode chat completion; returns the parsed object."""
+        """One JSON chat completion, trying each configured model in turn; returns the parsed object."""
+        failure: Exception | None = None
+        for model in self.models:
+            try:
+                data = await self._complete_with(model, system, user)
+            except httpx.HTTPStatusError as exc:
+                failure = exc
+                logger.warning("Coach model %s answered %s; trying the next one.", model, exc.response.status_code)
+                if exc.response.status_code in (401, 403):
+                    break  # a bad key fails everywhere
+                continue
+            except (httpx.TransportError, ValueError, KeyError) as exc:
+                failure = exc
+                logger.warning("Coach model %s failed (%s); trying the next one.", model, type(exc).__name__)
+                continue
+            self.answered_by[model] = self.answered_by.get(model, 0) + 1
+            return data
+        raise failure or RuntimeError("no model configured")
+
+    async def _complete_with(self, model: str, system: str, user: dict[str, Any]) -> dict[str, Any]:
+        """One completion from one model. JSON mode the provider rejects is retried as plain text."""
+        try:
+            return await self._request(model, system, user, json_mode=True)
+        except httpx.HTTPStatusError as exc:
+            # Reasoning models occasionally emit JSON the provider's validator refuses (HTTP 400,
+            # "json_validate_failed"). The same request as plain text and parsed here works.
+            if exc.response.status_code != 400 or "json_validate_failed" not in exc.response.text:
+                raise
+            return await self._request(model, system, user, json_mode=False)
+
+    async def _request(self, model: str, system: str, user: dict[str, Any], *, json_mode: bool) -> dict[str, Any]:
         payload: dict[str, Any] = {
-            "model": self.model,
+            "model": model,
             "temperature": 0.4,
             # Reasoning models spend part of this budget thinking before they answer.
             "max_tokens": 1500,
-            "response_format": {"type": "json_object"},
             "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": json.dumps(user, ensure_ascii=False)},
             ],
         }
-        if self.model.startswith("openai/gpt-oss"):
+        if json_mode:
+            payload["response_format"] = {"type": "json_object"}
+        if model.startswith("openai/gpt-oss"):
             # Measured on Groq: "low" is vague about articulation, "high" takes ~18 s
             # for no visible gain, "medium" answers in about 2 s with correct detail.
             payload["reasoning_effort"] = "medium"
         response = await self._client.post(self.url, headers={"Authorization": f"Bearer {self.api_key}"}, json=payload)
         response.raise_for_status()
-        data = json.loads(response.json()["choices"][0]["message"]["content"])
+        data = _json_object(response.json()["choices"][0]["message"]["content"])
         if not isinstance(data, dict):
             raise ValueError("reply is not an object")
         return data
@@ -287,7 +335,14 @@ class CoachService:
         return note, "groq"
 
     async def _ask(self, request: CoachRequest) -> CoachReply:
-        data = await self._complete(SYSTEM_PROMPT, request.model_dump())
+        from backend.coach_tools import guides_for  # imported here: coach_tools does not depend on this module
+
+        facts = request.model_dump()
+        symbols = [slip.expected for slip in request.slips if slip.expected and slip.kind == "substitution"]
+        symbols += [slip.expected for slip in request.slips if slip.expected and slip.kind != "substitution"]
+        symbols += [sound.phoneme for sound in request.weak_sounds]
+        facts["sound_guides"] = guides_for(symbols)[:5]
+        data = await self._complete(SYSTEM_PROMPT, facts)
         tips = data.get("tips") if isinstance(data.get("tips"), list) else []
         try:
             return CoachReply(
