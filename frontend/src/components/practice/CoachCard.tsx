@@ -1,5 +1,6 @@
-import { SparkleIcon } from '@phosphor-icons/react'
+import { ArrowRightIcon, SparkleIcon, TargetIcon } from '@phosphor-icons/react'
 import { useMemo } from 'react'
+import { Link } from 'react-router'
 import { Pill, SectionLabel } from '@/components/common'
 import { SpeakChip } from '@/components/tutor/SpeakButton'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -69,6 +70,15 @@ export function CoachCard({ result }: { result: EvaluationResult }) {
       ) : (
         <div className="space-y-4">
           <p className="text-[17px] leading-relaxed font-medium">{data.summary}</p>
+          {data.one_thing && (
+            <div className="flex gap-3 rounded-2xl border border-primary/25 bg-primary-soft p-4">
+              <TargetIcon size={22} weight="fill" className="mt-0.5 shrink-0 text-primary" />
+              <div>
+                <div className="text-xs font-semibold text-primary">Change this on your next try</div>
+                <div className="mt-0.5 text-[15px] leading-relaxed font-medium">{data.one_thing}</div>
+              </div>
+            </div>
+          )}
           {data.tips.length > 0 && (
             <ul className="space-y-3">
               {data.tips.map((tip, i) => (
@@ -81,6 +91,11 @@ export function CoachCard({ result }: { result: EvaluationResult }) {
                 </li>
               ))}
             </ul>
+          )}
+          {request.slips.length > 0 && (
+            <Link to="/coach" className="inline-flex items-center gap-1.5 text-[14px] font-semibold text-primary hover:underline">
+              Work on this with a guided session <ArrowRightIcon size={14} weight="bold" />
+            </Link>
           )}
           {data.practice_sentence && (
             <div className="flex flex-wrap items-center gap-3 rounded-2xl bg-fill p-4">
