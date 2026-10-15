@@ -195,6 +195,7 @@ def load_voice() -> None:
         try:
             runtime.voice = KokoroVoice(settings.kokoro_voice, threads=settings.kokoro_threads)
             runtime.voice_engine = "kokoro"
+            runtime.voice.warm_up()
             return
         except Exception:
             logger.exception("Kokoro unavailable; using Piper instead.")
