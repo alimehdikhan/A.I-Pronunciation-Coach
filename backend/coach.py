@@ -16,7 +16,7 @@ import json
 import logging
 import threading
 from collections import OrderedDict
-from typing import Any, Literal
+from typing import Any, Callable, Literal
 
 import httpx
 from pydantic import BaseModel, Field, ValidationError, field_validator
@@ -173,6 +173,7 @@ class CoachService:
         self._client = httpx.AsyncClient(timeout=timeout, transport=transport)
         self._cache: OrderedDict[str, CoachReply] = OrderedDict()
         self._notes: dict[str, str] = {}
+        self._generated: OrderedDict[str, Any] = OrderedDict()
         self._cache_size = cache_size
         self._lock = threading.Lock()
 
@@ -227,6 +228,41 @@ class CoachService:
         if not isinstance(data, dict):
             raise ValueError("reply is not an object")
         return data
+
+    async def generate(
+        self,
+        kind: str,
+        system: str,
+        facts: dict[str, Any],
+        parse: Callable[[dict[str, Any]], Any],
+        fallback: Callable[[], Any],
+        *,
+        cache: bool = True,
+    ) -> tuple[Any, str]:
+        """Ask the model for something, check it with `parse`, and fall back to `fallback()`.
+
+        Returns (result, source) where source is "groq" or "template". `parse` raises on an
+        unusable answer; nothing the model says reaches a caller without passing it.
+        """
+        if not self.enabled:
+            return fallback(), "template"
+        key = hashlib.sha256(json.dumps([self.model, kind, facts], sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+        if cache:
+            with self._lock:
+                if key in self._generated:
+                    self._generated.move_to_end(key)
+                    return self._generated[key], "groq"
+        try:
+            result = parse(await self._complete(system, facts))
+        except Exception as exc:
+            logger.warning("Coach %s unavailable (%s); using the template.", kind, type(exc).__name__)
+            return fallback(), "template"
+        if cache:
+            with self._lock:
+                self._generated[key] = result
+                while len(self._generated) > self._cache_size:
+                    self._generated.popitem(last=False)
+        return result, "groq"
 
     async def briefing(self, facts: dict[str, Any], fallback: str) -> tuple[str, str]:
         """The coach's opening note for a session: (text, source)."""
