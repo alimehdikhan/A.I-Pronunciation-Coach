@@ -1,3 +1,4 @@
+import { useSoundName } from '@/lib/soundNames'
 import { ArrowRightIcon, SparkleIcon, TargetIcon } from '@phosphor-icons/react'
 import { useMemo } from 'react'
 import { Link } from 'react-router'
@@ -36,6 +37,7 @@ export function slipsOf(result: EvaluationResult): CoachSlip[] {
 
 export function CoachCard({ result, previousScore }: { result: EvaluationResult; previousScore?: number }) {
   const username = useSettings((s) => s.username)
+  const soundName = useSoundName()
   const nativeLanguage = useSettings((s) => s.nativeLanguage)
   const { data: analytics } = useAnalytics(username)
 
@@ -86,7 +88,11 @@ export function CoachCard({ result, previousScore }: { result: EvaluationResult;
             <ul className="space-y-3">
               {data.tips.map((tip, i) => (
                 <li key={i} className="flex gap-3 text-[15px] leading-relaxed text-muted-foreground">
-                  {tip.phoneme && <span className="ipa mt-0.5 shrink-0 font-semibold text-foreground">/{tip.phoneme}/</span>}
+                  {tip.phoneme && (
+                    <span className="mt-0.5 shrink-0 font-semibold text-foreground" title={tip.phoneme}>
+                      {soundName(tip.phoneme).spelled}
+                    </span>
+                  )}
                   <span>
                     {tip.word && <span className="font-medium text-foreground">{tip.word}: </span>}
                     {tip.tip}
