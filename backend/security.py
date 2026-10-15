@@ -158,12 +158,33 @@ def normalize_email(email: str | None) -> str:
     return value
 
 
-def check_password_strength(password: str | None) -> str:
+# The most reused passwords. Not a complete list, but it stops the ones that are
+# tried first in every credential-stuffing run.
+COMMON_PASSWORDS = frozenset(
+    """
+    password password1 password12 password123 passw0rd p@ssw0rd p@ssword 12345678 123456789 1234567890
+    123123123 11111111 00000000 12341234 87654321 qwertyui qwerty123 qwertyuiop 1q2w3e4r 1qaz2wsx
+    abcd1234 abc12345 iloveyou iloveyou1 letmein1 welcome1 welcome123 admin123 administrator
+    football baseball dragon123 monkey123 sunshine1 princess1 superman1 whatever1 trustno1
+    changeme changeme1 default123 test1234 testtest guest123 pronunciation coach123
+    """.split()
+)
+
+
+def check_password_strength(password: str | None, *, email: str | None = None, username: str | None = None) -> str:
+    """Accept a usable password and say plainly why when it is not."""
     value = password or ""
     if len(value) < PASSWORD_MIN:
         raise AuthError(400, f"Use at least {PASSWORD_MIN} characters for your password.", "weak_password")
     if len(value) > PASSWORD_MAX:
         raise AuthError(400, f"Passwords can be at most {PASSWORD_MAX} characters.", "weak_password")
+    lowered = value.lower()
+    if lowered in COMMON_PASSWORDS or len(set(lowered)) == 1:
+        raise AuthError(400, "That password is far too common. Pick something only you would think of.", "weak_password")
+    for label, own in (("email", (email or "").split("@")[0]), ("username", username or "")):
+        own = own.strip().lower()
+        if len(own) >= 4 and own in lowered:
+            raise AuthError(400, f"Your password should not contain your {label}.", "weak_password")
     return value
 
 
