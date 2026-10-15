@@ -4,6 +4,7 @@ import type { CoachRequest } from './types'
 
 export const keys = {
   health: ['health'] as const,
+  voices: ['voices'] as const,
   phonemes: ['phonemes'] as const,
   phoneme: (symbol: string) => ['phoneme', symbol] as const,
   pronounce: (text: string) => ['pronounce', text] as const,
@@ -13,6 +14,11 @@ export const keys = {
   practice: (username: string) => ['practice', username] as const,
   account: ['account'] as const,
   coachPlan: (username: string) => ['coach-plan', username] as const,
+}
+
+/** The coach voices the server can speak with. Fixed for a deploy, so it is fetched once. */
+export function useVoiceCatalog() {
+  return useQuery({ queryKey: keys.voices, queryFn: api.voices, staleTime: Infinity, retry: false })
 }
 
 export function useHealth() {
