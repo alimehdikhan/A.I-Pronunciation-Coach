@@ -68,8 +68,10 @@ class CoachReply(BaseModel):
     summary: str = Field(max_length=360)
     tips: list[Tip] = Field(default_factory=list, max_length=MAX_TIPS)
     practice_sentence: str | None = Field(default=None, max_length=160)
+    # The one physical change to try on the next attempt (a coach gives one cue, not five).
+    one_thing: str | None = Field(default=None, max_length=240)
 
-    @field_validator("summary", "practice_sentence", mode="before")
+    @field_validator("summary", "practice_sentence", "one_thing", mode="before")
     @classmethod
     def _text(cls, value: Any) -> Any:
         return None if value is None else " ".join(str(value).split())
@@ -88,8 +90,23 @@ Rules:
 - Use weak_sounds to say which sounds are worth extra time, if relevant.
 - Match the tone of the summary to the score: 85+ praise, 60-84 encouraging with one focus, below 60 supportive and honest. Never call a score below 70 "solid", "great" or "excellent".
 
+- "one_thing" is the single most useful change for the next attempt: one concrete physical cue (tongue, lips, jaw, air or voice) for the most important slip, starting with a verb. Do not repeat the tips; pick the one that matters most. Empty string if there were no slips.
+
 Reply with a single JSON object and nothing else:
-{"summary": string (1-2 sentences), "tips": [{"word": string, "phoneme": string, "tip": string}], "practice_sentence": string (a natural sentence of at most 12 words that repeats the main trouble sound)}"""
+{"summary": string (1-2 sentences), "one_thing": string, "tips": [{"word": string, "phoneme": string, "tip": string}], "practice_sentence": string (a natural sentence of at most 12 words that repeats the main trouble sound)}"""
+
+
+BRIEFING_PROMPT = """You are a warm, direct English pronunciation coach opening a short practice session.
+You receive JSON about the learner: the sound chosen for today and why, how often they said it cleanly, their trend, and sounds they are strong on.
+
+Write the coach's opening note: 2 or 3 sentences, first person, plain language.
+- Use only the numbers and sounds in the data. Never invent history, scores or sounds.
+- If has_history is false, welcome them and say you will learn from this session.
+- Name the one sound for today and say why it was chosen; mention a strength if one is given.
+- End by telling them what the session involves (feel the sound, listen, say words, say a sentence).
+- No emojis, no exclamation marks, no lists.
+
+Reply with a single JSON object and nothing else: {"note": string}"""
 
 
 def template_reply(request: CoachRequest) -> CoachReply:
@@ -122,11 +139,13 @@ def template_reply(request: CoachRequest) -> CoachReply:
         request.weak_sounds[0].phoneme if request.weak_sounds else None
     )
     entry = get_phoneme(focus) if focus else None
+    steps = entry.get("steps", []) if entry else []
     return CoachReply(
         source="template",
         summary=summary,
         tips=tips,
         practice_sentence=entry["practice_sentence"] if entry else None,
+        one_thing=steps[0] if (steps and request.slips) else None,
     )
 
 
@@ -153,6 +172,7 @@ class CoachService:
         self.url = url
         self._client = httpx.AsyncClient(timeout=timeout, transport=transport)
         self._cache: OrderedDict[str, CoachReply] = OrderedDict()
+        self._notes: dict[str, str] = {}
         self._cache_size = cache_size
         self._lock = threading.Lock()
 
@@ -184,7 +204,8 @@ class CoachService:
                 self._cache.popitem(last=False)
         return reply
 
-    async def _ask(self, request: CoachRequest) -> CoachReply:
+    async def _complete(self, system: str, user: dict[str, Any]) -> dict[str, Any]:
+        """One JSON-mode chat completion; returns the parsed object."""
         payload: dict[str, Any] = {
             "model": self.model,
             "temperature": 0.4,
@@ -192,8 +213,8 @@ class CoachService:
             "max_tokens": 1500,
             "response_format": {"type": "json_object"},
             "messages": [
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": json.dumps(request.model_dump(), ensure_ascii=False)},
+                {"role": "system", "content": system},
+                {"role": "user", "content": json.dumps(user, ensure_ascii=False)},
             ],
         }
         if self.model.startswith("openai/gpt-oss"):
@@ -202,10 +223,35 @@ class CoachService:
             payload["reasoning_effort"] = "medium"
         response = await self._client.post(self.url, headers={"Authorization": f"Bearer {self.api_key}"}, json=payload)
         response.raise_for_status()
-        content = response.json()["choices"][0]["message"]["content"]
-        data = json.loads(content)
+        data = json.loads(response.json()["choices"][0]["message"]["content"])
         if not isinstance(data, dict):
             raise ValueError("reply is not an object")
+        return data
+
+    async def briefing(self, facts: dict[str, Any], fallback: str) -> tuple[str, str]:
+        """The coach's opening note for a session: (text, source)."""
+        if not self.enabled:
+            return fallback, "template"
+        key = hashlib.sha256(json.dumps([self.model, "briefing", facts], sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+        with self._lock:
+            cached = self._notes.get(key)
+        if cached is not None:
+            return cached, "groq"
+        try:
+            note = " ".join(str((await self._complete(BRIEFING_PROMPT, facts)).get("note", "")).split())
+            if not note or len(note) > 600:
+                raise ValueError("unusable note")
+        except Exception as exc:
+            logger.warning("Coach briefing unavailable (%s); using the template.", type(exc).__name__)
+            return fallback, "template"
+        with self._lock:
+            self._notes[key] = note
+            while len(self._notes) > self._cache_size:
+                self._notes.pop(next(iter(self._notes)))
+        return note, "groq"
+
+    async def _ask(self, request: CoachRequest) -> CoachReply:
+        data = await self._complete(SYSTEM_PROMPT, request.model_dump())
         tips = data.get("tips") if isinstance(data.get("tips"), list) else []
         try:
             return CoachReply(
@@ -213,6 +259,7 @@ class CoachService:
                 summary=data.get("summary", ""),
                 tips=[Tip(**t) for t in tips[:MAX_TIPS] if isinstance(t, dict) and t.get("tip")],
                 practice_sentence=data.get("practice_sentence") or None,
+                one_thing=(data.get("one_thing") or None),
             )
         except (ValidationError, TypeError) as exc:
             raise ValueError("malformed coaching reply") from exc
