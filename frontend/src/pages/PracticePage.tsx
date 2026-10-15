@@ -3,6 +3,7 @@ import { lazy, Suspense, useCallback, useEffect } from 'react'
 import { useLocation } from 'react-router'
 import { toast } from 'sonner'
 import { Segmented } from '@/components/common'
+import { LockedResults } from '@/components/auth/SignInGate'
 import { PageHeader } from '@/components/layout/AppShell'
 import { PhraseStage } from '@/components/practice/PhraseStage'
 import { Recorder } from '@/components/practice/Recorder'
@@ -25,6 +26,7 @@ export default function PracticePage() {
   const level = useSettings((s) => s.level)
   const setLevel = useSettings((s) => s.setLevel)
   const username = useSettings((s) => s.username)
+  const signedIn = useSettings((s) => !!s.accountEmail)
   const { target, setTarget, attempt, setAttempt, clearAttempt, scoreHistory } = usePractice()
   const setLibraryOpen = useUI((s) => s.setLibraryOpen)
   const { data: health, isError: offline } = useHealth()
@@ -151,12 +153,16 @@ export default function PracticePage() {
 
       {attempt && (
         <div className="mt-5">
-          <Results
-            attempt={attempt}
-            previousScore={(scoreHistory[target.text] ?? []).slice(-2, -1)[0]}
-            onRetry={retry}
-            onNext={() => go(1)}
-          />
+          {signedIn ? (
+            <Results
+              attempt={attempt}
+              previousScore={(scoreHistory[target.text] ?? []).slice(-2, -1)[0]}
+              onRetry={retry}
+              onNext={() => go(1)}
+            />
+          ) : (
+            <LockedResults />
+          )}
         </div>
       )}
 
