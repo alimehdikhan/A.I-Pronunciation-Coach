@@ -12,7 +12,16 @@ from sqlalchemy.orm import Session
 
 from backend.api.deps import profile_key
 from backend.database import AnalyticsResponse, UserHistoryResponse, get_db
-from backend.repositories import ProfileLocked, analytics, authorize, delete_history, find_user, history, weakness_rows
+from backend.repositories import (
+    ProfileLocked,
+    analytics,
+    authorize,
+    delete_history,
+    find_user,
+    history,
+    history_total,
+    weakness_rows,
+)
 from backend.security import clean_username
 from backend.tutor import get_personalized_practice
 
@@ -28,6 +37,10 @@ EMPTY_ANALYTICS: dict[str, Any] = {
     "metric_averages": {},
     "score_trend": [],
     "top_weaknesses": [],
+    "improvement": None,
+    "daily_activity": [],
+    "sound_mastery": [],
+    "tricky_words": [],
 }
 
 
@@ -35,16 +48,24 @@ EMPTY_ANALYTICS: dict[str, Any] = {
 def get_history(
     username: str,
     limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0, le=100_000),
+    min_score: float | None = Query(None, ge=0, le=100),
+    max_score: float | None = Query(None, ge=0, le=100),
+    q: str | None = Query(None, max_length=80, description="Only attempts whose phrase contains this text"),
     key: str | None = Depends(profile_key),
     db: Session = Depends(get_db),
 ):
-    """Fetch past pronunciation records for a user (newest first)."""
+    """Fetch past pronunciation records for a user (newest first), optionally filtered and paged."""
     name = clean_username(username) or ""
     user = find_user(db, name)
     if not user:
-        return {"username": name, "records": []}
+        return {"username": name, "records": [], "total": 0}
     authorize(db, user, key)
-    return {"username": name, "records": history(db, user, limit)}
+    return {
+        "username": name,
+        "records": history(db, user, limit, offset, min_score, max_score, q),
+        "total": history_total(db, user, min_score, max_score, q),
+    }
 
 
 @router.delete("/api/history/{username}")
