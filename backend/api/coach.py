@@ -40,6 +40,7 @@ async def coach_attempt(request: Request, body: CoachRequest) -> CoachReply:
 async def coaching_plan(
     username: str,
     request: Request,
+    focus: str | None = Query(None, max_length=8, description="Work on this sound instead of the coach's own choice"),
     key: str | None = Depends(profile_key),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
@@ -55,14 +56,14 @@ async def coaching_plan(
     if user is not None:
         authorize(db, user, key)
         rows = observations(db, user)
-    plan = teaching.build_plan(rows)
+    plan = teaching.build_plan(rows, focus)
 
-    focus = plan["focus"]
+    focus_info = plan["focus"]
     facts = {
         "has_history": plan["has_history"],
-        "focus_sound": focus["phoneme"],
-        "why_chosen": focus["reason"],
-        "focus_stats": focus["stats"],
+        "focus_sound": focus_info["phoneme"],
+        "why_chosen": focus_info["reason"],
+        "focus_stats": focus_info["stats"],
         "strengths": [s["phoneme"] for s in plan["strengths"]],
         "also_work_on": [s["phoneme"] for s in plan["also_work_on"]],
     }
