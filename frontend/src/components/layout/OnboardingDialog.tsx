@@ -1,5 +1,6 @@
 import { ChartLineUpIcon, EarIcon, WaveformIcon } from '@phosphor-icons/react'
 import { useState } from 'react'
+import { Link } from 'react-router'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -67,6 +68,12 @@ export function OnboardingDialog() {
           <button type="button" onClick={() => complete()} className="mt-4 w-full text-[13px] font-medium text-primary hover:underline">
             Continue without saving progress
           </button>
+          <p className="mt-3 text-center text-[13px] text-muted-foreground">
+            Have an account?{' '}
+            <Link to="/login" onClick={() => complete()} className="font-medium text-primary hover:underline">
+              Sign in
+            </Link>
+          </p>
         </form>
       </DialogContent>
     </Dialog>
