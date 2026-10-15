@@ -1,10 +1,13 @@
 import { ArrowClockwiseIcon, CompassIcon, WarningOctagonIcon } from '@phosphor-icons/react'
-import { lazy } from 'react'
+import { lazy, Suspense } from 'react'
 import { createBrowserRouter, Link, useRouteError } from 'react-router'
 import { EmptyState } from '@/components/common'
 import { AppShell } from '@/components/layout/AppShell'
 import { Button } from '@/components/ui/button'
 import PracticePage from '@/pages/PracticePage'
+
+const AuthPage = lazy(() => import('@/pages/AuthPage'))
+const ProfilePage = lazy(() => import('@/pages/ProfilePage'))
 
 const DrillsPage = lazy(() => import('@/pages/DrillsPage'))
 const SoundsPage = lazy(() => import('@/pages/SoundsPage'))
@@ -44,6 +47,14 @@ function NotFound() {
 }
 
 export const router = createBrowserRouter([
+  // Sign-in pages sit outside the app shell: no sidebar, just the form.
+  {
+    errorElement: <RouteError />,
+    children: [
+      { path: 'login', element: <Suspense fallback={null}><AuthPage mode="login" /></Suspense> },
+      { path: 'signup', element: <Suspense fallback={null}><AuthPage mode="signup" /></Suspense> },
+    ],
+  },
   {
     element: <AppShell />,
     errorElement: <RouteError />,
@@ -52,6 +63,7 @@ export const router = createBrowserRouter([
       { path: 'drills', element: <DrillsPage /> },
       { path: 'sounds', element: <SoundsPage /> },
       { path: 'progress', element: <ProgressPage /> },
+      { path: 'profile', element: <ProfilePage /> },
       { path: '*', element: <NotFound /> },
     ],
   },
