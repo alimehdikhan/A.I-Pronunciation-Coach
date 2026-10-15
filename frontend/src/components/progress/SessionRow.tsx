@@ -1,3 +1,4 @@
+import { useSoundName } from '@/lib/soundNames'
 import { useNavigate } from 'react-router'
 import { ScoreRing } from '@/components/ui/score-ring'
 import type { HistoryRecord } from '@/lib/types'
@@ -10,6 +11,7 @@ export function SessionRow({ record }: { record: HistoryRecord }) {
   const setTarget = usePractice((s) => s.setTarget)
   const navigate = useNavigate()
   const openPhoneme = useUI((s) => s.openPhoneme)
+  const soundName = useSoundName()
   const sounds = [...new Set(record.mistakes.map((m) => m.expected_phoneme))].slice(0, 4)
   return (
     <div className="session-row flex items-center gap-4 py-3.5">
@@ -35,9 +37,10 @@ export function SessionRow({ record }: { record: HistoryRecord }) {
           <button
             key={symbol}
             onClick={() => openPhoneme(symbol)}
-            className="ipa grid h-7 min-w-7 place-items-center rounded-full bg-bad-soft px-2 text-[13px] text-bad hover:brightness-110"
+            title={`The ${soundName(symbol).text} sound`}
+            className="grid h-7 min-w-7 place-items-center rounded-full bg-bad-soft px-2 text-[13px] font-medium text-bad hover:brightness-110"
           >
-            {symbol}
+            {soundName(symbol).spelled}
           </button>
         ))}
       </div>
