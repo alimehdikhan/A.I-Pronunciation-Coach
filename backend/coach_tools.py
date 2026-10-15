@@ -21,7 +21,7 @@ from functools import lru_cache
 from typing import Any
 
 from backend import phonetics
-from backend.phoneme_kb import get_phoneme
+from backend.phoneme_kb import PHONEMES, get_phoneme
 
 LANGUAGES = (
     "Arabic", "Bengali", "Chinese (Mandarin)", "French", "German", "Gujarati", "Hindi", "Indonesian", "Italian",
@@ -369,6 +369,9 @@ You are given JSON "facts" computed from the learner's practice: scores, streak,
 week, how they compare with when they started, their weakest and strongest sounds (with trend)
 and the words that went wrong most often.
 
+Name every sound by its "sound" label from the facts (for example "the th sound as in think"). Never
+write IPA symbols or slashes such as /θ/ or θ. Do not use technical terms like phoneme or fricative.
+
 Write for the learner, in the second person. If "native_language" is given, you may connect one weak
 sound to what is commonly hard for speakers of that language, only when it is true.
 
@@ -390,16 +393,48 @@ def _items(value: Any, limit: int, size: int) -> list[str]:
     return [text for text in (_clean(v, size) for v in value if isinstance(v, str)) if text][:limit]
 
 
+def sound_label(symbol: str) -> str:
+    """A learner-friendly name for a sound: 'th as in think'."""
+    entry = get_phoneme(symbol)
+    if not entry:
+        return symbol
+    return re.sub(r"[\u201c\u201d\"]", "", str(entry.get("label", symbol)))
+
+
+def _spelling(symbol: str) -> str:
+    """How the sound is usually spelled: 'th' for the sound in think, 'sh' for ship."""
+    label = sound_label(symbol)
+    return label.split(" as in ")[0].strip() or symbol
+
+
+_IPA_SLASHED = re.compile(r"/([^/\s]{1,3})/")
+_IPA_SYMBOLS = sorted({s for s in PHONEMES if not s.isascii()}, key=len, reverse=True)
+_IPA_BARE = re.compile("(" + "|".join(re.escape(s) for s in _IPA_SYMBOLS) + ")") if _IPA_SYMBOLS else None
+
+
+def humanize_sounds(text: str) -> str:
+    """Replace IPA symbols in text with how the sound is spelled ("/θ/" -> "th"). Letters are left alone."""
+
+    def slashed(match: re.Match[str]) -> str:
+        inner = match.group(1)
+        return _spelling(inner) if get_phoneme(inner) else match.group(0)
+
+    out = _IPA_SLASHED.sub(slashed, text)
+    if _IPA_BARE is not None:
+        out = _IPA_BARE.sub(lambda m: _spelling(m.group(1)), out)
+    return out
+
+
 def parse_report(data: dict[str, Any]) -> dict[str, Any]:
-    headline = _clean(data.get("headline"), 90)
-    summary = _clean(data.get("summary"), 500)
+    headline = humanize_sounds(_clean(data.get("headline"), 90))
+    summary = humanize_sounds(_clean(data.get("summary"), 500))
     if not headline or not summary:
         raise ValueError("unusable report")
     return {
         "headline": headline,
         "summary": summary,
-        "wins": _items(data.get("wins"), 3, 140),
-        "next_steps": _items(data.get("next_steps"), 3, 160),
+        "wins": [humanize_sounds(t) for t in _items(data.get("wins"), 3, 140)],
+        "next_steps": [humanize_sounds(t) for t in _items(data.get("next_steps"), 3, 160)],
     }
 
 
@@ -414,9 +449,9 @@ def report_fallback(facts: dict[str, Any]) -> dict[str, Any]:
     if facts.get("streak_days", 0) >= 2:
         wins.append(f"You have practised {facts['streak_days']} days in a row.")
     for sound in facts.get("strongest", [])[:1]:
-        wins.append(f"/{sound['phoneme']}/ is solid ({round(sound['clean_rate'] * 100)}% clean).")
+        wins.append(f"The {sound['sound']} sound is solid: you get it right {round(sound['clean_rate'] * 100)}% of the time.")
     for sound in facts.get("weakest", [])[:2]:
-        steps.append(f"Work on /{sound['phoneme']}/: it comes out clean {round(sound['clean_rate'] * 100)}% of the time.")
+        steps.append(f"Practise the {sound['sound']} sound: it comes out right {round(sound['clean_rate'] * 100)}% of the time.")
     if facts.get("tricky_words"):
         steps.append("Say your tricky words slowly: " + ", ".join(w["word"] for w in facts["tricky_words"][:3]) + ".")
     if total < 5:
@@ -432,8 +467,11 @@ def report_facts(analytics: dict[str, Any]) -> dict[str, Any]:
     """The few numbers the report is allowed to talk about, taken from the analytics."""
     mastery = analytics.get("sound_mastery") or []
     keep = ("phoneme", "clean_rate", "attempts", "trend")
-    weakest = [{k: m[k] for k in keep} for m in mastery if m.get("status") in ("needs_work", "getting_there")][:3]
-    strongest = [{k: m[k] for k in keep} for m in reversed(mastery) if m.get("status") == "solid"][:3]
+    def entry(m: dict[str, Any]) -> dict[str, Any]:
+        return {**{k: m[k] for k in keep}, "sound": sound_label(m["phoneme"])}
+
+    weakest = [entry(m) for m in mastery if m.get("status") in ("needs_work", "getting_there")][:3]
+    strongest = [entry(m) for m in reversed(mastery) if m.get("status") == "solid"][:3]
     activity = analytics.get("daily_activity") or []
     return {
         "sessions": analytics.get("total_practice_sessions", 0),
