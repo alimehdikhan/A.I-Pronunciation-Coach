@@ -489,3 +489,51 @@ def test_a_rude_topic_is_dropped_instead_of_sent(client, model):
     client.post("/api/coach/practice", json={"phoneme": "θ", "topic": "madarchod"})
 
     assert sent_facts(model)["topic"] is None
+
+
+# --- the progress note speaks in plain words --------------------------------------------------------
+
+
+def test_sound_symbols_are_replaced_by_how_the_sound_is_spelled():
+    assert coach_tools.humanize_sounds("Keep sharpening the \u03b8 sound") == "Keep sharpening the th sound"
+    assert coach_tools.humanize_sounds("Work on /\u03b8/ and /\u0283/ today") == "Work on th and sh today"
+    assert coach_tools.humanize_sounds("Your /r/ is improving") == "Your r is improving"
+    assert coach_tools.humanize_sounds("Nothing to change here") == "Nothing to change here"
+
+
+def test_a_report_never_shows_symbols(client, model, fake_asr):
+    fake_asr.text, fake_asr.words = "Hello word", timed_words("Hello word")
+    for _ in range(3):
+        client.post(
+            "/api/evaluate",
+            files={"audio": ("clip.wav", wav_bytes(), "audio/wav")},
+            data={"target_text": "Hello world", "username": "Sam", "difficulty": "beginner"},
+            headers=HEADERS,
+        )
+    model.reply = {
+        "headline": "Great progress, but keep sharpening \u03b8 sound",
+        "summary": "Your /\u03b8/ needs time.",
+        "wins": ["Solid /k/"],
+        "next_steps": ["Say think slowly"],
+    }
+
+    report = client.get("/api/coach/report/Sam", headers=HEADERS).json()["report"]
+
+    assert report["headline"] == "Great progress, but keep sharpening th sound"
+    assert report["summary"] == "Your th needs time."
+    assert "/" not in report["wins"][0]
+
+
+def test_the_fallback_note_uses_labels_not_symbols():
+    facts = {
+        "sessions": 12,
+        "average_score": 70,
+        "best_score": 90,
+        "sessions_this_week": 3,
+        "streak_days": 3,
+        "weakest": [{"phoneme": "\u03b8", "sound": "th as in think", "clean_rate": 0.4}],
+        "strongest": [{"phoneme": "k", "sound": "k as in cat", "clean_rate": 1.0}],
+    }
+    note = coach_tools.report_fallback(facts)
+    text = " ".join([note["headline"], note["summary"], *note["wins"], *note["next_steps"]])
+    assert "th as in think" in text and "\u03b8" not in text and "/" not in text
