@@ -222,3 +222,20 @@ def test_short_silent_or_abusive_utterances_are_not_scored(monkeypatch):
 
     asyncio.run(go())
     assert events == [] and upstream.texts == []
+
+
+# --- the microphone worklet ------------------------------------------------------------------------------
+
+
+def test_the_capture_worklet_is_a_real_file_the_security_policy_allows():
+    """Audio worklets follow script-src. The app allows 'self' only, so an inline blob would be blocked."""
+    from pathlib import Path
+
+    from backend.security import build_spa_csp
+
+    worklet = Path(__file__).parent.parent / "frontend" / "public" / "pcm16-capture.js"
+    assert worklet.is_file() and "registerProcessor('pcm16-capture'" in worklet.read_text(encoding="utf-8")
+
+    policy = build_spa_csp(Path("missing.html"), "'self'")
+    script_src = next(part for part in policy.split(";") if part.strip().startswith("script-src"))
+    assert "blob:" not in script_src and "'self'" in script_src  # so the file route, not a blob, is the right one
