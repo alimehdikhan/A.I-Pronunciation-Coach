@@ -1,4 +1,4 @@
-import { DesktopIcon, MoonIcon, PlayIcon, SunIcon } from '@phosphor-icons/react'
+import { DesktopIcon, EyeSlashIcon, MoonIcon, PaletteIcon, PlayIcon, SpeakerHighIcon, SunIcon, TextTIcon, TranslateIcon, UserIcon, UserSoundIcon } from '@phosphor-icons/react'
 import { useEffect, useState, type ReactNode } from 'react'
 import { toast } from 'sonner'
 import { Segmented } from '@/components/common'
@@ -7,7 +7,6 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Slider } from '@/components/ui/slider'
-import { Switch } from '@/components/ui/switch'
 import { useVoiceCatalog } from '@/lib/queries'
 import { NEURAL_VOICE, rankVoice, useSpeaker, usesNeuralVoice, useVoices } from '@/lib/speech'
 import { useSettings, type Theme } from '@/store/settings'
@@ -16,20 +15,28 @@ import { useUI } from '@/store/ui'
 const USERNAME_RE = /^[\p{L}\p{N}_ .'-]{0,40}$/u
 
 /** iOS "inset grouped" list. */
-function Group({ title, footer, children }: { title?: string; footer?: string; children: ReactNode }) {
+function Group({ title, footer, icon, children }: { title?: string; footer?: string; icon?: ReactNode; children: ReactNode }) {
   return (
     <section>
-      {title && <h3 className="mb-1.5 px-4 text-[13px] text-muted-foreground">{title}</h3>}
+      {title && (
+        <h3 className="mb-1.5 flex items-center gap-1.5 px-4 text-[13px] text-muted-foreground">
+          {icon}
+          {title}
+        </h3>
+      )}
       <div className="divide-y divide-border overflow-hidden rounded-2xl bg-fill">{children}</div>
       {footer && <p className="mt-1.5 px-4 text-xs text-subtle">{footer}</p>}
     </section>
   )
 }
 
-function Row({ label, children }: { label: string; children: ReactNode }) {
+function Row({ label, icon, children }: { label: string; icon?: ReactNode; children: ReactNode }) {
   return (
     <div className="flex min-h-12 items-center justify-between gap-4 px-4 py-2">
-      <span className="text-[15px]">{label}</span>
+      <span className="flex items-center gap-2.5 text-[15px]">
+        {icon && <span className="text-muted-foreground">{icon}</span>}
+        {label}
+      </span>
       <div className="flex min-w-0 shrink items-center justify-end">{children}</div>
     </div>
   )
@@ -73,7 +80,7 @@ export function SettingsDialog() {
           <DialogDescription>Changes are saved automatically.</DialogDescription>
         </DialogHeader>
 
-        <Group title="Profile" footer="History and streaks are stored under this name on the server.">
+        <Group icon={<UserIcon size={14} weight="fill" />} title="Profile" footer="History and streaks are stored under this name on the server.">
           <div className="px-4 py-2">
             <Input
               value={name}
@@ -89,8 +96,8 @@ export function SettingsDialog() {
           </div>
         </Group>
 
-        <Group title="Your coach" footer="Optional. The coach uses it to say what is usually hard for speakers of your language. It stays in this browser.">
-          <Row label="First language">
+        <Group icon={<TranslateIcon size={14} weight="fill" />} title="Your coach" footer="Optional. The coach uses it to say what is usually hard for speakers of your language. It stays in this browser.">
+          <Row label="First language" icon={<TranslateIcon size={18} />}>
             <Select
               value={settings.nativeLanguage ?? '__none'}
               onValueChange={(value) => settings.setNativeLanguage(value === '__none' ? null : value)}
@@ -110,7 +117,7 @@ export function SettingsDialog() {
           </Row>
         </Group>
 
-        <Group title="Appearance">
+        <Group icon={<PaletteIcon size={14} weight="fill" />} title="Appearance">
           <div className="p-2">
             <Segmented<Theme>
               layoutId="theme-seg"
@@ -126,8 +133,8 @@ export function SettingsDialog() {
           </div>
         </Group>
 
-        <Group title="Coach voice" footer="The neural voice is analysed live, so the orb moves with it. Browser voices play without the orb.">
-          <Row label="Voice">
+        <Group icon={<SpeakerHighIcon size={14} weight="fill" />} title="Coach voice" footer="The neural voice is analysed live, so the orb moves with it. Browser voices play without the orb.">
+          <Row label="Voice" icon={<SpeakerHighIcon size={18} />}>
             <div className="flex min-w-0 items-center gap-1.5">
               <Select value={voiceValue} onValueChange={(value) => settings.setVoiceURI(value === NEURAL_VOICE ? null : value)}>
                 <SelectTrigger className="h-8 max-w-[190px] min-w-0 border-0 bg-transparent text-muted-foreground shadow-none dark:bg-transparent">
@@ -153,7 +160,7 @@ export function SettingsDialog() {
             </div>
           </Row>
           {voiceValue === NEURAL_VOICE && catalog && catalog.voices.length > 1 && (
-            <Row label="Coach">
+            <Row label="Coach" icon={<UserSoundIcon size={18} />}>
               <Select
                 value={coachChoice}
                 onValueChange={(value) => {
@@ -184,10 +191,20 @@ export function SettingsDialog() {
           </div>
         </Group>
 
-        <Group>
-          <Row label="Show IPA transcription">
-            <Switch checked={settings.showIpa} onCheckedChange={settings.setShowIpa} aria-label="Show IPA transcription" />
-          </Row>
+        <Group icon={<TextTIcon size={14} weight="fill" />} title="Under each word" footer="Plain letters show how to say a word (uh-BOWT). IPA is the exact phonetic alphabet.">
+          <div className="p-2">
+            <Segmented<'simple' | 'ipa' | 'off'>
+              layoutId="phonetic-style"
+              value={settings.phoneticStyle}
+              onChange={settings.setPhoneticStyle}
+              className="w-full"
+              options={[
+                { value: 'simple', label: 'Plain letters', icon: <TextTIcon weight="bold" /> },
+                { value: 'ipa', label: 'IPA', icon: <TranslateIcon weight="bold" /> },
+                { value: 'off', label: 'Hidden', icon: <EyeSlashIcon weight="bold" /> },
+              ]}
+            />
+          </div>
         </Group>
       </DialogContent>
     </Dialog>
