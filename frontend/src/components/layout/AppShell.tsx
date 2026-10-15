@@ -261,7 +261,7 @@ function MobileHeader() {
 function TabBar() {
   return (
     <nav className="material fixed inset-x-0 bottom-0 z-30 border-t border-border pb-[env(safe-area-inset-bottom)] lg:hidden">
-      <div className="grid grid-cols-5">
+      <div className="grid grid-cols-6">
         {NAV.map(({ to, short, icon: IconComp }) => (
           <NavLink key={to} to={to} end={to === '/'} className="flex flex-col items-center gap-0.5 pt-2 pb-1.5">
             {({ isActive }) => (
