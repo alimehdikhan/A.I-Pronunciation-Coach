@@ -94,3 +94,35 @@ def test_prerender_covers_the_fixed_content():
     assert {0.95, 0.66}.issubset(rates)
     assert any(text == "think" for text, _ in items) or any(text == "thought" for text, _ in items)
     assert pytest is not None
+
+
+# --- choosing a voice --------------------------------------------------------------
+
+
+def test_a_catalog_voice_can_be_chosen_per_clip(tmp_path):
+    engine = FakeEngine()
+    voice = make_voice(tmp_path, engine)
+
+    voice.synthesize("Same words.", 1.0)
+    voice.synthesize("Same words.", 1.0, "bm_george")
+    voice.synthesize("Same words.", 1.0, "bm_george")  # remembered per voice
+
+    assert [(c[1], c[3]) for c in engine.calls] == [("af_heart", "en-us"), ("bm_george", "en-gb")]
+    assert voice.has_clip("Same words.", 1.0, "bm_george") and not voice.has_clip("Same words.", 1.0, "am_adam")
+
+
+def test_an_unknown_voice_falls_back_to_the_default(tmp_path):
+    engine = FakeEngine()
+    voice = make_voice(tmp_path, engine)
+    voice.synthesize("Hello.", 1.0, "../../etc/passwd")
+    voice.synthesize("Hello.", 1.0, "zf_xiaobei")  # in the bundle, but not offered
+    assert [c[1] for c in engine.calls] == ["af_heart"]
+
+
+def test_the_default_voices_clips_keep_their_original_names(tmp_path):
+    import hashlib
+
+    engine = FakeEngine()
+    make_voice(tmp_path, engine).synthesize("Good morning.", 0.95)
+    legacy = hashlib.sha1("af_heart|0.95|Good morning.".encode()).hexdigest()
+    assert (tmp_path / f"{legacy}.wav").is_file()  # clips rendered before voice choice still hit
