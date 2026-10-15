@@ -172,7 +172,9 @@ After a restart, `/health` reports `"acoustic_scoring": true`. On a 4-core CPU a
 
 ### Voices
 
-The default voice is Piper. Kokoro sounds more natural and is used automatically when it is installed (`auto`), with Piper as the fallback. On a 4-core CPU the full-precision Kokoro model runs at about 1.2 times real time and about 1.0 times on two threads. The int8 file is smaller but about four times slower on CPUs, so it is not used. Rendered clips are cached in memory and on disk, and `scripts/prerender_voice.py` can fill that cache for the fixed phrase library ahead of time.
+The default voice is Piper. Kokoro sounds more natural and is used automatically when it is installed (`auto`), with Piper as the fallback. On a 4-core CPU the full-precision Kokoro model runs at about 1.2 times real time and about 1.0 times on two threads. The int8 file is smaller but about four times slower on CPUs, so it is not used. Rendered clips are cached in memory and on disk. The Docker build runs `scripts/prerender_voice.py`, so the phrase library, example words and practice sentences are already rendered when the Space starts; only text a learner types is synthesised live (about 4 to 6 seconds on the Space's two cores, then cached).
+
+Learners can pick the coach's voice in Settings: eight Kokoro voices (American and British, female and male) share one loaded model, and a "Quick" Piper voice renders almost instantly. `GET /api/voices` lists them and `/api/tts?voice=` selects one; an unknown id quietly gets the default.
 
 ```bash
 pip install -r backend/requirements-voice.txt
