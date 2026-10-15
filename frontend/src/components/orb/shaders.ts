@@ -235,14 +235,18 @@ void main() {
 
   // --- Light glass: normal "over" blending, never additive --------------------
   vec4 C = vec4(0.0);
-  // Soft drop shadow beneath the sphere.
+  // Soft drop shadow beneath the sphere: strong enough to lift it off a white page.
   float sd = length(vec2(q.x, (q.y + 0.1) * 1.08));
-  C = over(C, vec3(0.0), 0.08 * (1.0 - smoothstep(0.84, 1.3, sd)) * (1.0 - inside));
-  // Faint cool tint, denser toward the rim; grey haze below; a darker refraction band.
-  C = over(C, vec3(0.80, 0.86, 0.95), (0.03 + 0.05 * smoothstep(0.5, 1.0, r)) * inside);
-  C = over(C, vec3(0.40, 0.44, 0.52), (0.035 * lower + 0.1 * gauss(r, 0.8, 0.1) * bottom) * inside);
-  // The streak's soft grey shadow, then the white light with colour only at its edges.
-  C = over(C, vec3(0.32, 0.35, 0.42), min(field.a * 0.36, 0.34));
+  C = over(C, vec3(0.05, 0.08, 0.16), 0.2 * (1.0 - smoothstep(0.82, 1.35, sd)) * (1.0 - inside));
+  // A tinted glass body so the sphere has form on light backgrounds: cool blue-grey, deeper
+  // toward the rim and the lower half, with a lighter top so the light still sits in clear glass.
+  C = over(C, vec3(0.62, 0.70, 0.86), (0.2 + 0.2 * smoothstep(0.35, 1.0, r)) * inside);
+  C = over(C, vec3(0.30, 0.38, 0.56), (0.2 * lower + 0.22 * gauss(r, 0.8, 0.12) * bottom) * inside);
+  C = over(C, vec3(0.9, 0.94, 1.0), 0.28 * smoothstep(0.1, 0.9, q.y) * (1.0 - smoothstep(0.55, 0.95, r)) * inside);
+  C = over(C, vec3(0.97, 0.98, 1.0), 0.3 * (1.0 - smoothstep(0.0, 0.8, length(q - vec2(0.0, 0.08)))) * inside);
+  C = over(C, vec3(0.38, 0.46, 0.7), 0.16 * smoothstep(0.78, 0.99, r) * inside);
+  // The streak's soft shadow, then the white light with colour only at its edges.
+  C = over(C, vec3(0.2, 0.25, 0.38), min(field.a * 0.55, 0.5));
   float luma = dot(Lt, vec3(0.299, 0.587, 0.114));
   C = over(C, vec3(1.0), smoothstep(0.02, 0.5, luma) * 0.94);
   vec3 chroma = Lt - vec3(luma);
@@ -251,12 +255,13 @@ void main() {
   C = over(C, vec3(0.55, 0.6, 0.7), clamp(comet * 0.75 + ripple * 0.6, 0.0, 0.8));
   // Thin silver rim, 10-20% black. Darkening inverts the fringe colours, so the
   // split is mirrored: removing blue on the left reads warm, red on the right blue.
-  vec3 dk = (vec3(rimB, rimG, rimR) * 0.17 + vec3(fresnel * fresnel * 0.05)) * rimMask;
+  vec3 fringe = mix(vec3(rimG), vec3(rimB, rimG, rimR), 0.3);
+  vec3 dk = (fringe * 0.34 + vec3(fresnel * fresnel * 0.12)) * rimMask;
   float ak = max(dk.r, max(dk.g, dk.b));
   C = vec4(vec3(ak) - dk + C.rgb * (1.0 - ak), ak + C.a * (1.0 - ak));
   // A 1 px white highlight just inside the rim, and the soft specular at the top left.
   C = over(C, vec3(1.0), gauss(r, 1.0 - 3.0 * pxq, 0.75 * pxq) * 0.85 * inside);
-  C = over(C, vec3(1.0), spec * 0.55);
+  C = over(C, vec3(1.0), spec * 0.85);
 
   // The glass fades in quickly on entrance; the light follows.
   vec4 col = mix(C, dark, uDark) * smoothstep(0.0, 0.45, uIntro);
