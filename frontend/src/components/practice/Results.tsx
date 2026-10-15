@@ -5,6 +5,7 @@ import { Kbd } from '@/components/ui/kbd'
 import { usePlayback } from '@/hooks/usePlayback'
 import { useStaggerIn } from '@/lib/gsap'
 import type { Attempt } from '@/store/practice'
+import { CoachCard } from './CoachCard'
 import { InsightsPanel } from './InsightsPanel'
 import { ScoreSummary } from './ScoreSummary'
 import { TranscriptPanel } from './TranscriptPanel'
@@ -53,6 +54,7 @@ export function Results({
         <WordInspector word={word} playback={playback} />
         <InsightsPanel insights={result.insights} onSelect={setSelected} />
       </div>
+      <CoachCard result={result} />
       <div className="results-item flex flex-col-reverse items-center justify-center gap-3 pt-4 sm:flex-row">
         <Button variant="secondary" size="lg" onClick={onRetry} className="h-12 px-6 text-[15px]">
           <ArrowClockwiseIcon weight="bold" /> Try again <Kbd className="ml-1 hidden sm:inline-flex">R</Kbd>
