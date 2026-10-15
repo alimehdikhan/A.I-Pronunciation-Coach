@@ -14,5 +14,7 @@ piper-tts>=1.8,<2
 prometheus-client>=0.21,<1
 # Calls the language model that writes the personalised coaching tips.
 httpx>=0.28,<1
+# The live voice conversation with the coach (Gemini Live).
+google-genai>=1.0,<3
 # Optional: `pip install epitran` (plus the Flite lex_lookup binary) adds a
 # G2P fallback for words missing from CMUDict; the built-in rules cover it otherwise.
