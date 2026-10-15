@@ -13,6 +13,7 @@ import base64
 import hashlib
 import hmac
 import re
+import secrets
 import threading
 import time
 from collections import OrderedDict, deque
@@ -131,6 +132,62 @@ def hash_profile_key(key: str) -> str:
 
 def profile_key_matches(stored_hash: str, key: str | None) -> bool:
     return bool(key) and hmac.compare_digest(stored_hash, hash_profile_key(key))
+
+
+# --- Accounts ------------------------------------------------------------------
+
+EMAIL_RE = re.compile(r"^[^@\s]{1,64}@[^@\s]{1,255}\.[^@\s.]{2,}$")
+PASSWORD_MIN, PASSWORD_MAX = 8, 128
+_SCRYPT_N, _SCRYPT_R, _SCRYPT_P = 2**14, 8, 1
+
+
+class AuthError(Exception):
+    """A user-facing account problem with a stable machine-readable code."""
+
+    def __init__(self, status_code: int, detail: str, code: str):
+        super().__init__(detail)
+        self.status_code = status_code
+        self.detail = detail
+        self.code = code
+
+
+def normalize_email(email: str | None) -> str:
+    value = (email or "").strip().lower()
+    if len(value) > 254 or not EMAIL_RE.match(value):
+        raise AuthError(400, "Enter a valid email address.", "invalid_email")
+    return value
+
+
+def check_password_strength(password: str | None) -> str:
+    value = password or ""
+    if len(value) < PASSWORD_MIN:
+        raise AuthError(400, f"Use at least {PASSWORD_MIN} characters for your password.", "weak_password")
+    if len(value) > PASSWORD_MAX:
+        raise AuthError(400, f"Passwords can be at most {PASSWORD_MAX} characters.", "weak_password")
+    return value
+
+
+def hash_password(password: str) -> str:
+    """scrypt with a random salt, in a self-describing string."""
+    salt = secrets.token_bytes(16)
+    digest = hashlib.scrypt(password.encode("utf-8"), salt=salt, n=_SCRYPT_N, r=_SCRYPT_R, p=_SCRYPT_P, dklen=32)
+    return f"scrypt${_SCRYPT_N}${salt.hex()}${digest.hex()}"
+
+
+def verify_password(password: str, stored: str | None) -> bool:
+    """Constant-time check. Runs the same work for an unknown account (stored=None)."""
+    try:
+        _, n, salt_hex, digest_hex = (stored or _DUMMY_HASH).split("$")
+        digest = hashlib.scrypt(
+            password.encode("utf-8"), salt=bytes.fromhex(salt_hex), n=int(n), r=_SCRYPT_R, p=_SCRYPT_P, dklen=32
+        )
+        return stored is not None and hmac.compare_digest(digest.hex(), digest_hex)
+    except (ValueError, TypeError):
+        return False
+
+
+# Verifying against this when no account matches keeps login timing uniform.
+_DUMMY_HASH = f"scrypt${_SCRYPT_N}${'00' * 16}${'00' * 32}"
 
 
 # --- Response headers ------------------------------------------------------------
