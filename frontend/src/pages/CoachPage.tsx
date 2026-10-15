@@ -1,3 +1,4 @@
+import { useSoundName } from '@/lib/soundNames'
 import { ArrowClockwiseIcon, ArrowLeftIcon, ArrowRightIcon, CheckCircleIcon, ListChecksIcon, LockKeyIcon, MicrophoneIcon, QuestionIcon, SparkleIcon, StopIcon, TrendDownIcon, TrendUpIcon, WaveformIcon, XCircleIcon } from '@phosphor-icons/react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -62,15 +63,20 @@ const TREND = {
 }
 
 function SoundChip({ sound }: { sound: SoundMastery }) {
-  const pct = Math.round(sound.clean_rate * 100)
+  const { spelled, word } = describeSound(sound)
+  // Rounded down so 89.7% never reads "90%" beside a sound that is "solid" at 90%.
+  const pct = Math.floor(sound.clean_rate * 100 + 1e-9)
   const tone =
     sound.status === 'solid' ? 'bg-good-soft text-good' : sound.status === 'needs_work' ? 'bg-bad-soft text-bad' : 'bg-fill text-foreground'
   return (
     <div className={cn('flex min-w-[88px] flex-col items-center rounded-2xl px-3 py-2.5', tone)}>
-      <span className="ipa text-[22px] leading-none font-semibold">{sound.phoneme}</span>
-      <span className="mt-1.5 text-[13px] font-semibold tabular-nums">{sound.status === 'new' ? 'new' : `${pct}%`}</span>
+      <span className="text-[22px] leading-none font-semibold" title={sound.phoneme}>
+        {spelled}
+      </span>
+      {word && <span className="mt-0.5 text-[11px] opacity-70">as in {word}</span>}
+      <span className="mt-1 text-[13px] font-semibold tabular-nums">{sound.status === 'new' ? 'new' : `${pct}%`}</span>
       <span className="text-[11px] opacity-70">
-        {sound.clean}/{sound.attempts} clean
+        right {sound.clean} of {sound.attempts}
       </span>
     </div>
   )
@@ -176,6 +182,7 @@ function Practiser({
 // ---- the session ----------------------------------------------------------------
 
 function Session({ plan, username }: { plan: CoachPlan; username: string }) {
+  const soundName = useSoundName()
   const level = useSettings((s) => s.level)
   const [index, setIndex] = useState(0)
   const [results, setResults] = useState<Record<string, Outcome>>({})
@@ -240,7 +247,7 @@ function Session({ plan, username }: { plan: CoachPlan; username: string }) {
                 {focus.why_wrong || (
                   <>
                     Learners often replace this sound with{' '}
-                    <span className="ipa font-semibold">{focus.confused_with.map((c) => `/${c}/`).join(', ')}</span>.
+                    <span className="font-semibold">{focus.confused_with.map((c) => soundName(c).text).join(', ')}</span>.
                   </>
                 )}
               </li>
@@ -464,7 +471,7 @@ export default function CoachPage() {
               </div>
               <p className="mt-4 text-xs text-subtle">
                 Clean rate over your recent attempts.
-                {strongest && ` Your strongest sound is /${strongest.phoneme}/.`}
+                {strongest && ` Your strongest sound is ${describeSound(strongest).spelled}${describeSound(strongest).word ? ` as in ${describeSound(strongest).word}` : ''}.`}
               </p>
             </section>
           )}
