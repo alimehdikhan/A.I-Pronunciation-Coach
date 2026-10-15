@@ -12,6 +12,7 @@ export const keys = {
   history: (username: string) => ['history', username] as const,
   practice: (username: string) => ['practice', username] as const,
   account: ['account'] as const,
+  coachPlan: (username: string) => ['coach-plan', username] as const,
 }
 
 export function useHealth() {
@@ -88,4 +89,20 @@ export function useCoach(request: CoachRequest | null) {
 /** Whether this browser is signed in, and to what. */
 export function useAccount() {
   return useQuery({ queryKey: keys.account, queryFn: api.me, staleTime: 60_000, retry: false })
+}
+
+/**
+ * The coach's plan. It is held steady for the whole session (a plan that
+ * reshuffles its focus after each word would be confusing), so it only
+ * refreshes when asked to.
+ */
+export function useCoachPlan(username: string) {
+  return useQuery({
+    queryKey: keys.coachPlan(username),
+    queryFn: () => api.coachPlan(username),
+    enabled: !!username,
+    staleTime: Infinity,
+    gcTime: 5 * 60_000,
+    retry: false,
+  })
 }
