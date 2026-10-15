@@ -111,6 +111,8 @@ class Settings:
     max_target_chars: int = 500
     # Remove room noise and quieter background voices from recordings before scoring.
     noise_cleanup: bool = field(default_factory=lambda: _flag("PRONUNCIATION_COACH_NOISE_CLEANUP", "1"))
+    # RNNoise made scoring less accurate in measurement (see backend/enhance.py), so it is opt-in.
+    noise_neural: bool = field(default_factory=lambda: _flag("PRONUNCIATION_COACH_NOISE_NEURAL", "0"))
 
     # Coach voice
     tts_enabled: bool = field(default_factory=lambda: _flag("PRONUNCIATION_COACH_TTS", "1"))
