@@ -415,11 +415,11 @@ const SiriOrbImpl = forwardRef<SiriOrbHandle, SiriOrbProps>(function SiriOrb(
             inset: 0,
             borderRadius: '50%',
             background: [
-              'radial-gradient(ellipse 34% 2.2% at 50% 47%, rgba(255,255,255,.95), rgba(255,255,255,0))',
-              'radial-gradient(ellipse 30% 4% at 50% 51%, rgba(80,90,110,.16), rgba(80,90,110,0))',
-              'radial-gradient(circle at 50% 50%, rgba(205,220,242,.05) 55%, rgba(170,180,200,.12) 92%, rgba(170,180,200,.22) 100%)',
+              'radial-gradient(ellipse 34% 2.2% at 50% 47%, rgba(255,255,255,.98), rgba(255,255,255,0))',
+              'radial-gradient(ellipse 30% 4% at 50% 51%, rgba(40,55,90,.3), rgba(40,55,90,0))',
+              'radial-gradient(circle at 50% 30%, rgba(235,242,255,.9), rgba(170,188,222,.9) 70%, rgba(120,140,185,.95) 100%)',
             ].join(', '),
-            boxShadow: 'inset 0 0 0 1px rgba(140,150,170,.3), inset 0 0 0 2px rgba(255,255,255,.6), 0 8px 22px rgba(0,0,0,.08)',
+            boxShadow: 'inset 0 0 0 1px rgba(70,85,120,.45), inset 0 0 0 2px rgba(255,255,255,.6), 0 10px 26px rgba(20,30,60,.2)',
           }}
         />
       )}
