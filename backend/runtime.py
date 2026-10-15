@@ -23,6 +23,8 @@ from backend.observability import ASR_REJECTED, ASR_RUNNING, ASR_WAITING
 
 if TYPE_CHECKING:
     from backend.asr import WhisperASR
+    from backend.coach import CoachService
+    from backend.phoneme_model import PhonemeRecognizer
     from backend.pronunciation import PronunciationScorer
     from backend.tts import CoachVoice
 
@@ -79,6 +81,8 @@ class Runtime:
     asr: WhisperASR | None = None
     scorer: PronunciationScorer | None = None
     voice: CoachVoice | None = None
+    coach: CoachService | None = None
+    phonemes: PhonemeRecognizer | None = None
     db_ready: bool = False
     load_error: str | None = None
     asr_gate: WorkGate = field(default_factory=lambda: WorkGate(settings.asr_concurrency, settings.asr_queue_limit))
@@ -89,6 +93,15 @@ class Runtime:
 
 
 runtime = Runtime()
+
+
+def get_coach() -> CoachService:
+    """The coaching service (created on first use; templates only when no API key is set)."""
+    if runtime.coach is None:
+        from backend.coach import CoachService
+
+        runtime.coach = CoachService(settings.groq_api_key, settings.groq_model, timeout=settings.llm_timeout)
+    return runtime.coach
 
 
 def load_asr() -> None:
@@ -109,6 +122,27 @@ def load_asr() -> None:
     asr.warm_up()
     runtime.asr = asr
     logger.info("Speech recognition ready in %.1fs.", time.perf_counter() - started)
+
+
+def load_phonemes() -> None:
+    """The acoustic phoneme recogniser is optional: without it, scoring uses Whisper's words only."""
+    if runtime.phonemes is not None or not settings.phoneme_scoring:
+        return
+    from backend.phoneme_model import PhonemeRecognizer, model_available
+
+    if not model_available(settings.phoneme_model_dir):
+        logger.warning(
+            "Phoneme model not found in %s; scoring will use Whisper's words only. "
+            "Build it with scripts/export_phoneme_model.py.",
+            settings.phoneme_model_dir,
+        )
+        return
+    try:
+        recognizer = PhonemeRecognizer(settings.phoneme_model_dir, threads=settings.phoneme_threads)
+        recognizer.warm_up()
+        runtime.phonemes = recognizer
+    except Exception:
+        logger.exception("Phoneme model failed to load; scoring will use Whisper's words only.")
 
 
 def load_scorer() -> None:
@@ -139,10 +173,13 @@ async def load_all() -> None:
         asyncio.to_thread(load_asr),
         asyncio.to_thread(load_scorer),
         asyncio.to_thread(load_voice),
+        asyncio.to_thread(load_phonemes),
         return_exceptions=True,
     )
     errors = [result for result in results if isinstance(result, BaseException)]
     for error in errors:
         logger.error("Model loading failed", exc_info=error)
     runtime.load_error = str(errors[0]) if errors else None
+    if runtime.scorer is not None and runtime.phonemes is not None:
+        runtime.scorer.inventory = runtime.phonemes.inventory
     logger.info("Startup loading finished in %.1fs (models_loaded=%s).", time.perf_counter() - started, runtime.models_loaded)
