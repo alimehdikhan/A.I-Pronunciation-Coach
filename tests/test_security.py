@@ -252,3 +252,37 @@ def test_unhandled_errors_return_json_with_request_id(client, monkeypatch):
     response = TestClient(main.app, raise_server_exceptions=False).get("/api/pronounce", params={"text": "hello"})
     assert response.status_code == 500
     assert response.json()["request_id"] == response.headers["x-request-id"]
+
+
+# --- which database the app uses --------------------------------------------------
+
+from backend.database import resolve_database_url  # noqa: E402
+
+NEON = "postgresql://user:secret@ep-cool-123.us-east-2.aws.neon.tech/neondb?sslmode=require"
+
+
+def test_the_documented_variable_is_used():
+    assert resolve_database_url({"NEON_DATABASE_URL": NEON}) == (NEON, "NEON_DATABASE_URL")
+
+
+def test_neons_own_variable_name_works_too():
+    assert resolve_database_url({"DATABASE_URL": NEON}) == (NEON, "DATABASE_URL")
+
+
+def test_a_sqlite_default_never_hides_a_real_database():
+    env = {"NEON_DATABASE_URL": "sqlite:////app/data/pc.db", "DATABASE_URL": NEON}
+    assert resolve_database_url(env) == (NEON, "DATABASE_URL")
+
+
+def test_pasted_forms_are_cleaned():
+    assert resolve_database_url({"NEON_DATABASE_URL": f"psql '{NEON}'"})[0] == NEON
+    assert resolve_database_url({"NEON_DATABASE_URL": f'"{NEON}"'})[0] == NEON
+    legacy = NEON.replace("postgresql://", "postgres://")
+    assert resolve_database_url({"DATABASE_URL": legacy})[0] == NEON
+
+
+def test_without_any_url_it_falls_back_to_sqlite_and_says_so():
+    assert resolve_database_url({}) == ("sqlite:///./pronunciation_coach.db", "default")
+    custom = {"PRONUNCIATION_COACH_SQLITE_URL": "sqlite:////app/data/x.db"}
+    assert resolve_database_url(custom) == ("sqlite:////app/data/x.db", "default")
+    assert resolve_database_url({"NEON_DATABASE_URL": "   "})[1] == "default"
