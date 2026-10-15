@@ -353,7 +353,10 @@ class CoachService:
         if cached is not None:
             return cached, "groq"
         try:
+            from backend.coach_tools import humanize_sounds  # imported here: coach_tools does not depend on this module
+
             note = " ".join(str((await self._complete(BRIEFING_PROMPT, facts)).get("note", "")).split())
+            note = humanize_sounds(note, quote=True)  # a symbol must never reach the learner, whatever the model writes
             if not note or len(note) > 600:
                 raise ValueError("unusable note")
         except Exception as exc:
