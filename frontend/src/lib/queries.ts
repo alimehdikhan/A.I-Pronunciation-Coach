@@ -13,7 +13,8 @@ export const keys = {
   history: (username: string) => ['history', username] as const,
   practice: (username: string) => ['practice', username] as const,
   account: ['account'] as const,
-  coachPlan: (username: string) => ['coach-plan', username] as const,
+  coachPlan: (username: string, focus?: string | null) => ['coach-plan', username, focus ?? null] as const,
+  journey: (username: string) => ['journey', username] as const,
   report: (username: string) => ['coach-report', username] as const,
 }
 
@@ -109,6 +110,17 @@ export function useHistoryPages(username: string, filters: HistoryFilters) {
   })
 }
 
+/** Goal, level, badges, the path and the review words. Cheap to fetch, so it refreshes whenever the page is shown. */
+export function useJourney(username: string, goal: number) {
+  return useQuery({
+    queryKey: [...keys.journey(username), goal],
+    queryFn: () => api.journey(username, goal),
+    enabled: !!username,
+    staleTime: 15_000,
+    retry: false,
+  })
+}
+
 export function usePracticeDrills(username: string) {
   return useQuery({ queryKey: keys.practice(username), queryFn: () => api.practice(username) })
 }
@@ -134,10 +146,10 @@ export function useAccount() {
  * reshuffles its focus after each word would be confusing), so it only
  * refreshes when asked to.
  */
-export function useCoachPlan(username: string) {
+export function useCoachPlan(username: string, focus?: string | null) {
   return useQuery({
-    queryKey: keys.coachPlan(username),
-    queryFn: () => api.coachPlan(username),
+    queryKey: keys.coachPlan(username, focus),
+    queryFn: () => api.coachPlan(username, focus),
     enabled: !!username,
     staleTime: Infinity,
     gcTime: 5 * 60_000,
