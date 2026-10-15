@@ -88,11 +88,6 @@ RUN if [ "$PRELOAD_KOKORO" = "1" ]; then \
       ) || { echo "WARNING: Kokoro voice not installed; the app will use the Piper voice"; rm -rf "$PRONUNCIATION_COACH_KOKORO_DIR"; }; \
     fi
 
-# RNNoise, the neural noise suppressor used on recordings. The wheel bundles the C library;
-# --no-deps skips its plotting dependencies, which are not needed. Best effort: without it the
-# server falls back to a plain spectral filter.
-RUN pip install --no-cache-dir --no-deps "pyrnnoise>=0.4,<1"     || echo "WARNING: pyrnnoise not installed; recordings use the spectral noise filter"
-
 COPY backend/ backend/
 COPY --from=frontend /app/frontend/dist frontend/dist
 
