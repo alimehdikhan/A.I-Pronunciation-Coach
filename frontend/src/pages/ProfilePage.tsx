@@ -62,7 +62,19 @@ function Card({ title, description, children }: { title: string; description?: s
   )
 }
 
-function Hero({ name, email, guest, since }: { name: string; email?: string | null; guest: boolean; since?: string | null }) {
+function Hero({
+  name,
+  handle,
+  email,
+  guest,
+  since,
+}: {
+  name: string
+  handle?: string
+  email?: string | null
+  guest: boolean
+  since?: string | null
+}) {
   return (
     <section className="surface flex flex-wrap items-center gap-5 p-6 sm:p-8">
       <div className="grid size-[72px] shrink-0 place-items-center rounded-full bg-gradient-to-b from-[#a1a1a6] to-[#6e6e73] text-[26px] font-semibold text-white">
@@ -73,7 +85,10 @@ function Hero({ name, email, guest, since }: { name: string; email?: string | nu
           <h2 className="headline truncate text-[28px]">{name || 'Guest'}</h2>
           <Pill tone={guest ? 'neutral' : 'primary'}>{guest ? 'Guest' : 'Account'}</Pill>
         </div>
-        <div className="mt-1 text-[15px] text-muted-foreground">{email ?? 'Progress is saved in this browser only'}</div>
+        <div className="mt-1 text-[15px] text-muted-foreground">
+          {handle && <span className="text-subtle">@{handle} · </span>}
+          {email ?? 'Progress is saved in this browser only'}
+        </div>
         {since && (
           <div className="mt-1 flex items-center gap-1.5 text-xs text-subtle">
             <CalendarBlankIcon size={14} /> Member since{' '}
@@ -111,21 +126,30 @@ function GuestPrompt() {
   )
 }
 
-function RenameForm({ current }: { current: string }) {
+function NamesForm({ username, displayName }: { username: string; displayName: string }) {
   const queryClient = useQueryClient()
   const signIn = useSettings((s) => s.signIn)
   const email = useSettings((s) => s.accountEmail) ?? ''
-  const [name, setName] = useState(current)
-  useEffect(() => setName(current), [current])
-  const valid = NAME_RE.test(name.trim())
+  const [shown, setShown] = useState(displayName)
+  const [handle, setHandle] = useState(username)
+  useEffect(() => setShown(displayName), [displayName])
+  useEffect(() => setHandle(username), [username])
 
-  const rename = useMutation({
-    mutationFn: () => api.rename(name.trim()),
+  const shownValid = NAME_RE.test(shown.trim())
+  const handleValid = NAME_RE.test(handle.trim())
+  const changed = shown.trim() !== displayName || handle.trim() !== username
+
+  const save = useMutation({
+    mutationFn: () =>
+      api.rename({
+        ...(shown.trim() !== displayName ? { display_name: shown.trim() } : {}),
+        ...(handle.trim() !== username ? { username: handle.trim() } : {}),
+      }),
     meta: { silent: true },
     onSuccess: (profile) => {
-      signIn({ username: profile.username, email: profile.email || email })
+      signIn({ username: profile.username, displayName: profile.display_name, email: profile.email || email })
       void queryClient.invalidateQueries()
-      toast.success('Display name updated')
+      toast.success('Profile updated')
     },
   })
 
@@ -133,23 +157,44 @@ function RenameForm({ current }: { current: string }) {
     <form
       onSubmit={(e: FormEvent) => {
         e.preventDefault()
-        if (valid && name.trim() !== current) rename.mutate()
+        if (shownValid && handleValid && changed) save.mutate()
       }}
-      className="flex flex-wrap items-start gap-3"
+      className="space-y-4"
     >
-      <div className="min-w-[220px] flex-1">
-        <Input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          maxLength={40}
-          aria-label="Display name"
-          aria-invalid={!valid}
-          className="h-11 rounded-xl text-[15px]"
-        />
-        {rename.error && <p className="mt-1.5 text-xs text-bad">{errorText(rename.error)}</p>}
+      <div className="grid gap-4 sm:grid-cols-2">
+        <label className="block">
+          <span className="mb-1.5 block text-[13px] font-medium text-muted-foreground">Display name</span>
+          <Input
+            value={shown}
+            onChange={(e) => setShown(e.target.value)}
+            maxLength={40}
+            aria-invalid={!shownValid}
+            className="h-11 rounded-xl text-[15px]"
+          />
+          <span className="mt-1.5 block text-xs text-subtle">Shown in the app. Other people can use the same name.</span>
+        </label>
+        <label className="block">
+          <span className="mb-1.5 block text-[13px] font-medium text-muted-foreground">Username</span>
+          <Input
+            value={handle}
+            onChange={(e) => setHandle(e.target.value)}
+            maxLength={40}
+            autoCapitalize="none"
+            aria-invalid={!handleValid}
+            className="h-11 rounded-xl text-[15px]"
+          />
+          <span className="mt-1.5 block text-xs text-subtle">Unique. Your practice history is stored under it.</span>
+        </label>
       </div>
-      <Button type="submit" size="lg" variant="secondary" disabled={!valid || name.trim() === current || rename.isPending} className="h-11 rounded-xl">
-        Save
+      {save.error && <p className="text-xs text-bad">{errorText(save.error)}</p>}
+      <Button
+        type="submit"
+        size="lg"
+        variant="secondary"
+        disabled={!shownValid || !handleValid || !changed || save.isPending}
+        className="h-11 rounded-xl"
+      >
+        Save changes
       </Button>
     </form>
   )
@@ -333,7 +378,8 @@ export default function ProfilePage() {
           <Skeleton className="h-32 w-full rounded-[30px]" />
         ) : (
           <Hero
-            name={profile?.username ?? username}
+            name={profile?.display_name ?? username}
+            handle={profile?.username}
             email={profile?.email}
             guest={!signedIn}
             since={profile?.member_since}
@@ -353,8 +399,8 @@ export default function ProfilePage() {
 
         {signedIn && (
           <>
-            <Card title="Display name" description="This is the name shown on your profile and saved with your attempts.">
-              <RenameForm current={profile!.username} />
+            <Card title="Names" description="Your display name is what you see in the app. Your username is the unique handle your history is saved under.">
+              <NamesForm username={profile!.username} displayName={profile!.display_name} />
             </Card>
 
             <Card title="Password" description="Changing it signs out every other device.">
