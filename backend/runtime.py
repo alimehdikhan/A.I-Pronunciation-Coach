@@ -169,6 +169,13 @@ def get_fallback_voice() -> CoachVoice | None:
         return runtime.fallback_voice
 
 
+def get_quick_voice() -> CoachVoice | None:
+    """The Piper voice: the fast option (about a quarter of a second per clip), whatever the primary is."""
+    if runtime.voice_engine == "piper":
+        return runtime.voice
+    return get_fallback_voice()
+
+
 def load_scorer() -> None:
     if runtime.scorer is not None:
         return
