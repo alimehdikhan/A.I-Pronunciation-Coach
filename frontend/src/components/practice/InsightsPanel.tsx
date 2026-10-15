@@ -1,15 +1,4 @@
-import {
-  ArrowsInLineHorizontalIcon,
-  CheckCircleIcon,
-  ClockIcon,
-  EyeSlashIcon,
-  GaugeIcon,
-  PlusCircleIcon,
-  SealCheckIcon,
-  SpeakerSlashIcon,
-  WarningCircleIcon,
-  type Icon,
-} from '@phosphor-icons/react'
+import { ArrowsInLineHorizontalIcon, CheckCircleIcon, ClockIcon, EyeSlashIcon, GaugeIcon, type Icon, LightbulbIcon, PlusCircleIcon, SealCheckIcon, SpeakerSlashIcon, WarningCircleIcon } from '@phosphor-icons/react'
 import { SectionLabel } from '@/components/common'
 import type { Insight } from '@/lib/types'
 import { cn } from '@/lib/utils'
@@ -37,7 +26,7 @@ const SEVERITY: Record<Insight['severity'], string> = {
 export function InsightsPanel({ insights, onSelect }: { insights: Insight[]; onSelect: (index: number) => void }) {
   return (
     <div className="surface results-item p-6 sm:p-8">
-      <SectionLabel>Coach notes</SectionLabel>
+      <SectionLabel icon={<LightbulbIcon weight="fill" />}>Coach notes</SectionLabel>
       {insights.length === 0 ? (
         <div className="flex items-center gap-3 text-[15px] text-muted-foreground">
           <CheckCircleIcon size={22} weight="fill" className="text-good" /> Nothing to flag. Great job.
