@@ -1,4 +1,4 @@
-import { CaretLeftIcon, CaretRightIcon, PencilSimpleIcon, SquaresFourIcon } from '@phosphor-icons/react'
+import { CaretLeftIcon, CaretRightIcon, MagicWandIcon, PencilSimpleIcon, SpinnerGapIcon, SquaresFourIcon } from '@phosphor-icons/react'
 import { AnimatePresence, motion } from 'motion/react'
 import type { ReactNode } from 'react'
 import { Pill, Tip } from '@/components/common'
@@ -25,6 +25,8 @@ export function PhraseStage({
   onPrev,
   onNext,
   onBrowse,
+  onSuggest,
+  suggesting,
   children,
 }: {
   target: Target
@@ -33,6 +35,9 @@ export function PhraseStage({
   onPrev: () => void
   onNext: () => void
   onBrowse: () => void
+  /** Ask the coach for a new sentence aimed at the learner's weakest sound. */
+  onSuggest?: () => void
+  suggesting?: boolean
   children?: ReactNode
 }) {
   const showIpa = useSettings((s) => s.showIpa)
@@ -62,6 +67,13 @@ export function PhraseStage({
               <CaretRightIcon weight="bold" />
             </Button>
           </Tip>
+          {onSuggest && (
+            <Tip content="A new sentence for your weakest sound">
+              <Button variant="secondary" size="sm" onClick={onSuggest} disabled={suggesting} className="ml-1">
+                {suggesting ? <SpinnerGapIcon className="animate-spin" /> : <MagicWandIcon weight="bold" />} For me
+              </Button>
+            </Tip>
+          )}
           <Button variant="secondary" size="sm" onClick={onBrowse} className="ml-1">
             <SquaresFourIcon weight="bold" /> Phrases
           </Button>
