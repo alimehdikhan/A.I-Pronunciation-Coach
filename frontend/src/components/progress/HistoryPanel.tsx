@@ -1,4 +1,4 @@
-import { MagnifyingGlassIcon, SpinnerGapIcon } from '@phosphor-icons/react'
+import { ClockCounterClockwiseIcon, ListIcon, MagnifyingGlassIcon, SpinnerGapIcon, StarIcon, WarningCircleIcon } from '@phosphor-icons/react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useDeferredValue, useState } from 'react'
 import { Link } from 'react-router'
@@ -27,7 +27,7 @@ export function HistoryPanel({ username, bare = false }: { username: string; bar
   return (
     <Shell className={bare ? undefined : 'progress-item p-6 sm:p-8'}>
       {!bare && (
-        <SectionLabel action={<Pill>{total} {filtered ? 'matching' : total === 1 ? 'session' : 'sessions'}</Pill>}>History</SectionLabel>
+        <SectionLabel icon={<ClockCounterClockwiseIcon weight="fill" />} action={<Pill>{total} {filtered ? 'matching' : total === 1 ? 'session' : 'sessions'}</Pill>}>History</SectionLabel>
       )}
 
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -37,9 +37,9 @@ export function HistoryPanel({ username, bare = false }: { username: string; bar
           value={band}
           onChange={setBand}
           options={[
-            { value: 'all', label: 'All' },
-            { value: 'low', label: 'Needs work' },
-            { value: 'high', label: 'Great' },
+            { value: 'all', label: 'All', icon: <ListIcon weight="bold" /> },
+            { value: 'low', label: 'Needs work', icon: <WarningCircleIcon weight="bold" /> },
+            { value: 'high', label: 'Great', icon: <StarIcon weight="bold" /> },
           ]}
         />
         <div className="relative min-w-0 flex-1">
