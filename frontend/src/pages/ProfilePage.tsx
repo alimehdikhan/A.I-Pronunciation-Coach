@@ -15,6 +15,7 @@ import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { toast } from 'sonner'
 import { Pill, SectionLabel } from '@/components/common'
+import { StorageNotice } from '@/components/auth/StorageNotice'
 import { PageHeader } from '@/components/layout/AppShell'
 import {
   AlertDialog,
@@ -374,6 +375,7 @@ export default function ProfilePage() {
       />
 
       <div className="space-y-5">
+        <StorageNotice />
         {isLoading ? (
           <Skeleton className="h-32 w-full rounded-[30px]" />
         ) : (
