@@ -50,6 +50,7 @@ async def health_check(request: Request) -> dict[str, Any]:
         "database": database_status(),
         "acoustic_scoring": runtime.phonemes is not None,
         "coach_llm": bool(settings.groq_api_key),
+        "coach": runtime.coach.describe() if runtime.coach is not None else None,
         "version": request.app.version,
     }
 
