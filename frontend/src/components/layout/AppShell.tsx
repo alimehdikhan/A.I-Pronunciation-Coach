@@ -1,7 +1,17 @@
-import { CaretUpDownIcon, FireIcon, GearSixIcon, MagnifyingGlassIcon, MoonIcon, SunIcon, UserIcon } from '@phosphor-icons/react'
+import {
+  CaretUpDownIcon,
+  FireIcon,
+  GearSixIcon,
+  MagnifyingGlassIcon,
+  MoonIcon,
+  SignInIcon,
+  SunIcon,
+  UserCircleIcon,
+  UserIcon,
+} from '@phosphor-icons/react'
 import { AnimatePresence, motion } from 'motion/react'
 import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react'
-import { NavLink, useLocation, useOutlet } from 'react-router'
+import { NavLink, useLocation, useNavigate, useOutlet } from 'react-router'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,7 +21,7 @@ import {
 import { Kbd } from '@/components/ui/kbd'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useHeadlineReveal } from '@/lib/gsap'
-import { useAnalytics } from '@/lib/queries'
+import { useAccount, useAnalytics } from '@/lib/queries'
 import { cn, initials } from '@/lib/utils'
 import { applyTheme, useSettings } from '@/store/settings'
 import { useUI } from '@/store/ui'
@@ -37,6 +47,19 @@ function useThemeSync() {
     media.addEventListener('change', onChange)
     return () => media.removeEventListener('change', onChange)
   }, [theme])
+}
+
+/** Keeps this browser's signed-in state in step with the server (e.g. after a password change elsewhere). */
+function useAccountSync() {
+  const { data } = useAccount()
+  const accountEmail = useSettings((s) => s.accountEmail)
+  const signIn = useSettings((s) => s.signIn)
+  const signOut = useSettings((s) => s.signOut)
+  useEffect(() => {
+    if (!data) return
+    if (data.account && accountEmail !== data.email) signIn({ username: data.username, email: data.email })
+    else if (!data.account && accountEmail) signOut()
+  }, [data, accountEmail, signIn, signOut])
 }
 
 function useCommandShortcut() {
@@ -97,7 +120,9 @@ function StreakCard() {
 
 function ProfileMenu() {
   const username = useSettings((s) => s.username)
+  const accountEmail = useSettings((s) => s.accountEmail)
   const setSettingsOpen = useUI((s) => s.setSettingsOpen)
+  const navigate = useNavigate()
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -107,17 +132,24 @@ function ProfileMenu() {
           </div>
           <div className="min-w-0 flex-1">
             <div className="truncate text-[13px] font-medium">{username || 'Guest'}</div>
-            <div className="truncate text-[11px] text-subtle">{username ? 'Progress saved' : 'Not saving progress'}</div>
+            <div className="truncate text-[11px] text-subtle">
+              {accountEmail ?? (username ? 'Progress saved in this browser' : 'Not saving progress')}
+            </div>
           </div>
           <CaretUpDownIcon size={14} className="text-subtle" />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent side="top" align="start" className="w-56">
+        <DropdownMenuItem onSelect={() => navigate('/profile')}>
+          <UserCircleIcon /> Profile
+        </DropdownMenuItem>
+        {!accountEmail && (
+          <DropdownMenuItem onSelect={() => navigate('/login')}>
+            <SignInIcon /> Sign in or create account
+          </DropdownMenuItem>
+        )}
         <DropdownMenuItem onSelect={() => setSettingsOpen(true)}>
           <GearSixIcon /> Settings
-        </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => setSettingsOpen(true)}>
-          <UserIcon /> {username ? 'Change name' : 'Add your name'}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -241,6 +273,7 @@ function PageFallback() {
 
 export function AppShell() {
   useThemeSync()
+  useAccountSync()
   useCommandShortcut()
   const location = useLocation()
 
