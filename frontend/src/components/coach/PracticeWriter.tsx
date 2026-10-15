@@ -1,4 +1,4 @@
-import { MagicWandIcon, SpinnerGapIcon } from '@phosphor-icons/react'
+import { MagicWandIcon, MountainsIcon, LeafIcon, SpinnerGapIcon, TreeIcon } from '@phosphor-icons/react'
 import { useMutation } from '@tanstack/react-query'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { useState } from 'react'
@@ -44,9 +44,9 @@ export function PracticeWriter({ username, phoneme }: { username: string; phonem
           value={chosen}
           onChange={setChosen}
           options={[
-            { value: 'beginner', label: 'Beginner' },
-            { value: 'intermediate', label: 'Intermediate' },
-            { value: 'advanced', label: 'Advanced' },
+            { value: 'beginner', label: 'Beginner', icon: <LeafIcon weight="bold" /> },
+            { value: 'intermediate', label: 'Intermediate', icon: <TreeIcon weight="bold" /> },
+            { value: 'advanced', label: 'Advanced', icon: <MountainsIcon weight="bold" /> },
           ]}
         />
         <Input
