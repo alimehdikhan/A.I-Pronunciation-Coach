@@ -5,10 +5,23 @@ import { Button } from '@/components/ui/button'
 import type { PhonemeDetail } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { usePractice } from '@/store/practice'
+import { describeSound, CATEGORY_PLAIN, GROUP_PLAIN, voiceText } from '@/lib/plain'
+import { usePhonemes } from '@/lib/queries'
 import { useUI } from '@/store/ui'
 import { ListenButton, SpeakChip } from './SpeakButton'
 
-export function PhonemeTile({ symbol, size = 'md', className }: { symbol: string; size?: 'sm' | 'md' | 'lg'; className?: string }) {
+export function PhonemeTile({
+  symbol,
+  spelled,
+  size = 'md',
+  className,
+}: {
+  symbol: string
+  /** How the sound is spelled ("sh"). When given, it is shown instead of the phonetic symbol. */
+  spelled?: string
+  size?: 'sm' | 'md' | 'lg'
+  className?: string
+}) {
   const sizes = {
     sm: 'size-10 text-xl rounded-[12px]',
     md: 'size-14 text-[28px] rounded-[16px]',
@@ -17,12 +30,12 @@ export function PhonemeTile({ symbol, size = 'md', className }: { symbol: string
   return (
     <div
       className={cn(
-        'ipa relative grid shrink-0 place-items-center bg-gradient-to-b from-[#f5f5f7] to-[#e8e8ed] font-medium text-foreground shadow-[inset_0_0_0_1px_rgb(0_0_0/0.06)] dark:from-[#3a3a3c] dark:to-[#2c2c2e] dark:shadow-[inset_0_0_0_1px_rgb(255_255_255/0.08)]',
+        spelled ? 'font-semibold' : 'ipa', 'relative grid shrink-0 place-items-center bg-gradient-to-b from-[#f5f5f7] to-[#e8e8ed] font-medium text-foreground shadow-[inset_0_0_0_1px_rgb(0_0_0/0.06)] dark:from-[#3a3a3c] dark:to-[#2c2c2e] dark:shadow-[inset_0_0_0_1px_rgb(255_255_255/0.08)]',
         sizes[size],
         className,
       )}
     >
-      {symbol}
+      {spelled ?? symbol}
     </div>
   )
 }
@@ -66,6 +79,7 @@ export function PhonemeGuide({
   const navigate = useNavigate()
   const setTarget = usePractice((s) => s.setTarget)
   const openPhoneme = useUI((s) => s.openPhoneme)
+  const { data: all } = usePhonemes()
 
   const practiceSentence = () => {
     setTarget({ text: phoneme.practice_sentence, source: 'drill' })
@@ -77,14 +91,16 @@ export function PhonemeGuide({
     <div>
       {!compact && (
         <div className="flex items-center gap-4">
-          <PhonemeTile symbol={phoneme.symbol} size="lg" />
+          <PhonemeTile symbol={phoneme.symbol} spelled={describeSound({ label: phoneme.label, phoneme: phoneme.symbol }).spelled} size="lg" />
           <div className="min-w-0">
             <div className="text-[20px] font-semibold tracking-tight">{phoneme.label}</div>
-            <div className="text-[13px] text-muted-foreground">{phoneme.name}</div>
+            <div className="text-[13px] text-muted-foreground" title={`${phoneme.name} (${phoneme.symbol})`}>
+              {GROUP_PLAIN[phoneme.group]?.hint ?? phoneme.name}
+            </div>
             <div className="mt-2 flex flex-wrap items-center gap-1.5">
-              <Pill tone="primary" className="capitalize">{phoneme.category}</Pill>
-              <Pill className="capitalize">{phoneme.group}</Pill>
-              {phoneme.category === 'consonant' && <Pill>{phoneme.voiced ? 'Voiced' : 'Voiceless'}</Pill>}
+              <Pill tone="primary">{CATEGORY_PLAIN[phoneme.category] ?? phoneme.category}</Pill>
+              <Pill>{GROUP_PLAIN[phoneme.group]?.title ?? phoneme.group}</Pill>
+              {phoneme.category === 'consonant' && <Pill>{voiceText(phoneme.voiced)}</Pill>}
               <Pill className="gap-1.5">
                 <DifficultyDots level={phoneme.difficulty} />
               </Pill>
@@ -115,7 +131,7 @@ export function PhonemeGuide({
       </Section>
 
       {!hidePairs && (
-      <Section icon={<ArrowsLeftRightIcon weight="bold" />} title="Minimal pairs">
+      <Section icon={<ArrowsLeftRightIcon weight="bold" />} title="Words that sound alike">
         <p className="-mt-1 mb-3 text-[13px] text-subtle">Hear the difference, then say each pair aloud.</p>
         <div className="space-y-2">
           {phoneme.minimal_pairs.map((pair) => (
@@ -132,15 +148,25 @@ export function PhonemeGuide({
       {!compact && phoneme.common_substitutions.length > 0 && (
         <Section icon={<ShuffleIcon weight="bold" />} title="Often confused with">
           <div className="flex flex-wrap gap-2">
-            {phoneme.common_substitutions.map((symbol) => (
-              <button
-                key={symbol}
-                onClick={() => openPhoneme(symbol)}
-                className="ipa inline-flex h-9 min-w-11 items-center justify-center rounded-full bg-fill px-3.5 text-base transition-colors hover:bg-fill-strong hover:text-primary"
-              >
-                /{symbol}/
-              </button>
-            ))}
+            {phoneme.common_substitutions.map((symbol) => {
+              const other = all?.find((p) => p.symbol === symbol)
+              const text = other ? describeSound({ label: other.label, phoneme: symbol }) : null
+              return (
+                <button
+                  key={symbol}
+                  onClick={() => openPhoneme(symbol)}
+                  className="inline-flex h-9 items-center justify-center gap-1.5 rounded-full bg-fill px-3.5 text-[14px] font-medium transition-colors hover:bg-fill-strong hover:text-primary"
+                >
+                  {text ? (
+                    <>
+                      {text.spelled} <span className="font-normal text-subtle">as in {text.word}</span>
+                    </>
+                  ) : (
+                    <span className="ipa">/{symbol}/</span>
+                  )}
+                </button>
+              )
+            })}
           </div>
         </Section>
       )}
