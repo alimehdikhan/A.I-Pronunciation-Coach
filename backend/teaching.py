@@ -162,11 +162,17 @@ def _reason_text(stat: SoundStat | None, why: str, phoneme: str) -> str:
     return f"{base}. It is the sound costing you the most right now."
 
 
-def build_plan(observations: Sequence[Observation]) -> dict[str, Any]:
-    """The coach's assessment and a practice session for the sound that matters most."""
+def build_plan(observations: Sequence[Observation], focus_override: str | None = None) -> dict[str, Any]:
+    """The coach's assessment and a practice session for the sound that matters most.
+
+    `focus_override` is a sound the learner picked (from the learning path): it replaces the
+    coach's own choice, and the session is built around it in the same way.
+    """
     stats = compute_mastery(observations)
     by_sound = {s.phoneme: s for s in stats}
     focus, why = choose_focus(stats)
+    if focus_override and get_phoneme(focus_override):
+        focus, why = focus_override, "chosen"
     entry = get_phoneme(focus) or {}
     stat = by_sound.get(focus)
     label = entry.get("label") or f"/{focus}/"
@@ -218,7 +224,7 @@ def build_plan(observations: Sequence[Observation]) -> dict[str, Any]:
             "name": entry.get("name", ""),
             "category": entry.get("category", ""),
             "why": why,
-            "reason": _reason_text(stat, why, focus),
+            "reason": f"You chose {label}, so that is what we will practise." if why == "chosen" else _reason_text(stat, why, focus),
             "stats": stat.as_dict() if stat else None,
             "placement": entry.get("placement", ""),
             "steps": entry.get("steps", []),
@@ -243,11 +249,11 @@ def template_briefing(plan: dict[str, Any]) -> str:
     focus = plan["focus"]
     if not plan["has_history"]:
         return (
-            f"Welcome. Before I can tailor anything I need to hear you, so we will start with /{focus['phoneme']}/, "
+            f"Welcome. Before I can tailor anything I need to hear you, so we will start with {focus['label']}, "
             "a sound most learners find tricky. Do the short session below and I will remember how it goes."
         )
     strengths = plan["strengths"]
-    praise = f"Your /{strengths[0]['phoneme']}/ is solid. " if strengths else ""
+    praise = f"Your {strengths[0].get('label') or strengths[0]['phoneme']} is solid. " if strengths else ""
     return f"{praise}{focus['reason']} Today's session is short and only about that one sound."
 
 
