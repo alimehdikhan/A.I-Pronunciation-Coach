@@ -14,7 +14,7 @@ from sqlalchemy import case, delete, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
-from backend.database import PhonemeMistake, PronunciationRecord, User, as_utc, utcnow
+from backend.database import PhonemeMistake, PronunciationRecord, User, UserKey, as_utc, utcnow
 from backend.phoneme_kb import get_phoneme
 from backend.security import hash_profile_key, profile_key_matches
 
@@ -30,12 +30,26 @@ def find_user(db: Session, username: str) -> User | None:
     return db.scalar(select(User).where(User.username == username))
 
 
+def has_device_key(db: Session, user: User, key: str | None) -> bool:
+    """True when `key` belongs to a device signed in to this account."""
+    if not key:
+        return False
+    digest = hash_profile_key(key)
+    return db.scalar(select(UserKey.id).where(UserKey.user_id == user.id, UserKey.key_hash == digest)) is not None
+
+
 def authorize(db: Session, user: User, key: str | None) -> None:
     """Check that `key` owns this profile, claiming it if nobody has yet.
 
     Unclaimed (legacy) profiles stay readable without a key, so older clients
     keep working; the first browser that presents a key takes ownership.
+    Accounts (those with a password) are never readable without a matching
+    key, and any signed-in device's key matches.
     """
+    if user.password_hash is not None:
+        if (user.key_hash and profile_key_matches(user.key_hash, key)) or has_device_key(db, user, key):
+            return
+        raise ProfileLocked()
     if user.key_hash is None:
         if not key:
             return
@@ -49,8 +63,63 @@ def authorize(db: Session, user: User, key: str | None) -> None:
         db.refresh(user)
         if claimed:
             return
-    if not profile_key_matches(user.key_hash, key):
+    if not profile_key_matches(user.key_hash, key) and not has_device_key(db, user, key):
         raise ProfileLocked()
+
+
+# --- Accounts ---------------------------------------------------------------------
+
+
+def find_user_by_email(db: Session, email: str) -> User | None:
+    return db.scalar(select(User).where(User.email == email))
+
+
+def account_for_key(db: Session, key: str | None) -> User | None:
+    """The account this device is signed in to, if any."""
+    if not key:
+        return None
+    digest = hash_profile_key(key)
+    return db.scalar(
+        select(User).join(UserKey, UserKey.user_id == User.id).where(UserKey.key_hash == digest, User.password_hash.is_not(None))
+    )
+
+
+def _unusable_key_hash() -> str:
+    """A hash no browser can present: keeps an account from ever being "unclaimed"."""
+    import secrets
+
+    return hash_profile_key(secrets.token_urlsafe(32))
+
+
+def add_device(db: Session, user: User, key: str) -> None:
+    """Sign a device in: its key is stored in user_keys and nowhere else."""
+    digest = hash_profile_key(key)
+    if db.scalar(select(UserKey.id).where(UserKey.key_hash == digest)) is None:
+        db.add(UserKey(user_id=user.id, key_hash=digest))
+    if user.key_hash == digest or user.key_hash is None:
+        user.key_hash = _unusable_key_hash()
+
+
+def remove_device(db: Session, user: User, key: str) -> None:
+    """Sign one device out."""
+    digest = hash_profile_key(key)
+    db.execute(delete(UserKey).where(UserKey.user_id == user.id, UserKey.key_hash == digest))
+    if user.key_hash == digest:
+        user.key_hash = _unusable_key_hash()
+
+
+def drop_other_devices(db: Session, user: User, keep_key: str) -> None:
+    """Sign every device out except `keep_key`."""
+    digest = hash_profile_key(keep_key)
+    db.execute(delete(UserKey).where(UserKey.user_id == user.id, UserKey.key_hash != digest))
+    add_device(db, user, keep_key)
+
+
+def delete_account(db: Session, user: User) -> None:
+    delete_history(db, user)
+    db.execute(delete(UserKey).where(UserKey.user_id == user.id))
+    db.delete(user)
+    db.commit()
 
 
 def save_attempt(
