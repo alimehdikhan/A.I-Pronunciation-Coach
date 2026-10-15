@@ -104,7 +104,12 @@ def get_coach() -> CoachService:
     if runtime.coach is None:
         from backend.coach import CoachService
 
-        runtime.coach = CoachService(settings.groq_api_key, settings.groq_model, timeout=settings.llm_timeout)
+        runtime.coach = CoachService(
+            settings.groq_api_key,
+            settings.groq_model,
+            timeout=settings.llm_timeout,
+            fallback_models=settings.groq_fallback_models,
+        )
     return runtime.coach
 
 
