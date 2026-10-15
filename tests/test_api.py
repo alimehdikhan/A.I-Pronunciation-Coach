@@ -428,3 +428,17 @@ def test_the_quick_voice_uses_piper(client, monkeypatch):
     monkeypatch.setattr(speech, "get_quick_voice", lambda: None)  # Piper missing: default voice answers
     assert client.get("/api/tts", params={"text": "Hello there", "voice": "piper"}).status_code == 200
     assert len(primary.calls) == 1
+
+
+def test_evaluate_reports_what_was_done_about_the_room(client):
+    body = evaluate(client, "Hello world").json()
+    cleanup = body["audio_cleanup"]
+    assert set(cleanup) == {"snr_db", "denoised", "method", "background_voices"}
+
+    from backend.config import settings
+
+    object.__setattr__(settings, "noise_cleanup", False)  # Settings is frozen; flip it for this test only
+    try:
+        assert evaluate(client, "Hello world").json()["audio_cleanup"] is None
+    finally:
+        object.__setattr__(settings, "noise_cleanup", True)
