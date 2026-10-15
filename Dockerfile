@@ -26,7 +26,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     NLTK_DATA=/app/.cache/nltk_data \
     NEON_DATABASE_URL=sqlite:////app/data/pronunciation_coach.db \
     PRONUNCIATION_COACH_TTS_DIR=/app/.cache/piper \
-    PRONUNCIATION_COACH_ASR_DIR=/app/.cache/whisper \
+    PRONUNCIATION_COACH_ASR_DIR=/app/.cache/whisper     PRONUNCIATION_COACH_PHONEME_DIR=/app/.cache/phonemes \
     PRONUNCIATION_COACH_LOG_FORMAT=json \
     WHISPER_MODEL_SIZE=${WHISPER_MODEL_SIZE} \
     PRONUNCIATION_LANGUAGE=eng-Latn \
@@ -59,6 +59,16 @@ RUN python -m nltk.downloader -q -d "$NLTK_DATA" cmudict \
          mkdir -p "$PRONUNCIATION_COACH_TTS_DIR" \
          && python -c "from pathlib import Path; from piper.download_voices import download_voice; download_voice('$PRELOAD_VOICE', Path('$PRONUNCIATION_COACH_TTS_DIR'))"; \
        fi
+
+# Acoustic sound scoring (optional). With PRELOAD_PHONEMES=1 the build downloads
+# Meta's wav2vec 2.0 phoneme model, exports it to int8 ONNX (about 355 MB) and
+# removes the export tools again, so PyTorch is never part of the image. Without
+# it the app still runs and scores from Whisper's words only. Needs roughly 6 GB
+# of build memory and a few extra minutes; Hugging Face passes Space variables
+# as build args, so setting PRELOAD_PHONEMES=1 as a Space variable enables it.
+ARG PRELOAD_PHONEMES=0
+COPY scripts/export_phoneme_model.py scripts/
+RUN if [ "$PRELOAD_PHONEMES" = "1" ]; then       pip install --extra-index-url https://download.pytorch.org/whl/cpu         "torch>=2.5,<3" "transformers>=4.45" "onnx>=1.16" "onnxscript>=0.1"       && HF_HUB_DISABLE_XET=1 python scripts/export_phoneme_model.py "$PRONUNCIATION_COACH_PHONEME_DIR"       && pip uninstall -y torch transformers onnx onnxscript       && rm -rf /app/.cache/huggingface;     fi
 
 COPY backend/ backend/
 COPY --from=frontend /app/frontend/dist frontend/dist
