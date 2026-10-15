@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import logging
 from typing import Any
 
@@ -16,12 +17,22 @@ from backend.config import settings
 from backend.database import get_db
 from backend.observability import StageTimer
 from backend.repositories import ProfileLocked, save_attempt
-from backend.runtime import get_fallback_voice, runtime
+from backend.runtime import get_fallback_voice, get_quick_voice, runtime
 from backend.security import RateLimiter, clean_username, client_key
-from backend.tts import MAX_RATE, MIN_RATE
+from backend.tts import KOKORO_VOICE_CATALOG, KOKORO_VOICE_IDS, MAX_RATE, MIN_RATE
 
 logger = logging.getLogger("pronunciation_coach.api.speech")
 router = APIRouter()
+
+
+class _VoiceChoice:
+    """One Kokoro voice picked for a single request (the engine itself is shared)."""
+
+    def __init__(self, engine: Any, voice: str):
+        self.engine, self.voice = engine, voice
+
+    def synthesize(self, text: str, rate: float) -> bytes:
+        return self.engine.synthesize(text, rate, self.voice)
 
 audio_rate_limiter = RateLimiter(settings.rate_limit_per_minute, name="audio")
 # Speech is cheap to serve (cached) and requested often by listen buttons.
@@ -160,16 +171,37 @@ async def transcribe_audio(request: Request, response: Response, audio: UploadFi
     }
 
 
+QUICK_VOICE = "piper"
+
+
+@router.get("/api/voices")
+async def list_voices() -> dict[str, Any]:
+    """The coach voices the app offers; the first is the default."""
+    engine = runtime.voice_engine
+    voices: list[dict[str, str]] = []
+    if engine == "kokoro":
+        voices = [{"id": i, "name": n, "accent": a, "gender": g, "speed": "natural"} for i, n, a, g in KOKORO_VOICE_CATALOG]
+    if engine == "piper" or (engine == "kokoro" and importlib.util.find_spec("piper") is not None):
+        voices.append({"id": QUICK_VOICE, "name": "Quick", "accent": "American", "gender": "female", "speed": "instant"})
+    return {"engine": engine, "default": voices[0]["id"] if voices else None, "voices": voices}
+
+
 @router.get("/api/tts")
 async def text_to_speech(
     request: Request,
     text: str = Query(..., min_length=1, max_length=settings.max_tts_chars),
     rate: float = Query(1.0, ge=MIN_RATE, le=MAX_RATE),
+    voice_id: str | None = Query(None, alias="voice", pattern=r"^[a-z0-9_]{2,24}$"),
 ) -> Response:
     """The coach's voice as real audio (WAV), so the UI can analyse what it plays."""
     voice = runtime.voice
     if voice is None:
         raise HTTPException(status_code=503, detail="The neural voice is not available.")
+    quick = await run_in_threadpool(get_quick_voice) if voice_id == QUICK_VOICE else None  # may load Piper once
+    if quick is not None:
+        voice = quick
+    elif runtime.voice_engine == "kokoro" and voice_id in KOKORO_VOICE_IDS:
+        voice = _VoiceChoice(voice, voice_id)
     clean = " ".join(text.split())
     if not phonetics.tokenize(clean):
         raise HTTPException(status_code=400, detail="text must contain at least one word.")
