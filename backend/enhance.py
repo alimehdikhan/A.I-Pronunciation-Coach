@@ -35,6 +35,7 @@ FRAME = 512  # 32 ms analysis window
 HOP = 128  # 75 % overlap: smooth gains without audible frame edges
 NOISE_FRACTION = 0.2  # the quietest fifth of frames is taken to be noise only
 CLEAN_SNR_DB = 24.0  # at or above this the recording is left alone
+NEURAL_BELOW_DB = 15.0  # the neural denoiser only for clearly noisy rooms; milder noise gets the gentler filter
 OVER_SUBTRACTION = 1.6
 GAIN_FLOOR = 0.18  # about -15 dB: never silence a band completely (that sounds like gargling)
 
@@ -245,7 +246,7 @@ def enhance(samples: np.ndarray, *, neural: bool = True) -> tuple[np.ndarray, di
         info["snr_db"] = round(float(snr), 1)
         out = samples.astype(np.float32, copy=False)
         if snr < CLEAN_SNR_DB:
-            if neural and neural_available():
+            if neural and snr < NEURAL_BELOW_DB and neural_available():
                 try:
                     out = neural_denoise(out)
                     info["method"] = "rnnoise"
