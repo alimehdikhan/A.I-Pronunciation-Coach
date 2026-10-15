@@ -33,8 +33,22 @@ def _prepare(data: bytes, suffix: str):
     return normalize_loudness(samples)
 
 
-async def transcribe_upload(audio: UploadFile, asr, timer: StageTimer) -> dict[str, Any]:
-    """Read, decode, level and transcribe an upload inside the ASR work gate."""
+def _phoneme_posteriors(samples):
+    try:
+        return runtime.phonemes.log_probs(samples)  # type: ignore[union-attr]
+    except Exception:
+        # Scoring still works from Whisper's words alone.
+        logger.exception("Phoneme recognition failed; scoring from the transcript only")
+        return None
+
+
+async def transcribe_upload(audio: UploadFile, asr, timer: StageTimer, *, phonemes: bool = False) -> dict[str, Any]:
+    """Read, decode, level and transcribe an upload inside the ASR work gate.
+
+    With ``phonemes=True`` the acoustic phoneme posteriors are added to the
+    result as ``phoneme_log_probs`` (when the recogniser is loaded and speech
+    was heard).
+    """
     suffix = validate_upload(audio)
     async with runtime.asr_gate.slot():
         with timer.stage("upload"):
@@ -43,6 +57,9 @@ async def transcribe_upload(audio: UploadFile, asr, timer: StageTimer) -> dict[s
             samples, gain_db = await run_in_threadpool(_prepare, data, suffix)
         with timer.stage("asr"):
             result = await run_in_threadpool(asr.transcribe, samples)
+        if phonemes and runtime.phonemes is not None and str(result.get("text", "")).strip():
+            with timer.stage("phonemes"):
+                result["phoneme_log_probs"] = await run_in_threadpool(_phoneme_posteriors, samples)
     result["input_gain_db"] = gain_db
     return result
 
@@ -72,7 +89,7 @@ async def evaluate_pronunciation(
     asr, scorer = require_models()
     timer = StageTimer()
     try:
-        transcription = await transcribe_upload(audio, asr, timer)
+        transcription = await transcribe_upload(audio, asr, timer, phonemes=True)
         text = str(transcription.get("text", "")).strip()
         with timer.stage("score"):
             score_result = await run_in_threadpool(
@@ -82,6 +99,7 @@ async def evaluate_pronunciation(
                 difficulty,
                 transcription.get("words"),
                 transcription.get("duration"),
+                transcription.get("phoneme_log_probs"),
             )
     except HTTPException:
         raise
