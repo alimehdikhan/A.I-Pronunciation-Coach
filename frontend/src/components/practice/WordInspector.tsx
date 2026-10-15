@@ -7,16 +7,20 @@ import { Skeleton } from '@/components/ui/skeleton'
 import type { Playback } from '@/hooks/usePlayback'
 import { useTutorCard } from '@/lib/queries'
 import { useSpeaker } from '@/lib/speech'
-import type { AlignmentOp, WordResult } from '@/lib/types'
+import type { AlignmentOp, PhonemeEvidence, WordResult } from '@/lib/types'
 import { STATUS_META, cn } from '@/lib/utils'
 import { usePractice } from '@/store/practice'
 import { useUI } from '@/store/ui'
 
-function PhonemeAlignment({ ops }: { ops: AlignmentOp[] }) {
+function PhonemeAlignment({ ops, evidence }: { ops: AlignmentOp[]; evidence?: PhonemeEvidence[] }) {
+  // Acoustic scoring yields one entry per expected sound, in alignment order.
+  const scores = evidence && evidence.length === ops.length ? evidence : undefined
   return (
     <div className="flex flex-wrap gap-1.5">
       {ops.map((op, i) => {
         const wrong = op.op !== 'equal'
+        const slot = scores?.[i]
+        const score = slot?.score
         return (
           <motion.div
             key={i}
@@ -39,6 +43,16 @@ function PhonemeAlignment({ ops }: { ops: AlignmentOp[] }) {
             >
               {op.op === 'delete' ? op.expected : op.actual || '∅'}
             </span>
+            {score != null && (
+              <span
+                className={cn(
+                  'w-full border-t border-border/60 px-2 py-1 text-[11px] leading-none font-medium tabular-nums',
+                  slot?.flagged ? 'text-bad' : score < 90 ? 'text-warn' : 'text-good',
+                )}
+              >
+                {Math.round(score)}%
+              </span>
+            )}
           </motion.div>
         )
       })}
@@ -156,10 +170,13 @@ export function WordInspector({ word, playback }: { word: WordResult | null; pla
             )}
           </div>
 
-          {word.alignment.length > 0 && word.status === 'mispronounced' && (
+          {word.alignment.length > 0 && (word.status === 'mispronounced' || word.acoustic) && (
             <div className="mt-6">
-              <div className="mb-2.5 text-[13px] font-medium text-muted-foreground">Sound by sound · target over what we heard</div>
-              <PhonemeAlignment ops={word.alignment} />
+              <div className="mb-2.5 text-[13px] font-medium text-muted-foreground">
+                Sound by sound · target over what we heard
+                {word.acoustic && ' · % = chance an expert would rate the sound clean'}
+              </div>
+              <PhonemeAlignment ops={word.alignment} evidence={word.phonemes} />
             </div>
           )}
 
