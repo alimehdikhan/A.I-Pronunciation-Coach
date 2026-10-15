@@ -15,6 +15,7 @@ import { useSettings } from '@/store/settings'
 /** Fresh sentences for a sound, written for your level and (optionally) a topic you care about. */
 export function PracticeWriter({ username, phoneme }: { username: string; phoneme: string }) {
   const level = useSettings((s) => s.level)
+  const nativeLanguage = useSettings((s) => s.nativeLanguage)
   const [chosen, setChosen] = useState<Level>(level)
   const [topic, setTopic] = useState('')
   const setTarget = usePractice((s) => s.setTarget)
@@ -22,7 +23,8 @@ export function PracticeWriter({ username, phoneme }: { username: string; phonem
   const reduce = useReducedMotion()
 
   const write = useMutation({
-    mutationFn: () => api.coachSentences({ username, phoneme, level: chosen, topic: topic.trim() || undefined, count: 4 }),
+    mutationFn: () =>
+      api.coachSentences({ username, phoneme, level: chosen, topic: topic.trim() || undefined, count: 4, native_language: nativeLanguage }),
     meta: { silent: true },
   })
 
