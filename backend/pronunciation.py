@@ -69,9 +69,10 @@ ATTEMPT_SIMILARITY = 0.3
 # as a slip. On speechocean762 training data this flags 1.7% of sounds with 36%
 # precision; a higher cut-off finds more slips but raises false alarms.
 PHONEME_ERROR = 0.80
-# When Whisper heard a different word, the audio can still vouch for the target:
-# the word stays "correct" unless its blended score is below this.
-REPLACED_WORD_BELOW = 60.0
+# Whisper sometimes drops a word that was spoken. The audio decides: a word it
+# marked missing is counted as spoken when its weakest sound still scores at
+# least this much (0-100).
+MISSING_BELOW = 60.0
 
 
 def normalize_difficulty(difficulty: Optional[str]) -> str:
@@ -199,6 +200,13 @@ class PronunciationScorer:
 
             if kind == "delete":
                 pron = phonetics.primary_pronunciation(ref_word)  # type: ignore[arg-type]
+                heard = acoustic[ri] if acoustic is not None and ri is not None else None
+                if heard is not None and heard.score >= MISSING_BELOW:
+                    # Whisper dropped it but the audio contains it: score the sounds.
+                    entry.update(score=0.0)
+                    self._apply_acoustic(entry, heard, "equal", None, unclear_below, mistakes)
+                    entries.append(entry)
+                    continue
                 entry.update(
                     status="missing",
                     score=0.0,
@@ -321,11 +329,15 @@ class PronunciationScorer:
             + acoustic_params.BLEND_TEXT * text_score
             + acoustic_params.BLEND_ACOUSTIC * heard.score
         )
-        if errors or (kind == "replace" and score < REPLACED_WORD_BELOW):
+        if errors:
             status = "mispronounced"
             score = min(MISPRONOUNCED_CEILING, score)
             for p in errors:
                 mistakes[p.phoneme] += 1
+        elif kind == "replace":
+            # The sounds look fine to the audio model but Whisper heard another
+            # word. Never call that "correct": say it was not recognised.
+            status = "unclear"
         elif kind == "equal" and confidence is not None and confidence < unclear_below:
             status = "unclear"
         else:
@@ -490,6 +502,9 @@ class PronunciationScorer:
                         entry["index"], None, op["actual"])
             elif entry["status"] == "missing":
                 add("missing", "high", f"You skipped “{word}”.", entry["index"])
+            elif entry["status"] == "unclear" and entry["spoken"] and entry["spoken"] != word:
+                add("unclear", "medium", f"“{word}” came across as “{entry['spoken']}”. Say it a little slower.",
+                    entry["index"])
             elif entry["status"] == "unclear":
                 confidence = round((entry["confidence"] or 0) * 100)
                 add("unclear", "medium", f"“{word}” was recognised but sounded unclear ({confidence}% confidence).",
