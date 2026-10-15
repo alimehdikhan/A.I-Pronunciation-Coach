@@ -31,11 +31,40 @@ from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 
 logger = logging.getLogger("pronunciation_coach.database")
 
-# Load Neon database URL from environment, or use SQLite for local testing if not set
-DATABASE_URL = (os.getenv("NEON_DATABASE_URL") or "").strip() or "sqlite:///./pronunciation_coach.db"
-# Some providers still hand out the legacy scheme, which SQLAlchemy 2 rejects.
-if DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = "postgresql://" + DATABASE_URL[len("postgres://"):]
+# The names a PostgreSQL URL is commonly stored under. NEON_DATABASE_URL is the
+# documented one; Neon's own dashboard snippets use DATABASE_URL.
+DATABASE_ENV_NAMES = ("NEON_DATABASE_URL", "DATABASE_URL", "POSTGRES_URL", "POSTGRESQL_URL", "POSTGRES_PRISMA_URL")
+DEFAULT_SQLITE_URL = "sqlite:///./pronunciation_coach.db"
+
+
+def _clean_url(value: str) -> str:
+    """Accept what people actually paste: quoted, or the whole `psql '...'` command."""
+    value = value.strip()
+    if value.lower().startswith("psql "):
+        value = value[5:].strip()
+    value = value.strip("'\"").strip()
+    if value.startswith("postgres://"):  # legacy scheme that SQLAlchemy 2 rejects
+        value = "postgresql://" + value[len("postgres://"):]
+    return value
+
+
+def resolve_database_url(env: "dict[str, str] | os._Environ[str]" = os.environ) -> tuple[str, str]:
+    """(url, source): the first PostgreSQL URL found, else any other URL, else local SQLite.
+
+    A SQLite value under one of these names never hides a PostgreSQL URL under
+    another, so a platform default cannot silently override a real database.
+    """
+    found = [(name, _clean_url(env.get(name) or "")) for name in DATABASE_ENV_NAMES]
+    found = [(name, url) for name, url in found if url]
+    for name, url in found:
+        if not url.startswith("sqlite"):
+            return url, name
+    if found:
+        return found[0][1], found[0][0]
+    return _clean_url(env.get("PRONUNCIATION_COACH_SQLITE_URL") or "") or DEFAULT_SQLITE_URL, "default"
+
+
+DATABASE_URL, DATABASE_SOURCE = resolve_database_url()
 
 IS_SQLITE = DATABASE_URL.startswith("sqlite")
 
@@ -209,7 +238,12 @@ def init_db(bind=None) -> bool:
         Base.metadata.create_all(bind=bind)
         migrate_added_columns(bind)
         migrate_indexes(bind)
-        logger.info("Database ready (%s).", bind.dialect.name)
+        logger.info("Database ready (%s), URL taken from %s.", bind.dialect.name, DATABASE_SOURCE)
+        if bind.dialect.name == "sqlite" and (os.getenv("SPACE_ID") or os.path.exists("/.dockerenv")):
+            logger.warning(
+                "Using SQLite inside a container: accounts and history are LOST whenever it is replaced. "
+                "Set NEON_DATABASE_URL (or DATABASE_URL) to a PostgreSQL URL to keep them."
+            )
         return True
     except Exception:
         logger.exception("Error initializing database")
