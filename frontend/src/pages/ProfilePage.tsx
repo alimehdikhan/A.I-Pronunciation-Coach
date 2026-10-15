@@ -1,15 +1,4 @@
-import {
-  CalendarBlankIcon,
-  DevicesIcon,
-  FireIcon,
-  KeyIcon,
-  SignInIcon,
-  SignOutIcon,
-  TargetIcon,
-  TrashIcon,
-  TrophyIcon,
-  UserCirclePlusIcon,
-} from '@phosphor-icons/react'
+import { CalendarBlankIcon, DatabaseIcon, DevicesIcon, FireIcon, KeyIcon, LockKeyIcon, SignInIcon, SignOutIcon, TargetIcon, TrashIcon, TrophyIcon, UserCirclePlusIcon, UserIcon } from '@phosphor-icons/react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router'
@@ -53,10 +42,10 @@ function Stat({ icon, label, value }: { icon: ReactNode; label: string; value: R
   )
 }
 
-function Card({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
+function Card({ title, description, icon, children }: { title: string; description?: string; icon?: ReactNode; children: ReactNode }) {
   return (
     <section className="surface p-6 sm:p-8">
-      <SectionLabel>{title}</SectionLabel>
+      <SectionLabel icon={icon}>{title}</SectionLabel>
       {description && <p className="-mt-2 mb-5 text-[14px] leading-relaxed text-muted-foreground">{description}</p>}
       {children}
     </section>
@@ -401,15 +390,15 @@ export default function ProfilePage() {
 
         {signedIn && (
           <>
-            <Card title="Names" description="Your display name is what you see in the app. Your username is the unique handle your history is saved under.">
+            <Card icon={<UserIcon weight="fill" />} title="Names" description="Your display name is what you see in the app. Your username is the unique handle your history is saved under.">
               <NamesForm username={profile!.username} displayName={profile!.display_name} />
             </Card>
 
-            <Card title="Password" description="Changing it signs out every other device.">
+            <Card icon={<LockKeyIcon weight="fill" />} title="Password" description="Changing it signs out every other device.">
               <PasswordForm />
             </Card>
 
-            <Card title="Session">
+            <Card icon={<DevicesIcon weight="fill" />} title="Session">
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <p className="text-[14px] text-muted-foreground">Signed in as {profile!.email} on {profile!.devices} {profile!.devices === 1 ? 'device' : 'devices'}.</p>
                 <Button variant="secondary" size="lg" className="h-11 rounded-xl" disabled={logout.isPending} onClick={() => logout.mutate()}>
@@ -421,7 +410,7 @@ export default function ProfilePage() {
         )}
 
         {username && (
-          <Card title="Your data">
+          <Card icon={<DatabaseIcon weight="fill" />} title="Your data">
             <div className="divide-y divide-border">
               <div className="flex flex-wrap items-center justify-between gap-4 pb-5">
                 <div>
