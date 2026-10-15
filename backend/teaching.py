@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Iterable, Sequence
 
+from backend.coach_tools import humanize_sounds
 from backend.phoneme_kb import get_phoneme
 from backend.tutor import DEFAULT_FOCUS
 
@@ -162,6 +163,23 @@ def _reason_text(stat: SoundStat | None, why: str, phoneme: str) -> str:
     return f"{base}. It is the sound costing you the most right now."
 
 
+# Keys whose values are sounds or words to be used as they are, not prose to be tidied.
+_VERBATIM = frozenset({"phoneme", "symbol", "words", "your_words", "sentence", "pairs", "confused_with", "label", "name", "kind"})
+
+
+def _plain(value: Any, key: str = "") -> Any:
+    """Turn every sentence in the plan into plain words: "/s/" becomes "\u201cs\u201d", "\u03b8" becomes "\u201cth\u201d"."""
+    if key in _VERBATIM:
+        return value
+    if isinstance(value, str):
+        return humanize_sounds(value, quote=True)
+    if isinstance(value, list):
+        return [_plain(v, key) for v in value]
+    if isinstance(value, dict):
+        return {k: _plain(v, k) for k, v in value.items()}
+    return value
+
+
 def build_plan(observations: Sequence[Observation], focus_override: str | None = None) -> dict[str, Any]:
     """The coach's assessment and a practice session for the sound that matters most.
 
@@ -215,7 +233,7 @@ def build_plan(observations: Sequence[Observation], focus_override: str | None =
         },
     ]
 
-    return {
+    return _plain({
         "has_history": bool(stats),
         "observations": len(observations),
         "focus": {
@@ -241,7 +259,7 @@ def build_plan(observations: Sequence[Observation], focus_override: str | None =
         "strengths": [s.as_dict() for s in stats if s.status == "solid"][:5],
         "mastery": [s.as_dict() for s in stats][:14],
         "session": session,
-    }
+    })
 
 
 def template_briefing(plan: dict[str, Any]) -> str:
