@@ -130,6 +130,12 @@ export class VoiceClient {
     source.connect(this.inAnalyser)
     this.capture = new AudioWorkletNode(context, 'pcm16-capture')
     source.connect(this.capture)
+    // Chrome runs an unconnected worklet; Firefox and Safari do not. A muted output keeps it running everywhere
+    // without playing the microphone back through the speakers.
+    const silent = context.createGain()
+    silent.gain.value = 0
+    this.capture.connect(silent)
+    silent.connect(context.destination)
     this.capture.port.onmessage = (event: MessageEvent<ArrayBuffer>) => {
       if (!this.muted && this.socket?.readyState === WebSocket.OPEN) this.socket.send(event.data)
     }
