@@ -1,4 +1,4 @@
-import { ArrowRightIcon, BookOpenTextIcon, CheckCircleIcon, PlayIcon, SpeakerHighIcon } from '@phosphor-icons/react'
+import { ArrowRightIcon, BookOpenTextIcon, CheckCircleIcon, MagnifyingGlassIcon, PlayIcon, SpeakerHighIcon } from '@phosphor-icons/react'
 import { AnimatePresence, motion } from 'motion/react'
 import { Pill, SectionLabel } from '@/components/common'
 import { PhonemeGuide } from '@/components/tutor/PhonemeGuide'
@@ -119,7 +119,7 @@ export function WordInspector({ word, playback }: { word: WordResult | null; pla
 
   return (
     <div className="surface results-item p-6 sm:p-8">
-      <SectionLabel>Word inspector</SectionLabel>
+      <SectionLabel icon={<MagnifyingGlassIcon weight="fill" />}>Word inspector</SectionLabel>
       <AnimatePresence mode="wait">
         <motion.div
           key={word.index}
