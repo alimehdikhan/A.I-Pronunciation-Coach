@@ -21,6 +21,10 @@ interface SettingsState {
   profileKey: string
   /** Set while this browser is signed in to an account. */
   accountEmail: string | null
+  /** Shown instead of `username` while signed in (it may be shared with other people). */
+  displayName: string
+  /** The visitor has chosen "continue as a guest" on the entry screen. */
+  guestChosen: boolean
   setUsername: (username: string) => void
   setTheme: (theme: Theme) => void
   setVoiceURI: (uri: string | null) => void
@@ -28,8 +32,9 @@ interface SettingsState {
   setLevel: (level: Level) => void
   setShowIpa: (show: boolean) => void
   completeOnboarding: (username?: string) => void
+  continueAsGuest: () => void
   /** Adopt the account's name after signing in or signing up. */
-  signIn: (account: { username: string; email: string }) => void
+  signIn: (account: { username: string; displayName: string; email: string }) => void
   /** Leave the account on this browser and start a fresh guest profile. */
   signOut: () => void
 }
@@ -46,6 +51,8 @@ export const useSettings = create<SettingsState>()(
       onboarded: false,
       profileKey: newProfileKey(),
       accountEmail: null,
+      displayName: '',
+      guestChosen: false,
       setUsername: (username) => set({ username: username.trim().slice(0, 40) }),
       setTheme: (theme) => set({ theme }),
       setVoiceURI: (voiceURI) => set({ voiceURI }),
@@ -54,10 +61,12 @@ export const useSettings = create<SettingsState>()(
       setShowIpa: (showIpa) => set({ showIpa }),
       completeOnboarding: (username) =>
         set((s) => ({ onboarded: true, username: username !== undefined ? username.trim().slice(0, 40) : s.username })),
-      signIn: ({ username, email }) => set({ username, accountEmail: email, onboarded: true }),
+      continueAsGuest: () => set({ guestChosen: true }),
+      signIn: ({ username, displayName, email }) =>
+        set({ username, displayName, accountEmail: email, onboarded: true, guestChosen: true }),
       // A new key matters: the old one was just unbound server-side, and reusing
       // it would leave this browser looking like the account's owner.
-      signOut: () => set({ username: '', accountEmail: null, profileKey: newProfileKey() }),
+      signOut: () => set({ username: '', displayName: '', accountEmail: null, profileKey: newProfileKey() }),
     }),
     {
       name: 'pc-settings',
