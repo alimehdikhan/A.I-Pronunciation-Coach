@@ -46,8 +46,8 @@ export function SpeakChip({
       type="button"
       disabled={!supported}
       onClick={() => speak(text, { key: `chip:${text}`, rate })}
-      onPointerEnter={() => prefetch(text, rate)}
-      onFocus={() => prefetch(text, rate)}
+      onPointerEnter={() => void prefetch(text, rate)}
+      onFocus={() => void prefetch(text, rate)}
       className={cn(
         'inline-flex h-9 items-center gap-2 rounded-full px-3.5 text-[14px] font-medium transition-all active:scale-[0.97]',
         tones[tone],
@@ -75,13 +75,15 @@ export function ListenButton({
   speakKey: string
   className?: string
 }) {
-  const { speak, stop, speakingKey, supported } = useSpeaker()
+  const { speak, stop, prefetch, speakingKey, supported } = useSpeaker()
   const active = speakingKey === speakKey
   return (
     <button
       type="button"
       disabled={!supported || !text}
       onClick={() => (active ? stop() : speak(text, { key: speakKey, rate }))}
+      onPointerEnter={() => void prefetch(text, rate)}
+      onFocus={() => void prefetch(text, rate)}
       className={cn(
         'inline-flex h-9 items-center gap-2 rounded-full bg-fill px-4 text-[13px] font-medium text-foreground transition-all hover:bg-fill-strong active:scale-[0.97] disabled:opacity-40',
         active && 'bg-primary-soft text-primary',
