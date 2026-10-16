@@ -19,23 +19,37 @@ You say a sentence. The coach tells you which sounds were off, not just a score,
 
 **Live demo:** [Hugging Face Space](https://alimehdi973-ai-pronunciation-coach.hf.space)
 
-![Practice page: a target sentence with IPA under every word, listen buttons and the microphone orb](assets/practice.jpg)
+![Practice page: a target sentence with a plain-letter respelling under every word, Listen and Slowly, and the microphone orb](assets/practice.jpg)
 
-![Results: overall score, the four metrics, and the word-by-word transcript with the slip highlighted in the waveform](assets/results.jpg)
+![Results: the overall score and its rings, the metrics, and the word-by-word transcript with "third" marked mispronounced](assets/results.jpg)
 
-![Word inspector: target and heard IPA, the chance each sound would be rated clean, and the tutor's fix](assets/inspector.jpg)
+![Word inspector: "third" sound by sound, with /θ/ heard as /f/ at 73%, the coach note, and the fix for the th sound](assets/inspector.jpg)
 
-![Coach card: a short summary, one tip per slip and a sentence to try next](assets/coach.jpg)
+![Coach card: a short summary, the one thing to change on your next try, and a sentence to try next](assets/coach.jpg)
 
-The screenshots come from the running app. The recording was the built-in Piper voice saying "I think this is the furd time" against the target "I think this is the third time", so the slip is deliberate.
+The screenshots are from the running app on a desktop browser (1600 × 900, dark theme), taken in October 2026. The learner is a synthetic voice (Kokoro) saying "I think this is the furd time" against the target "I think this is the third time", so the slip is deliberate; every score, flag and tip is what the app returned for that recording.
 
 ## What you get
 
-The practice page offers sentences at three levels, or your own text. Every word shows its IPA, and you can hear the sentence at normal or slow speed in a neural voice. The orb in the middle is a WebGL shader that follows the real audio: your microphone while you record, the coach's voice or your own playback otherwise.
+The practice page offers sentences at three levels, or your own text. Every word shows how it sounds, in plain letters (uh-BOWT) or IPA (your choice in Settings), and you can hear the sentence at normal or slow speed in a neural voice. The orb in the middle is a WebGL shader that follows the real audio: your microphone while you record, the coach's voice or your own playback otherwise.
 
 After you speak, you get four scores (pronunciation, fluency, clarity, completeness) and a transcript where each word is marked correct, unclear, mispronounced, skipped or extra. Tap a word to see it sound by sound, with the chance each sound would be rated clean, and to hear just that segment of your recording. A word shows as *unclear* when the sounds look fine but Whisper heard a different word, and the card says what it heard. Under the transcript, a coach card gives a short summary, one tip per slip and a sentence to try next.
 
 Four more pages: drills built from the sounds you miss most often (you record each minimal pair and the coach checks which word it heard), a library of all 41 American English sounds with articulation steps and minimal pairs, a progress page with streaks, trends and history, and a profile page where you manage your account.
+
+![Coach page: today's focus sound with the reason in numbers, and your clean rate for every sound you have practised](assets/coach-page.jpg)
+
+![Journey: your level, today's goal, the learning path through all 41 sounds, and badges](assets/journey.jpg)
+
+![Drills: the minimal-pair challenge for th, with "think" heard correctly, next to the guide for the sound](assets/drills.jpg)
+
+![Sound Library: the guide for th as in "think", with how to make it, words that sound alike and a practice sentence](assets/sounds.jpg)
+
+![Progress: your usual score, what to practise next, and your scores over time](assets/progress.jpg)
+
+![Coach chat: "How do I say thorough?" answered with the stress, the th sound and a line to try](assets/chat.jpg)
+
+![Talk to your coach: a live spoken conversation, with the coach's reply and your own words shown under the orb](assets/talk.jpg)
 
 Keyboard: `Space` records, `R` retries, `N` moves to the next phrase, `L` plays the sentence, `Ctrl/⌘ K` opens the command palette. Dark and light themes, a layout for phones, and reduced-motion support.
 
