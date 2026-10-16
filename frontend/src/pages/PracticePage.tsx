@@ -16,7 +16,7 @@ import { api } from '@/lib/api'
 import { audioEngine } from '@/lib/audioEngine'
 import { keys, useHealth } from '@/lib/queries'
 import { LEVELS, PHRASES, phrasesFor } from '@/lib/sentences'
-import { usesNeuralVoice, useSpeaker } from '@/lib/speech'
+import { SLOW_RATE, useSpeaker } from '@/lib/speech'
 import type { Level } from '@/lib/types'
 import { usePractice } from '@/store/practice'
 import { useSettings } from '@/store/settings'
@@ -32,7 +32,7 @@ export default function PracticePage() {
   const { target, setTarget, attempt, setAttempt, clearAttempt, scoreHistory } = usePractice()
   const setLibraryOpen = useUI((s) => s.setLibraryOpen)
   const { data: health, isError: offline } = useHealth()
-  const { speak } = useSpeaker()
+  const { speak, prefetch } = useSpeaker()
   const queryClient = useQueryClient()
 
   const phrases = phrasesFor(level)
@@ -89,16 +89,18 @@ export default function PracticePage() {
 
   const ready = !!health?.models_loaded
   const busy = evaluate.isPending
-  const voiceURI = useSettings((s) => s.voiceURI)
-  const speechRate = useSettings((s) => s.rate)
-  const coachVoice = useSettings((s) => s.coachVoice) ?? ''
-
-  // Warm the coach's voice for this phrase so "Listen" starts instantly.
+  // Warm the coach's voice for this phrase at both speeds so "Listen" and "Slowly" start instantly.
+  // Normal speed first: the voice renders one clip at a time and Listen is pressed more often.
   useEffect(() => {
-    if (health?.tts_ready && usesNeuralVoice(voiceURI)) {
-      audioEngine.prefetch(target.text, Math.min(1.6, Math.max(0.5, speechRate)), coachVoice)
+    if (!health?.tts_ready) return
+    let current = true
+    void prefetch(target.text).then(() => {
+      if (current) void prefetch(target.text, SLOW_RATE)
+    })
+    return () => {
+      current = false
     }
-  }, [health?.tts_ready, target.text, voiceURI, speechRate, coachVoice])
+  }, [health?.tts_ready, target.text, prefetch])
 
   // Never let the coach's voice bleed into the microphone.
   const toggleRecording = useCallback(() => {
