@@ -381,6 +381,21 @@ def test_abuse_gets_a_respectful_reply_without_calling_the_model(client, model):
     assert model.seen == []  # nothing was sent to the model
 
 
+def test_who_made_the_coach_is_answered_without_the_model(client, model):
+    body = client.post("/api/coach/chat", json={"username": "", "message": "Who developed this model?"}).json()
+
+    assert body["source"] == "about" and "Ali Mehdi Khan" in body["reply"]
+    assert model.seen == []
+
+
+def test_questions_about_the_maker_are_recognised():
+    for asked in ("who made you", "Who developed this model?", "who built this app", "who is your creator",
+                  "Who is the developer?", "who create u"):
+        assert coach_tools.asks_who_made(asked), asked
+    for other in ("How do I say developed?", "who is a good teacher", "I made a cake", "What did you build today"):
+        assert not coach_tools.asks_who_made(other), other
+
+
 def test_questions_are_understood_by_their_wording():
     assert coach_tools.intents("How am I doing?") == {"progress"}
     assert coach_tools.intents("Give me sentences with the r sound") == {"sentences"}
