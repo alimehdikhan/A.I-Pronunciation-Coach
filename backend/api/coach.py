@@ -108,6 +108,9 @@ async def chat(
     if is_abusive(body.message):
         # Answered here, without the model: it cannot be argued with and costs nothing.
         return {"reply": RESPECT_REPLY, "try_next": RESPECT_TRY, "words": [], "sentences": [], "source": "guard"}
+    if coach_tools.asks_who_made(body.message):
+        # A fixed fact, so it is never left to the model to get wrong.
+        return {"reply": coach_tools.MAKER_REPLY, "try_next": RESPECT_TRY, "words": [], "sentences": [], "source": "about"}
     user, rows = _learner(db, body.username, key)
     plan = teaching.build_plan(rows)
     focus = plan["focus"]
