@@ -36,7 +36,7 @@ class AudioEngine {
   private media: HTMLMediaElement | null = null
   private mediaNodes = new WeakMap<HTMLMediaElement, MediaElementAudioSourceNode>()
   private raw = new Map<string, Promise<ArrayBuffer>>()
-  private decoded = new Map<string, AudioBuffer>()
+  private decoded = new Map<string, Promise<AudioBuffer>>()
   private token = 0
 
   /** The shared output analyser (null until the first playback). */
@@ -82,9 +82,29 @@ class AudioEngine {
     return pending
   }
 
-  /** Warm the cache so a later `speak` starts instantly. */
-  prefetch(text: string, rate = 1, voice = '') {
-    void this.fetchSpeech(text, rate, voice).catch(() => undefined)
+  /** Fetch and decode speech once; every later play of the same phrase reuses the buffer. */
+  private loadSpeech(context: AudioContext, text: string, rate: number, voice: string): Promise<AudioBuffer> {
+    const key = this.cacheKey(text, rate, voice)
+    let pending = this.decoded.get(key)
+    if (!pending) {
+      pending = this.fetchSpeech(text, rate, voice).then((bytes) => context.decodeAudioData(bytes.slice(0)))
+      pending.catch(() => this.decoded.delete(key))
+      remember(this.decoded, key, pending)
+    }
+    return pending
+  }
+
+  /**
+   * Warm the cache so a later `speak` starts instantly. Once audio has been
+   * unlocked the clip is decoded too, so playback needs no work at all.
+   * Resolves when the clip is ready (or could not be loaded); never rejects.
+   */
+  prefetch(text: string, rate = 1, voice = ''): Promise<void> {
+    const ready = this.context ? this.loadSpeech(this.context, text, rate, voice) : this.fetchSpeech(text, rate, voice)
+    return ready.then(
+      () => undefined,
+      () => undefined,
+    )
   }
 
   /**
@@ -99,13 +119,7 @@ class AudioEngine {
     useVoiceStore.setState({ speakingKey: key, active: false, preparing: true })
 
     try {
-      const cacheKey = this.cacheKey(text, rate, voice)
-      let buffer = this.decoded.get(cacheKey)
-      if (!buffer) {
-        const bytes = await this.fetchSpeech(text, rate, voice)
-        buffer = await context.decodeAudioData(bytes.slice(0))
-        remember(this.decoded, cacheKey, buffer)
-      }
+      const buffer = await this.loadSpeech(context, text, rate, voice)
       if (token !== this.token) return
 
       const source = context.createBufferSource()
