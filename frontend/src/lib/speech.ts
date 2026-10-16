@@ -64,6 +64,9 @@ export function usesNeuralVoice(voiceURI: string | null): boolean {
   return !voiceURI || voiceURI === NEURAL_VOICE
 }
 
+/** Speed of the "Slowly" button, relative to the learner's speed setting (scripts/prerender_voice.py matches it). */
+export const SLOW_RATE = 0.7
+
 const clampRate = (rate: number) => Math.min(1.6, Math.max(0.5, rate))
 
 /** Browser speechSynthesis (fallback). Its audio can't be analysed. */
@@ -126,9 +129,10 @@ export function useSpeaker() {
 
   /** Start fetching a clip before it is asked for, so the click that follows plays at once. */
   const prefetch = useCallback(
-    (text: string, rate = 1) => {
+    (text: string, rate = 1): Promise<void> => {
       const clean = text.trim()
-      if (clean && usesNeuralVoice(voiceURI)) audioEngine.prefetch(clean, clampRate(rate * settingsRate), coachVoice)
+      if (!clean || !usesNeuralVoice(voiceURI)) return Promise.resolve()
+      return audioEngine.prefetch(clean, clampRate(rate * settingsRate), coachVoice)
     },
     [voiceURI, settingsRate, coachVoice],
   )
