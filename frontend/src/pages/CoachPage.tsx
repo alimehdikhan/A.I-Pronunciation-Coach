@@ -441,10 +441,11 @@ export default function CoachPage() {
         <div className="space-y-5" key={round}>
           <section className="surface p-6 sm:p-8">
             <div className="flex flex-wrap items-start gap-6">
-              <div className="grid size-24 shrink-0 place-items-center rounded-[28px] bg-primary-soft">
-                <span className="text-[40px] leading-none font-semibold text-primary">{describeSound({ label: plan.focus.label, phoneme: plan.focus.phoneme }).spelled}</span>
+              <div className="grid size-16 shrink-0 place-items-center rounded-[22px] bg-primary-soft sm:size-24 sm:rounded-[28px]">
+                <span className="text-[30px] leading-none font-semibold text-primary sm:text-[40px]">{describeSound({ label: plan.focus.label, phoneme: plan.focus.phoneme }).spelled}</span>
               </div>
-              <div className="min-w-0 flex-1">
+              {/* At least 16rem wide, so on a phone the text drops under the tile instead of squeezing beside it. */}
+              <div className="min-w-[16rem] flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-[13px] font-semibold text-primary">Today&rsquo;s focus</span>
                   {plan.focus.stats && TREND[plan.focus.stats.trend].icon && (

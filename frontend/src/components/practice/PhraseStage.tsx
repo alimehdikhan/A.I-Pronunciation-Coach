@@ -47,11 +47,12 @@ export function PhraseStage({
 
   return (
     <div className="surface relative overflow-hidden">
-      <div className="flex items-center justify-between gap-3 px-5 pt-5 sm:px-7 sm:pt-6">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-5 pt-5 sm:px-7 sm:pt-6">
         <div className="flex min-w-0 items-center gap-2">
-          {phrase ? <Pill>{phrase.category}</Pill> : <Pill tone="primary">{SOURCE_LABEL[target.source]}</Pill>}
+          {/* The library category is the first thing to give up on a phone; "Your text" and the like stay. */}
+          {phrase ? <Pill className="max-sm:hidden">{phrase.category}</Pill> : <Pill tone="primary">{SOURCE_LABEL[target.source]}</Pill>}
           {position && target.source === 'library' && (
-            <span className="text-xs font-medium text-subtle tabular-nums">
+            <span className="text-xs font-medium whitespace-nowrap text-subtle tabular-nums">
               {position.index + 1} of {position.total}
             </span>
           )}

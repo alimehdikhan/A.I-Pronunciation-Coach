@@ -22,7 +22,8 @@ export function SectionLabel({
   className?: string
 }) {
   return (
-    <div className={cn('mb-4 flex items-center justify-between gap-3', className)}>
+    // Wraps rather than squeezing: on a phone a wide action (a segmented control, a button) moves under the title.
+    <div className={cn('mb-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-2', className)}>
       <h3 className="flex items-center gap-2 text-[13px] font-semibold text-muted-foreground [&_svg]:size-4 [&_svg]:text-primary">
         {icon}
         {children}
@@ -90,7 +91,8 @@ export function Segmented<T extends string>({
       type="single"
       value={value}
       onValueChange={(v) => v && onChange(v as T)}
-      className={cn('relative inline-flex rounded-[10px] bg-fill p-[3px]', className)}
+      // Never wider than its container: on a phone it scrolls sideways instead of widening the page.
+      className={cn('relative inline-flex max-w-full overflow-x-auto rounded-[10px] bg-fill p-[3px] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden', className)}
     >
       {options.map((option) => {
         const active = option.value === value
@@ -99,8 +101,9 @@ export function Segmented<T extends string>({
             key={option.value}
             value={option.value}
             className={cn(
-              'relative z-10 inline-flex flex-1 items-center justify-center gap-1.5 rounded-[8px] font-medium whitespace-nowrap outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/50 [&_svg]:size-4',
-              size === 'sm' ? 'h-7 px-3 text-xs' : 'h-8 px-4 text-[13px]',
+              // Phones get tighter padding and text-only labels (the icons are decorative), so the common cases fit.
+              'relative z-10 inline-flex flex-1 items-center justify-center gap-1.5 rounded-[8px] font-medium whitespace-nowrap outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/50 [&_svg]:size-4 max-sm:[&_svg]:hidden',
+              size === 'sm' ? 'h-7 px-2 text-xs sm:px-3' : 'h-8 px-2.5 text-[13px] sm:px-4',
               active ? 'text-foreground' : 'text-muted-foreground hover:text-foreground',
             )}
           >

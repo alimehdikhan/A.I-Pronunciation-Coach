@@ -49,7 +49,7 @@ export function PhraseLibrary() {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="flex max-h-[85dvh] flex-col gap-5 sm:max-w-[620px]">
+      <DialogContent className="flex max-h-[85dvh] flex-col gap-5 max-sm:max-w-[calc(100%-1rem)] max-sm:p-4 sm:max-w-[620px]">
         <DialogHeader>
           <DialogTitle className="text-xl">Choose a phrase</DialogTitle>
           <DialogDescription>Pick from the library or practise your own words.</DialogDescription>
@@ -59,7 +59,8 @@ export function PhraseLibrary() {
           layoutId="library-tab"
           value={tab}
           onChange={setTab}
-          className="w-full"
+          // Four tabs: on a phone they need the small type to fit side by side.
+          className="w-full max-sm:[&>button]:px-2 max-sm:[&>button]:text-xs"
           options={[...LEVELS.map((l) => ({ value: l.id as Tab, label: l.label })), { value: 'custom', label: 'Your text' }]}
         />
 

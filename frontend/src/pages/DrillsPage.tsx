@@ -149,7 +149,7 @@ function PairChallenge({ phoneme }: { phoneme: PhonemeDetail }) {
             <div
               key={pair.correct}
               className={cn(
-                'flex flex-wrap items-center gap-3 rounded-2xl p-3 transition-colors sm:flex-nowrap',
+                'flex flex-wrap items-center gap-2 rounded-2xl p-3 transition-colors sm:flex-nowrap sm:gap-3',
                 result ? (result.ok ? 'bg-good-soft' : 'bg-bad-soft') : 'bg-fill',
               )}
             >
@@ -160,10 +160,12 @@ function PairChallenge({ phoneme }: { phoneme: PhonemeDetail }) {
                 onClick={() => record(pair.correct)}
                 analyserRef={recorder.analyserRef}
               />
-              <SpeakChip text={pair.correct} tone="good" className="bg-card" />
+              {/* Slimmer chips on a phone keep a pair like "thought vs fought" on one line. */}
+              <SpeakChip text={pair.correct} tone="good" className="bg-card max-sm:gap-1.5 max-sm:px-2.5" />
               <span className="text-xs text-subtle">vs</span>
-              <SpeakChip text={pair.incorrect} className="bg-card" />
-              <div className="ml-auto min-w-0 text-right">
+              <SpeakChip text={pair.incorrect} className="bg-card max-sm:gap-1.5 max-sm:px-2.5" />
+              {/* On a phone the result gets its own line, so both words stay side by side. */}
+              <div className={cn('ml-auto min-w-0 text-right', (recording || result) && 'max-sm:basis-full')}>
                 <AnimatePresence mode="wait">
                   {recording ? (
                     <motion.span key="rec" className="text-[13px] font-medium text-ai" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
