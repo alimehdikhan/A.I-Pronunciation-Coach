@@ -21,6 +21,10 @@ export interface VoiceHandlers {
   onHint: (hint: VoiceHint) => void
   onGuard: () => void
   onError: (message: string, code?: string) => void
+  /** How long the call may still last (sent at the start and again shortly before the end). */
+  onTimeLeft: (seconds: number) => void
+  /** The server ended the call: "time_limit", "daily_limit" or "idle". */
+  onClosed: (reason: string) => void
 }
 
 export interface VoiceOptions {
@@ -138,6 +142,7 @@ export class VoiceClient {
   }
 
   private handle(data: ArrayBuffer | string): void {
+    if (this.closed) return
     if (typeof data !== 'string') {
       this.play(data)
       return
@@ -153,6 +158,10 @@ export class VoiceClient {
         this.ready = true
         window.clearTimeout(this.connectTimer)
         this.on.onState('listening')
+        if (typeof message.seconds_left === 'number') this.on.onTimeLeft(message.seconds_left)
+        break
+      case 'time_warning':
+        if (typeof message.seconds_left === 'number') this.on.onTimeLeft(message.seconds_left)
         break
       case 'transcript':
         this.on.onTranscript(message.role as 'learner' | 'coach', String(message.text ?? ''))
@@ -175,7 +184,7 @@ export class VoiceClient {
         this.fail(String(message.message ?? 'Something went wrong.'), String(message.code ?? ''))
         break
       case 'closed':
-        this.stop()
+        this.finish(String(message.reason ?? ''))
         break
     }
   }
@@ -244,9 +253,24 @@ export class VoiceClient {
     this.on.onState('error')
   }
 
+  /** The server ended the call: stop listening at once, but let the coach's last words play out. */
+  private finish(reason: string): void {
+    if (this.closed) return
+    this.closed = true
+    this.capture?.disconnect()
+    this.stream?.getTracks().forEach((track) => track.stop())
+    const remaining = this.context ? Math.max(0, this.nextTime - this.context.currentTime) : 0
+    window.setTimeout(() => this.teardown(), remaining * 1000 + 150)
+    this.on.onClosed(reason)
+    this.on.onState('ended')
+  }
+
   /** End the conversation. */
   stop(): void {
-    if (this.closed) return
+    if (this.closed) {
+      this.teardown() // silences a goodbye that is still playing
+      return
+    }
     this.closed = true
     try {
       if (this.socket?.readyState === WebSocket.OPEN) this.socket.send(JSON.stringify({ type: 'end' }))
