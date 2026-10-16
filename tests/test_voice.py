@@ -20,6 +20,14 @@ def key_set():
     object.__setattr__(settings, "gemini_api_key", "")
 
 
+@pytest.fixture(autouse=True)
+def fresh_limits(monkeypatch):
+    """Every test starts with an unused allowance and no open calls."""
+    voice_api.voice_rate_limiter.reset()
+    monkeypatch.setattr(voice_api, "talk_time", voice_api.TalkTime())
+    monkeypatch.setattr(voice_api, "_callers", set())
+
+
 def first_event(ws):
     return ws.receive_json()
 
@@ -61,6 +69,57 @@ def test_too_many_calls_are_turned_away(client, key_set, monkeypatch):
         assert first_event(ws)["code"] == "busy"
 
 
+def test_one_call_at_a_time_per_caller(client, key_set):
+    voice_api._callers.add("testclient")
+    with client.websocket_connect("/ws/voice") as ws:
+        event = first_event(ws)
+    assert event["code"] == "already_talking"
+
+
+def test_a_used_up_daily_allowance_is_refused(client, key_set):
+    voice_api.talk_time.charge("testclient", settings.voice_daily_minutes * 60)
+    with client.websocket_connect("/ws/voice") as ws:
+        event = first_event(ws)
+    assert event["code"] == "daily_limit" and "tomorrow" in event["message"]
+
+
+def test_a_call_is_cut_to_what_is_left_today_and_charged(client, key_set, monkeypatch):
+    seen = {}
+
+    class FakeSession:
+        def __init__(self, *, facts, voice, emit, limit_seconds, limit_reason):
+            seen.update(limit=limit_seconds, reason=limit_reason)
+
+        async def run(self, receive):
+            await asyncio.sleep(0.05)
+
+    allowance = settings.voice_daily_minutes * 60
+    voice_api.talk_time.charge("testclient", allowance - 100)
+    monkeypatch.setattr(voice_api, "VoiceSession", FakeSession)
+    with client.websocket_connect("/ws/voice") as ws:
+        ws.send_json({"type": "start"})
+        with pytest.raises(WebSocketDisconnect):
+            ws.receive_json()
+
+    assert seen["reason"] == "daily_limit" and 99 <= seen["limit"] <= 100
+    assert voice_api.talk_time.left("testclient") < 100  # the call's time was counted
+    assert "testclient" not in voice_api._callers  # and the slot is free again
+
+
+def test_the_allowance_resets_each_day_and_can_be_switched_off():
+    talk = voice_api.TalkTime()
+    talk.charge("1.2.3.4", 10_000)
+    assert talk.left("1.2.3.4") == 0
+    talk._used["1.2.3.4"] = ("2000-01-01", 10_000.0)
+    assert talk.left("1.2.3.4") == settings.voice_daily_minutes * 60
+    minutes = settings.voice_daily_minutes
+    object.__setattr__(settings, "voice_daily_minutes", 0.0)
+    try:
+        assert talk.left("1.2.3.4") is None
+    finally:
+        object.__setattr__(settings, "voice_daily_minutes", minutes)
+
+
 # --- relaying ----------------------------------------------------------------------------------
 
 
@@ -68,7 +127,7 @@ def test_audio_goes_up_and_events_come_back(client, key_set, monkeypatch):
     seen = {}
 
     class FakeSession:
-        def __init__(self, *, facts, voice, emit):
+        def __init__(self, *, facts, voice, emit, **limits):
             seen.update(facts=facts, voice=voice)
             self.emit = emit
 
@@ -96,7 +155,7 @@ def test_free_text_never_becomes_a_language_or_level(client, key_set, monkeypatc
     seen = {}
 
     class FakeSession:
-        def __init__(self, *, facts, voice, emit):
+        def __init__(self, *, facts, voice, emit, **limits):
             seen.update(facts=facts)
 
         async def run(self, receive):
@@ -199,6 +258,47 @@ def test_a_mispronounced_word_is_passed_to_the_coach_and_not_too_often(monkeypat
     assert events == [{"type": "hint", "word": "thought", "heard": "sought", "score": 31}]
     assert len(upstream.texts) == 1 and "thought" in upstream.texts[0] and "sought" in upstream.texts[0]
     assert upstream.texts[0].startswith("[Pronunciation note")
+
+
+def test_the_coach_says_goodbye_before_the_time_runs_out():
+    events, upstream = [], RecordingSession()
+    session = make(events)
+    session.started -= session.limit_seconds - 20  # the learner is still talking: only the clock runs out
+
+    assert asyncio.run(session.check_limits(upstream)) is None
+    assert events[0]["type"] == "time_warning" and events[0]["reason"] == "time_limit"
+    assert len(upstream.texts) == 1 and "goodbye" in upstream.texts[0]
+    asyncio.run(session.check_limits(upstream))
+    assert len(upstream.texts) == 1  # said once
+
+    session.started -= 25
+    assert asyncio.run(session.check_limits(upstream)) == "time_limit"
+
+
+def test_a_quiet_call_is_checked_on_and_then_ended():
+    events, upstream = [], RecordingSession()
+    session = make(events)
+    session.last_heard -= settings.voice_idle_seconds / 2 + 1
+
+    assert asyncio.run(session.check_limits(upstream)) is None
+    assert len(upstream.texts) == 1 and "still there" in upstream.texts[0]
+    asyncio.run(session.check_limits(upstream))
+    assert len(upstream.texts) == 1  # asked once
+
+    session.last_heard -= settings.voice_idle_seconds
+    assert asyncio.run(session.check_limits(upstream)) == "idle"
+
+
+def test_audio_faster_than_speech_is_refused():
+    session = make([])
+    chunk = voice_agent.INPUT_RATE // 10 * 2  # 100 ms, what the browser sends
+    assert all(session.accept_audio(chunk) for _ in range(20))  # two seconds at once: a network burst is fine
+    assert not all(session.accept_audio(chunk) for _ in range(100))  # ten seconds in no time is not
+    assert not make([]).accept_audio(voice_agent.MAX_FRAME_BYTES + 2)
+
+
+def test_the_coach_knows_who_developed_it():
+    assert "Ali Mehdi Khan" in build_instruction({})
 
 
 def test_short_silent_or_abusive_utterances_are_not_scored(monkeypatch):
