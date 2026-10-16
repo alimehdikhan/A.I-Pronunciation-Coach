@@ -6,6 +6,7 @@ import { ListenButton } from '@/components/tutor/SpeakButton'
 import { Button } from '@/components/ui/button'
 import { usePronunciation } from '@/lib/queries'
 import type { Phrase } from '@/lib/sentences'
+import { SLOW_RATE } from '@/lib/speech'
 import { cn } from '@/lib/utils'
 import type { Target } from '@/store/practice'
 import { useSettings } from '@/store/settings'
@@ -123,7 +124,7 @@ export function PhraseStage({
           </p>
           <div className="mt-7 flex items-center justify-center gap-2">
             <ListenButton text={target.text} speakKey="stage-normal" label="Listen" />
-            <ListenButton text={target.text} speakKey="stage-slow" rate={0.7} label="Slowly" />
+            <ListenButton text={target.text} speakKey="stage-slow" rate={SLOW_RATE} label="Slowly" />
             {target.source === 'custom' && (
               <Button variant="ghost" size="sm" onClick={onBrowse} className="h-9">
                 <PencilSimpleIcon weight="bold" /> Edit
