@@ -106,6 +106,12 @@ class Settings:
         )
     )
     voice_max_sessions: int = field(default_factory=lambda: _int("PRONUNCIATION_COACH_VOICE_MAX_SESSIONS", 3))
+    # Gemini Live is paid by the second, so every conversation and every caller has a budget.
+    voice_session_seconds: int = field(default_factory=lambda: max(60, _int("PRONUNCIATION_COACH_VOICE_SESSION_SECONDS", 6 * 60)))
+    # Talk time per caller (IP address) per UTC day. 0 switches the daily allowance off.
+    voice_daily_minutes: float = field(default_factory=lambda: max(0.0, _float("PRONUNCIATION_COACH_VOICE_DAILY_MINUTES", 20.0)))
+    # A call where the learner says nothing for this long is ended (the coach checks in halfway).
+    voice_idle_seconds: int = field(default_factory=lambda: max(20, _int("PRONUNCIATION_COACH_VOICE_IDLE_SECONDS", 90)))
 
     @property
     def gemini_live_models(self) -> tuple[str, ...]:
