@@ -26,7 +26,16 @@ const STATE_TEXT: Record<VoiceState, string> = {
   error: 'Something went wrong',
 }
 
-const ORB_STATE = { connecting: 'thinking', listening: 'listening', thinking: 'thinking', speaking: 'speaking', ended: 'idle', error: 'idle' } as const
+/** Why the server ended a call, in the learner's words. */
+const END_TEXT: Record<string, string> = {
+  time_limit: 'Time’s up for this conversation. Start another whenever you like.',
+  daily_limit: 'That’s today’s conversation time used up. It resets tomorrow.',
+  idle: 'Ended because it went quiet. Tap Talk again when you’re ready.',
+}
+
+const clock = (seconds: number) => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
+
+const ORB_STATE ={ connecting: 'thinking', listening: 'listening', thinking: 'thinking', speaking: 'speaking', ended: 'idle', error: 'idle' } as const
 
 /** A spoken conversation with the coach: tap, talk, and it talks back. */
 export function VoiceAgent() {
@@ -45,6 +54,9 @@ export function VoiceAgent() {
   const [hint, setHint] = useState<VoiceHint | null>(null)
   const [guard, setGuard] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [endNote, setEndNote] = useState<string | null>(null)
+  const [endsAt, setEndsAt] = useState<number | null>(null)
+  const [now, setNow] = useState(() => Date.now())
   const [muted, setMuted] = useState(false)
   const client = useRef<VoiceClient | null>(null)
   const stateRef = useRef<VoiceState>('connecting')
@@ -87,9 +99,20 @@ export function VoiceAgent() {
     return () => window.clearTimeout(timer)
   }, [started, state, coachLine])
 
+  // A clock for the countdown in the last minute of a call.
+  const counting = started && endsAt != null && state !== 'ended' && state !== 'error'
+  useEffect(() => {
+    if (!counting) return
+    setNow(Date.now())
+    const timer = window.setInterval(() => setNow(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [counting])
+
   const begin = async () => {
     audioEngine.stop() // the coach's practice voice must not talk over the conversation
     setError(null)
+    setEndNote(null)
+    setEndsAt(null)
     setCoachLine('')
     setLearnerLine('')
     setHint(null)
@@ -108,6 +131,8 @@ export function VoiceAgent() {
         onHint: setHint,
         onGuard: () => setGuard(true),
         onError: (message) => setError(message),
+        onTimeLeft: (seconds) => setEndsAt(Date.now() + seconds * 1000),
+        onClosed: (reason) => setEndNote(END_TEXT[reason] ?? null),
       },
     )
     client.current = voice
@@ -119,6 +144,7 @@ export function VoiceAgent() {
   if (!open) return null
 
   const live = started && state !== 'ended' && state !== 'error'
+  const secondsLeft = counting ? Math.max(0, Math.ceil((endsAt - now) / 1000)) : null
 
   return (
     <AnimatePresence>
@@ -169,7 +195,12 @@ export function VoiceAgent() {
             </div>
           ) : (
             <div className="w-full text-center" aria-live="polite">
-              <div className="text-[13px] font-semibold text-muted-foreground">{error ?? STATE_TEXT[state]}</div>
+              <div className="text-[13px] font-semibold text-muted-foreground">
+                {error ?? (state === 'ended' && endNote ? endNote : STATE_TEXT[state])}
+              </div>
+              {live && secondsLeft != null && secondsLeft <= 60 && (
+                <div className="mt-1 text-[12px] font-medium text-warn tabular-nums">Ends in {clock(secondsLeft)}</div>
+              )}
               <p className="mt-3 min-h-[3.5rem] text-[19px] leading-snug font-medium">{coachLine}</p>
               <p className="mt-2 min-h-[1.5rem] text-[15px] text-muted-foreground">{learnerLine && `You: ${learnerLine}`}</p>
               {live && (
