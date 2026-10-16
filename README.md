@@ -122,7 +122,20 @@ mic --16 kHz PCM--> this server --> Gemini Live --24 kHz PCM--> this server --> 
 - **The key stays on the server.** The browser only ever talks to our own WebSocket; `GEMINI_API_KEY` is read on the server.
 - **It hears how you said it, not only what.** After each turn the audio is scored with the same Whisper and phoneme models used for practice. If a word was clearly mispronounced, the coach is told, at most once every 25 seconds, so it can say the word and invite another try. A generic voice assistant cannot do this.
 - **Grounded.** The coach is told the learner's level, first language and weak and strong sounds, and is instructed to speak plainly, in one to three short sentences, about everyday topics.
-- **Safe.** Abusive speech is caught by `backend/moderation.py` and answered calmly; at most 3 conversations run at once, a conversation lasts at most 6 minutes, and the model is told to stay on speaking practice.
+- **Safe.** Abusive speech is caught by `backend/moderation.py` and answered calmly, and the model is told to stay on speaking practice. Asked who made it, the coach says it was developed by Ali Mehdi Khan (the text chat answers that question itself, without calling the model).
+- **Limits.** Gemini Live is paid by the second, so every call has a budget:
+
+  | Limit | Default | What the learner sees |
+  |---|---|---|
+  | Conversations at once (whole server) | 3 | "The coach is on other calls right now" |
+  | Conversations at once per caller | 1 | "You already have a conversation open" |
+  | New conversations per caller | 8 a minute | "Please wait a minute" |
+  | Length of one conversation | 6 minutes | A countdown in the last minute; 30 seconds before the end the coach is told to say goodbye |
+  | Talk time per caller per day (UTC) | 20 minutes | The last call is shortened to what is left, then "It resets tomorrow" |
+  | Silence | 90 seconds | Halfway through, the coach asks if they are still there; then the call ends |
+  | Audio sent | Real time | A client sending audio faster than anyone can speak is disconnected |
+
+  A caller is an IP address, so people sharing one connection (a classroom, an office) share the daily allowance. Counts are kept in memory per process and reset when the server restarts.
 - **Models.** `PRONUNCIATION_COACH_VOICE_MODEL` (default `gemini-3.1-flash-live-preview`) is tried first, then `PRONUNCIATION_COACH_VOICE_FALLBACKS` (default `gemini-3.8-live,gemini-2.5-flash-native-audio-latest`). Google renames live models often, so the names are settings.
 - **Privacy.** On Google's free tier, audio and text sent to Gemini may be used to improve their products. The talking screen says so before the first conversation, and this app does not store the audio.
 
@@ -348,6 +361,10 @@ All settings are environment variables. See [`.env.example`](.env.example).
 | `GROQ_API_KEY` | unset | Enables AI-written coaching tips. Unset uses the built-in tips |
 | `PRONUNCIATION_COACH_LLM_MODEL` | `openai/gpt-oss-120b` | Groq chat model for the tips |
 | `PRONUNCIATION_COACH_LLM_TIMEOUT` | `8` | Seconds to wait before falling back to built-in tips |
+| `PRONUNCIATION_COACH_VOICE_MAX_SESSIONS` | `3` | Voice conversations running at once on the server |
+| `PRONUNCIATION_COACH_VOICE_SESSION_SECONDS` | `360` | Longest single voice conversation (at least 60) |
+| `PRONUNCIATION_COACH_VOICE_DAILY_MINUTES` | `20` | Voice talk time per caller per UTC day (`0` = no daily allowance) |
+| `PRONUNCIATION_COACH_VOICE_IDLE_SECONDS` | `90` | A voice call where the learner says nothing for this long is ended |
 | `PRONUNCIATION_LANGUAGE` | `eng-Latn` | Epitran code for the out-of-dictionary fallback |
 | `PRONUNCIATION_COACH_LOAD_MODELS_ON_STARTUP` | `1` | `0` skips loading models (UI work, tests) |
 | `PRONUNCIATION_COACH_MAX_UPLOAD_BYTES` | `26214400` | Largest accepted upload (25 MB) |
