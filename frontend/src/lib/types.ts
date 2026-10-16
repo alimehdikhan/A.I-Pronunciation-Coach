@@ -261,7 +261,7 @@ export interface ChatReply {
   /** Practice sentences, when the learner asked for some. */
   sentences: { text: string; target_words: string[] }[]
   /** `guard` is the built-in respectful reply to abusive messages (no model was called). */
-  source: 'groq' | 'template' | 'guard'
+  source: 'groq' | 'template' | 'guard' | 'about'
 }
 
 export interface PracticeSentences {
