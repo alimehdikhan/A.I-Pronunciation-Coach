@@ -95,7 +95,7 @@ export function ChatLauncher() {
         aria-expanded={open}
         whileHover={{ scale: 1.06 }}
         whileTap={{ scale: 0.94 }}
-        initial={reduce ? false : { scale: 0, opacity: 0 }}
+        initial={reduce ? false : { scale: 0.8, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         transition={{ type: 'spring', stiffness: 420, damping: 22, delay: 0.4 }}
         className="fixed right-4 bottom-[calc(env(safe-area-inset-bottom)+5.5rem)] z-50 grid size-14 place-items-center rounded-full bg-primary text-primary-foreground shadow-xl shadow-primary/30 sm:right-6 lg:bottom-6"
