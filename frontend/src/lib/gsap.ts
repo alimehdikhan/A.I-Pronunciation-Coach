@@ -16,15 +16,14 @@ export function useHeadlineReveal(ref: RefObject<HTMLElement | null>, deps: unkn
   useGSAP(
     () => {
       const el = ref.current
-      if (!el) return
+      if (!el?.textContent?.trim()) return
       const mm = gsap.matchMedia()
       mm.add(MOTION_OK, () => {
         SplitText.create(el, {
           type: 'words',
           mask: 'words',
           autoSplit: true,
-          onSplit: (self) =>
-            gsap.from(self.words, { yPercent: 110, opacity: 0, duration: 0.9, stagger: 0.06, ease: 'expo.out' }),
+          onSplit: (self) => gsap.from(self.words, { yPercent: 110, opacity: 0, duration: 0.9, stagger: 0.06, ease: 'expo.out' }),
         })
       })
       return () => mm.revert()
@@ -34,17 +33,14 @@ export function useHeadlineReveal(ref: RefObject<HTMLElement | null>, deps: unkn
 }
 
 /** Stagger children matching `selector` into view when `deps` change. */
-export function useStaggerIn(
-  scope: RefObject<HTMLElement | null>,
-  selector: string,
-  deps: unknown[] = [],
-  vars: gsap.TweenVars = {},
-) {
+export function useStaggerIn(scope: RefObject<HTMLElement | null>, selector: string, deps: unknown[] = [], vars: gsap.TweenVars = {}) {
   useGSAP(
     () => {
       const mm = gsap.matchMedia()
       mm.add(MOTION_OK, () => {
-        gsap.from(selector, { y: 24, opacity: 0, scale: 0.985, duration: 0.8, stagger: 0.08, ease: 'expo.out', ...vars })
+        // Nothing to animate yet (still loading): skip quietly instead of warning.
+        const targets = gsap.utils.toArray<HTMLElement>(selector, scope.current)
+        if (targets.length) gsap.from(targets, { y: 24, opacity: 0, scale: 0.985, duration: 0.8, stagger: 0.08, ease: 'expo.out', ...vars })
       })
       return () => mm.revert()
     },
@@ -59,6 +55,7 @@ export function useScrollReveal(scope: RefObject<HTMLElement | null>, selector: 
       const mm = gsap.matchMedia()
       mm.add(MOTION_OK, () => {
         const targets = gsap.utils.toArray<HTMLElement>(selector, scope.current)
+        if (!targets.length) return
         gsap.set(targets, { opacity: 0, y: 28 })
         ScrollTrigger.batch(targets, {
           start: 'top 92%',
