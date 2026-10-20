@@ -1,6 +1,6 @@
 import { ArrowClockwiseIcon, CompassIcon, WarningOctagonIcon } from '@phosphor-icons/react'
 import { lazy, Suspense } from 'react'
-import { createBrowserRouter, Link, useRouteError } from 'react-router'
+import { createBrowserRouter, Link, Navigate, useRouteError } from 'react-router'
 import { EmptyState } from '@/components/common'
 import { AppShell } from '@/components/layout/AppShell'
 import { Button } from '@/components/ui/button'
@@ -16,10 +16,16 @@ const DrillsPage = lazy(() => import('@/pages/DrillsPage'))
 const SoundsPage = lazy(() => import('@/pages/SoundsPage'))
 const ProgressPage = lazy(() => import('@/pages/ProgressPage'))
 const SpeakPage = lazy(() => import('@/pages/SpeakPage'))
+const InterviewPage = lazy(() => import('@/pages/InterviewPage'))
 const BaselinePage = lazy(() => import('@/pages/BaselinePage'))
 const SharedPage = lazy(() => import('@/pages/SharedPage'))
 const ForgotPage = lazy(() => import('@/pages/ResetPage').then((m) => ({ default: m.ForgotPage })))
 const ResetPage = lazy(() => import('@/pages/ResetPage').then((m) => ({ default: m.ResetPage })))
+const HomePage = lazy(() => import('@/pages/HomePage'))
+const PrivacyPage = lazy(() => import('@/pages/LegalPages').then((m) => ({ default: m.PrivacyPage })))
+const TermsPage = lazy(() => import('@/pages/LegalPages').then((m) => ({ default: m.TermsPage })))
+const AboutPage = lazy(() => import('@/pages/LegalPages').then((m) => ({ default: m.AboutPage })))
+const HelpPage = lazy(() => import('@/pages/HelpPage').then((m) => ({ default: m.HelpPage })))
 
 function RouteError() {
   const error = useRouteError() as Error | undefined
@@ -47,7 +53,7 @@ function NotFound() {
       description="That page doesn’t exist."
       action={
         <Button asChild size="lg">
-          <Link to="/">Go to Practice</Link>
+          <Link to="/practice">Go to Practice</Link>
         </Button>
       }
     />
@@ -65,13 +71,24 @@ export const router = createBrowserRouter([
       { path: 'shared/:token', element: <Suspense fallback={null}><SharedPage /></Suspense> },
       { path: 'forgot', element: <Suspense fallback={null}><ForgotPage /></Suspense> },
       { path: 'reset', element: <Suspense fallback={null}><ResetPage /></Suspense> },
+      // The public home page; the app itself starts at /practice.
+      { index: true, element: <Suspense fallback={null}><HomePage /></Suspense> },
+      { path: 'welcome', element: <Navigate to="/" replace /> },
+      // Readable before signing in or onboarding, so they sit outside the app shell.
+      { path: 'privacy', element: <Suspense fallback={null}><PrivacyPage /></Suspense> },
+      { path: 'terms', element: <Suspense fallback={null}><TermsPage /></Suspense> },
+      { path: 'about', element: <Suspense fallback={null}><AboutPage /></Suspense> },
+      { path: 'help', element: <Suspense fallback={null}><HelpPage /></Suspense> },
     ],
   },
   {
     element: <AppShell />,
     errorElement: <RouteError />,
     children: [
-      { index: true, element: <PracticePage /> },
+      { path: 'practice', element: <PracticePage /> },
+      { path: 'interview', element: <InterviewPage /> },
+      { path: 'interview/cv', element: <InterviewPage tab="cv" /> },
+      { path: 'interview/group', element: <InterviewPage tab="group" /> },
       { path: 'speak', element: <SpeakPage /> },
       { path: 'before-after', element: <BaselinePage /> },
       { path: 'journey', element: <JourneyPage /> },
