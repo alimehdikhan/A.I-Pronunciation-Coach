@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { Pill, SectionLabel } from '@/components/common'
 import { StorageNotice } from '@/components/auth/StorageNotice'
 import { PageHeader } from '@/components/layout/AppShell'
+import { LegalLinks } from '@/components/site/LegalLinks'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -461,7 +462,7 @@ export default function ProfilePage() {
               <div className="flex flex-wrap items-center justify-between gap-4 pb-5">
                 <div>
                   <div className="text-[15px] font-medium">Delete practice history</div>
-                  <div className="text-[13px] text-muted-foreground">Removes every attempt and resets your trends. Your {signedIn ? 'account' : 'name'} stays.</div>
+                  <div className="text-[13px] text-muted-foreground">Removes every attempt and mock interview, and resets your trends. Your {signedIn ? 'account' : 'name'} stays.</div>
                 </div>
                 <Button variant="secondary" className="rounded-xl" onClick={() => setConfirm('history')}>
                   <TrashIcon weight="bold" /> Delete history
@@ -494,11 +495,13 @@ export default function ProfilePage() {
         )}
       </div>
 
+      <LegalLinks className="mt-8 justify-center" />
+
       <ConfirmDialog
         open={confirm === 'history'}
         onOpenChange={(open) => !open && setConfirm(null)}
         title="Delete all practice history?"
-        description="Every saved attempt is removed and your progress charts start again. This cannot be undone."
+        description="Every saved attempt and mock interview is removed and your progress charts start again. This cannot be undone."
         confirmLabel="Delete history"
         onConfirm={() => clearHistory.mutate()}
         pending={clearHistory.isPending}
