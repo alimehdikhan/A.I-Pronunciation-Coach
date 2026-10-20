@@ -60,8 +60,10 @@ class FakeASR:
         self.text = text
         self.words = words if words is not None else timed_words(text)
         self.calls = []
+        self.prompts = []
 
-    def transcribe(self, audio, language="en"):
+    def transcribe(self, audio, language="en", prompt=None):
+        self.prompts.append(prompt)
         assert isinstance(audio, np.ndarray) and audio.dtype == np.float32 and audio.size > 0
         self.calls.append(audio)
         return {"text": self.text, "words": self.words, "language": "en", "duration": round(audio.size / 16000, 2)}
