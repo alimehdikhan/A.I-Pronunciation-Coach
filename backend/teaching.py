@@ -122,17 +122,25 @@ def _priority(stat: SoundStat) -> float:
     return weight
 
 
-def choose_focus(stats: Sequence[SoundStat]) -> tuple[str, str]:
-    """The sound to work on and why: (phoneme, reason)."""
+def choose_focus(stats: Sequence[SoundStat], first_language: str | None = None) -> tuple[str, str]:
+    """The sound to work on and why: (phoneme, reason). A new learner starts with a sound usually hard for their first language."""
     known = [s for s in stats if get_phoneme(s.phoneme)]
     candidates = [s for s in known if s.attempts >= MIN_ATTEMPTS and s.clean_rate < SOLID_RATE]
     if candidates:
         best = max(candidates, key=_priority)
         return best.phoneme, "history"
-    if known and all(s.status == "solid" for s in known if s.attempts >= MIN_ATTEMPTS):
-        weakest = min(known, key=lambda s: s.clean_rate)
+    # Too few tries to rank sounds yet: one that has already slipped beats a generic starter.
+    early = [s for s in known if s.attempts < MIN_ATTEMPTS and s.clean < s.attempts]
+    if early:
+        best = max(early, key=lambda s: (s.attempts - s.clean, s.attempts))
+        return best.phoneme, "early"
+    settled = [s for s in known if s.attempts >= MIN_ATTEMPTS]
+    if settled and all(s.status == "solid" for s in settled):
+        weakest = min(settled, key=lambda s: s.clean_rate)
         return weakest.phoneme, "maintenance"
-    return DEFAULT_FOCUS[0], "starter"
+    from backend.learners import common_sounds
+
+    return ([*common_sounds(first_language), *DEFAULT_FOCUS])[0], "starter"
 
 
 def _words_for(phoneme: str, observations: Sequence[Observation], limit: int = 4) -> tuple[list[str], list[str]]:
@@ -154,6 +162,12 @@ def _reason_text(stat: SoundStat | None, why: str, phoneme: str) -> str:
         return f"This is a good place to start: {sound} is one of the sounds learners find hardest, and it shows up in many everyday words."
     if why == "maintenance":
         return f"Your sounds are in good shape. {sound} is the one with the most room left, so a short refresher keeps it sharp."
+    if why == "early":
+        missed = stat.attempts - stat.clean
+        return (
+            f"It is early days, but {sound} has already slipped {missed} of {stat.attempts} "
+            f"time{'s' if stat.attempts != 1 else ''}, so it is a good first sound to work on."
+        )
     pct = round(stat.clean_rate * 100)
     base = f"You said {sound} cleanly {stat.clean} of {stat.attempts} times ({pct}%)"
     if stat.trend == "slipping":
@@ -180,15 +194,25 @@ def _plain(value: Any, key: str = "") -> Any:
     return value
 
 
-def build_plan(observations: Sequence[Observation], focus_override: str | None = None) -> dict[str, Any]:
+def build_plan(
+    observations: Sequence[Observation],
+    focus_override: str | None = None,
+    perception: Sequence[dict[str, Any]] = (),
+    perception_threshold: float = 0.8,
+    first_language: str | None = None,
+) -> dict[str, Any]:
     """The coach's assessment and a practice session for the sound that matters most.
 
     `focus_override` is a sound the learner picked (from the learning path): it replaces the
-    coach's own choice, and the session is built around it in the same way.
+    coach's own choice, and the session is built around it in the same way. `perception` is
+    the learner's listening-drill accuracy per contrast: when they hear the focus sound right
+    less often than `perception_threshold`, a listening block comes before the speaking steps.
     """
+    from backend.listening import MIN_PERCEPTION_TRIALS, accuracy_for
+
     stats = compute_mastery(observations)
     by_sound = {s.phoneme: s for s in stats}
-    focus, why = choose_focus(stats)
+    focus, why = choose_focus(stats, first_language)
     if focus_override and get_phoneme(focus_override):
         focus, why = focus_override, "chosen"
     entry = get_phoneme(focus) or {}
@@ -213,6 +237,7 @@ def build_plan(observations: Sequence[Observation], focus_override: str | None =
             "instruction": "Listen to each pair. The first word has the sound you are working on.",
             "pairs": pairs,
         },
+        *_ear_block(focus, label, *accuracy_for(perception, focus), MIN_PERCEPTION_TRIALS, perception_threshold),
         {
             "kind": "words",
             "title": "Say it in words",
@@ -260,6 +285,25 @@ def build_plan(observations: Sequence[Observation], focus_override: str | None =
         "mastery": [s.as_dict() for s in stats][:14],
         "session": session,
     })
+
+
+def _ear_block(
+    focus: str, label: str, accuracy: float | None, trials: int, min_trials: int, threshold: float
+) -> list[dict[str, Any]]:
+    """A listening block for the session when the learner does not yet hear the focus sound reliably."""
+    if accuracy is None or trials < min_trials or accuracy >= threshold:
+        return []
+    return [{
+        "kind": "discriminate",
+        "title": "Train your ear first",
+        "instruction": (
+            f"In listening drills you picked the right word {round(accuracy * 100)}% of the time for {label}. "
+            "It is hard to say a sound you can't yet hear, so pick which word you hear; each one is said by a different voice."
+        ),
+        "phoneme": focus,
+        "accuracy": round(accuracy, 3),
+        "trials": 10,
+    }]
 
 
 def template_briefing(plan: dict[str, Any]) -> str:
