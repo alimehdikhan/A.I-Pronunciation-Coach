@@ -159,6 +159,17 @@ export function OnboardingDialog() {
               >
                 Continue without saving progress
               </button>
+              <p className="mt-3 text-center text-[12px] text-subtle">
+                By continuing you agree to the{' '}
+                <Link to="/terms" onClick={() => complete()} className="font-medium text-primary hover:underline">
+                  Terms
+                </Link>{' '}
+                and{' '}
+                <Link to="/privacy" onClick={() => complete()} className="font-medium text-primary hover:underline">
+                  Privacy Policy
+                </Link>
+                .
+              </p>
               <p className="mt-3 text-center text-[13px] text-muted-foreground">
                 Have an account?{' '}
                 <Link to="/login" onClick={() => complete()} className="font-medium text-primary hover:underline">
