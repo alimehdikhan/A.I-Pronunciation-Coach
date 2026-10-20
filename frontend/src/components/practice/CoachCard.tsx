@@ -8,6 +8,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useAnalytics, useCoach } from '@/lib/queries'
 import type { CoachRequest, CoachSlip, EvaluationResult } from '@/lib/types'
 import { useSettings } from '@/store/settings'
+import { SayItAlone, WorthCheckingList } from './WorthChecking'
 
 const MAX_SLIPS = 8
 
@@ -17,15 +18,19 @@ export function slipsOf(result: EvaluationResult): CoachSlip[] {
   for (const word of result.words) {
     const name = word.reference ?? word.spoken ?? ''
     if (!name) continue
-    if (word.status === 'mispronounced') {
+    if (word.status === 'mispronounced' && word.confirmed !== 'fine') {
       const ops = word.alignment.filter((op) => op.op === 'replace' || op.op === 'delete')
-      if (ops.length === 0) slips.push({ word: name, kind: 'substitution', expected: '', actual: '' })
+      // The surest slips first: only "fix" slips get tips, "check" ones are listed to look at again.
+      ops.sort((a, b) => Number(a.tier === 'check') - Number(b.tier === 'check'))
+      if (ops.length === 0) slips.push({ word: name, kind: 'substitution', expected: '', actual: '', tier: 'fix' })
       for (const op of ops.slice(0, 2)) {
         slips.push({
           word: name,
           kind: op.op === 'delete' ? 'deletion' : 'substitution',
           expected: op.expected,
           actual: op.op === 'delete' ? '' : op.actual,
+          tier: word.confirmed === 'slip' ? 'fix' : (op.tier ?? 'fix'),
+          affects: word.affects_understanding ?? null,
         })
       }
     } else if (word.status === 'missing' || word.status === 'unclear' || word.status === 'extra') {
@@ -35,10 +40,21 @@ export function slipsOf(result: EvaluationResult): CoachSlip[] {
   return slips.slice(0, MAX_SLIPS)
 }
 
-export function CoachCard({ result, previousScore }: { result: EvaluationResult; previousScore?: number }) {
+export function CoachCard({
+  result,
+  previousScore,
+  onSelect,
+}: {
+  result: EvaluationResult
+  previousScore?: number
+  /** Opens a word in the inspector. */
+  onSelect?: (index: number) => void
+}) {
   const username = useSettings((s) => s.username)
   const soundName = useSoundName()
   const nativeLanguage = useSettings((s) => s.nativeLanguage)
+  const goal = useSettings((s) => s.goal)
+  const tipLanguage = useSettings((s) => s.tipLanguage)
   const { data: analytics } = useAnalytics(username)
 
   const request = useMemo<CoachRequest | null>(() => {
@@ -51,11 +67,14 @@ export function CoachCard({ result, previousScore }: { result: EvaluationResult;
       weak_sounds: (analytics?.top_weaknesses ?? []).slice(0, 5).map((w) => ({ phoneme: w.phoneme, count: w.count })),
       previous_score: previousScore ?? null,
       native_language: nativeLanguage,
+      goal,
+      tip_language: tipLanguage,
     }
-  }, [result, analytics, previousScore, nativeLanguage])
+  }, [result, analytics, previousScore, nativeLanguage, goal, tipLanguage])
 
   const { data, isLoading } = useCoach(request)
   if (!request) return null
+  const hasFixSlips = request.slips.some((s) => s.tier !== 'check')
 
   return (
     <div className="surface results-item p-6 sm:p-8">
@@ -74,16 +93,26 @@ export function CoachCard({ result, previousScore }: { result: EvaluationResult;
         </div>
       ) : (
         <div className="space-y-4">
-          <p className="text-[17px] leading-relaxed font-medium">{data.summary}</p>
+          <p dir="auto" className="text-[17px] leading-relaxed font-medium">
+            {data.summary}
+          </p>
+          {data.language_note && <p className="text-[13px] text-subtle">{data.language_note}</p>}
           {data.one_thing && (
             <div className="flex gap-3 rounded-2xl border border-primary/25 bg-primary-soft p-4">
               <TargetIcon size={22} weight="fill" className="mt-0.5 shrink-0 text-primary" />
               <div>
                 <div className="text-xs font-semibold text-primary">Change this on your next try</div>
-                <div className="mt-0.5 text-[15px] leading-relaxed font-medium">{data.one_thing}</div>
+                <div dir="auto" className="mt-0.5 text-[15px] leading-relaxed font-medium">
+                  {data.one_thing}
+                </div>
               </div>
             </div>
           )}
+          <WorthCheckingList
+            words={result.words}
+            onSelect={onSelect}
+            action={(word) => <SayItAlone word={word} recordId={result.record_id} compact onDone={() => onSelect?.(word.index)} />}
+          />
           {data.tips.length > 0 && (
             <ul className="space-y-3">
               {data.tips.map((tip, i) => (
@@ -93,7 +122,7 @@ export function CoachCard({ result, previousScore }: { result: EvaluationResult;
                       {soundName(tip.phoneme).spelled}
                     </span>
                   )}
-                  <span>
+                  <span dir="auto">
                     {tip.word && <span className="font-medium text-foreground">{tip.word}: </span>}
                     {tip.tip}
                   </span>
@@ -101,7 +130,14 @@ export function CoachCard({ result, previousScore }: { result: EvaluationResult;
               ))}
             </ul>
           )}
-          {request.slips.length > 0 && (
+          {!!data.minor?.length && (
+            <p className="rounded-2xl bg-fill p-4 text-[14px] leading-relaxed text-muted-foreground">
+              <span className="font-semibold text-foreground">Won’t confuse a listener: </span>
+              {data.minor.map((w) => `“${w}”`).join(', ')}. These differ a little from the standard sound. Your goal is to be
+              understood, so they come last. Switch to “Reduce my accent” in Settings to work on them too.
+            </p>
+          )}
+          {hasFixSlips && (
             <Link to="/coach" className="inline-flex items-center gap-1.5 text-[14px] font-semibold text-primary hover:underline">
               Work on this with a guided session <ArrowRightIcon size={14} weight="bold" />
             </Link>
