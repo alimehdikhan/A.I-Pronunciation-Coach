@@ -17,9 +17,8 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, AsyncIterator
 
-from fastapi import HTTPException
-
 from backend.config import settings
+from backend.errors import CodedHTTPException
 from backend.observability import ASR_REJECTED, ASR_RUNNING, ASR_WAITING
 
 if TYPE_CHECKING:
@@ -55,10 +54,8 @@ class WorkGate:
         semaphore = self._get_semaphore()
         if self.running >= self.concurrency and self.waiting >= self.queue_limit:
             ASR_REJECTED.inc()
-            raise HTTPException(
-                status_code=503,
-                detail="The coach is busy right now. Please try again in a few seconds.",
-                headers={"Retry-After": "5"},
+            raise CodedHTTPException(
+                503, "The coach is busy right now. Please try again in a few seconds.", "busy", {"Retry-After": "5"}
             )
         self.waiting += 1
         ASR_WAITING.inc()
