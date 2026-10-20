@@ -1,8 +1,10 @@
 import { CheckCircleIcon, LockKeyIcon, MicrophoneIcon, PauseIcon, PlayIcon, SpinnerGapIcon, StopIcon, TrashIcon } from '@phosphor-icons/react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { Link, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
-import { Panel, Pill, SectionLabel } from '@/components/common'
+import { Panel, Pill, Segmented, SectionLabel } from '@/components/common'
+import { Day30 } from '@/components/progress/Day30'
 import { PageHeader } from '@/components/layout/AppShell'
 import { Button } from '@/components/ui/button'
 import { Kbd } from '@/components/ui/kbd'
@@ -99,7 +101,8 @@ function Comparison({ status, username }: { status: BaselineStatus; username: st
   )
 }
 
-export default function BaselinePage() {
+/** The five-sentence before and after. */
+function FiveSentences({ tabs }: { tabs: ReactNode }) {
   const username = useSettings((s) => s.username)
   const queryClient = useQueryClient()
   const [consent, setConsent] = useState(false)
@@ -143,7 +146,7 @@ export default function BaselinePage() {
   if (!username) {
     return (
       <>
-        <PageHeader eyebrow="Before & after" title="Hear how far you have come." description="Add your name in Settings first, so your recordings can be kept for you." />
+        <PageHeader eyebrow="Before & after" title="Hear how far you have come." description="Add your name in Settings first, so your recordings can be kept for you." actions={tabs} />
       </>
     )
   }
@@ -154,6 +157,7 @@ export default function BaselinePage() {
         eyebrow="Before & after"
         title="Hear how far you have come."
         description="Record five sentences now, again after two weeks, then every month, and play them side by side."
+        actions={tabs}
       />
       <div className="space-y-5">
         {isLoading || !status ? (
@@ -180,7 +184,7 @@ export default function BaselinePage() {
                       <LockKeyIcon size={16} weight="fill" className="mr-1 inline text-primary" />
                       <b>Keep these recordings.</b> I agree that the app stores these five recordings (and later re-recordings of the same
                       sentences) so I can hear my progress. Only I can play them, and I can delete them any time from this page or my
-                      Profile. Deleting my account deletes them too.
+                      Profile. Deleting my account deletes them too. (<Link to="/privacy" className="text-primary hover:underline">Privacy Policy</Link>)
                     </span>
                   </label>
                 )}
@@ -232,6 +236,42 @@ export default function BaselinePage() {
           </Panel>
         )}
       </div>
+    </>
+  )
+}
+
+type Mode = 'sentences' | 'interview'
+
+/** Before and after: five read sentences, or one interview answer (Day 1 vs Day 30). */
+export default function BaselinePage() {
+  const username = useSettings((s) => s.username)
+  const [params, setParams] = useSearchParams()
+  const mode: Mode = params.get('mode') === 'interview' ? 'interview' : 'sentences'
+  const tabs = (
+    <Segmented<Mode>
+      layoutId="before-after-mode"
+      value={mode}
+      onChange={(next) => setParams(next === 'interview' ? { mode: next } : {})}
+      options={[
+        { value: 'sentences', label: 'Five sentences' },
+        { value: 'interview', label: 'Interview answer' },
+      ]}
+    />
+  )
+  if (mode === 'sentences') return <FiveSentences tabs={tabs} />
+  return (
+    <>
+      <PageHeader
+        eyebrow="Before & after"
+        title="Day 1 vs Day 30."
+        description={
+          username
+            ? 'Answer one interview question today and again in a month. Hear the two side by side, and make a video of how far you’ve come.'
+            : 'Add your name in Settings first, so your recordings can be kept for you.'
+        }
+        actions={tabs}
+      />
+      {username && <Day30 />}
     </>
   )
 }
