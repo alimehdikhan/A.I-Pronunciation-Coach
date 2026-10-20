@@ -9,6 +9,7 @@ import { CoachCard } from './CoachCard'
 import { InsightsPanel } from './InsightsPanel'
 import { RoomNotice } from './RoomNotice'
 import { ScoreSummary } from './ScoreSummary'
+import { AskListenersButton } from '@/components/listeners/AskListenersButton'
 import { ShareButton } from './ShareButton'
 import { TranscriptPanel } from './TranscriptPanel'
 import { wordTier } from '@/lib/utils'
@@ -63,11 +64,12 @@ export function Results({
         <InsightsPanel insights={result.insights} onSelect={setSelected} />
       </div>
       <CoachCard result={result} previousScore={previousScore} onSelect={setSelected} />
-      <div className="results-item flex flex-col-reverse items-center justify-center gap-3 pt-4 sm:flex-row">
+      <div className="results-item flex flex-col-reverse flex-wrap items-center justify-center gap-3 pt-4 sm:flex-row">
         <Button variant="secondary" size="lg" onClick={onRetry} className="h-12 px-6 text-[15px]">
           <ArrowClockwiseIcon weight="bold" /> Try again <Kbd className="ml-1 hidden sm:inline-flex">R</Kbd>
         </Button>
         <ShareButton attempt={attempt} />
+        <AskListenersButton attempt={attempt} />
         <Button size="lg" onClick={onNext} className="h-12 px-6 text-[15px]">
           Next phrase <ArrowRightIcon weight="bold" /> <Kbd className="ml-1 hidden bg-white/20 text-white sm:inline-flex">N</Kbd>
         </Button>
