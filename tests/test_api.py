@@ -50,7 +50,7 @@ def test_evaluate_detects_phoneme_substitution(client, fake_asr):
 
     think = body["words"][1]
     assert think["status"] == "mispronounced"
-    assert {"op": "replace", "expected": "θ", "actual": "s"} in think["alignment"]
+    assert {"op": "replace", "expected": "θ", "actual": "s", "tier": "fix"} in think["alignment"]
     assert body["weak_phonemes"] == ["θ"]
     assert body["insights"][0]["kind"] == "substitution"
 
