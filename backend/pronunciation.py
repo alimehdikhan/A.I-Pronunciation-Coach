@@ -69,10 +69,78 @@ ATTEMPT_SIMILARITY = 0.3
 # as a slip. On speechocean762 training data this flags 1.7% of sounds with 36%
 # precision; a higher cut-off finds more slips but raises false alarms.
 PHONEME_ERROR = 0.80
+# Flagged sounds come in two tiers. Below PHONEME_FIX the slip is likely real
+# ("Fix this"); between it and PHONEME_ERROR it is borderline ("Worth
+# checking"). Tiers only label slips: scores and statuses don't depend on them.
+# Only "Fix this" slips count against mastery and get coaching tips.
+# Chosen on speechocean762 training data (scripts/eval_speechocean.py tiers) as the loosest
+# cut-off with "Fix this" precision >= 0.6 (0.63 there; 0.55 precision, 0.23 recall on test).
+PHONEME_FIX = 0.70
+FIX = "fix"
+CHECK = "check"
 # Whisper sometimes drops a word that was spoken. The audio decides: a word it
 # marked missing is counted as spoken when its weakest sound still scores at
 # least this much (0-100).
 MISSING_BELOW = 60.0
+
+
+def is_careful(speech: Dict[str, Any], careful_wpm: float) -> bool:
+    """Slower than natural speech: easy to score well on, unlike real conversation."""
+    wpm = speech.get("wpm")
+    return bool(wpm and speech.get("word_count", 0) >= 3 and wpm < careful_wpm)
+
+
+def sound_tier(probability: float) -> Optional[str]:
+    """"fix", "check" or None (clean) for a sound's probability of being rated clean."""
+    if probability >= PHONEME_ERROR:
+        return None
+    return FIX if probability < PHONEME_FIX else CHECK
+
+
+# "Say just this word": a borderline sound said on its own is a confirmed slip when its
+# probability falls below ALONE_SLIP_BELOW, or below ALONE_WHISPER_BELOW when Whisper also
+# heard a different word that differs at that very sound. Alone, the sound model separates
+# sounds but stays generous (median 0.98 for a correct word, 0.90 for a substituted one), so
+# these are its own cut-offs. On 476 synthetic minimal-pair words (scripts/eval_confirm.py,
+# two voices) the rule caught 91% of substitutions and flagged 9% of correct words.
+ALONE_SLIP_BELOW = 0.88
+ALONE_WHISPER_BELOW = 0.97
+
+
+def _heard_instead(entry: Dict[str, Any], phoneme: str) -> Optional[str]:
+    """What Whisper's word has in place of `phoneme`, when it heard a different word that differs there."""
+    reference, spoken = entry.get("reference"), entry.get("spoken")
+    if not reference or not spoken or reference == spoken:
+        return None
+    comparison = phonetics.compare_words(reference, spoken)
+    if "spelling" in (comparison.ref.source, comparison.hyp.source):
+        return None  # "3rd" for "third" is formatting, not a different sound
+    for kind, expected, actual in comparison.ops:
+        if expected == phoneme and kind in ("replace", "delete"):
+            return actual
+    return None
+
+
+def said_alone(entry: Optional[Dict[str, Any]], phonemes: List[str]) -> List[Dict[str, Any]]:
+    """Verdicts for borderline sounds when their word was said on its own (one scored word entry)."""
+    heard = {p["phoneme"]: p for p in (entry or {}).get("phonemes") or []}
+    out = []
+    for phoneme in phonemes:
+        sound = heard.get(phoneme)
+        if sound is None:
+            out.append({"phoneme": phoneme, "verdict": "unheard", "score": None, "alternative": None, "heard_as": None})
+            continue
+        instead = _heard_instead(entry or {}, phoneme)
+        slip = sound["score"] < 100.0 * ALONE_SLIP_BELOW or (instead is not None and sound["score"] < 100.0 * ALONE_WHISPER_BELOW)
+        alternative = sound.get("alternative") or instead if slip else None
+        out.append({
+            "phoneme": phoneme,
+            "verdict": "slip" if slip else "fine",
+            "score": sound["score"],
+            "alternative": (alternative or gop.OTHER) if slip else None,
+            "heard_as": instead,
+        })
+    return out
 
 
 def normalize_difficulty(difficulty: Optional[str]) -> str:
@@ -160,6 +228,16 @@ class PronunciationScorer:
             "source": "cmudict",
             "pause_before": None,
             "similarity": None,
+            # The surest slip in the word: "fix", "check" or None.
+            "tier": None,
+            # A listener would likely not catch this target word: Whisper heard another word or
+            # none (heard_as is what it heard). None for extra words.
+            "misheard": None,
+            "heard_as": None,
+            # The real word the slip turned this into ("think" said as "sink"), if any.
+            "changes_word": None,
+            # Would the slip change what a listener understands (another word, or likely misheard)?
+            "affects_understanding": None,
         }
 
     # -- main entry point --------------------------------------------------
@@ -172,6 +250,7 @@ class PronunciationScorer:
         words: Optional[List[Dict[str, Any]]] = None,
         duration: Optional[float] = None,
         phoneme_log_probs: Optional[np.ndarray] = None,
+        accent: str = "american",
     ) -> Dict[str, Any]:
         level = normalize_difficulty(difficulty)
         settings = DIFFICULTY_SETTINGS[level]
@@ -185,7 +264,12 @@ class PronunciationScorer:
         # Acoustic evidence: what each target word's sounds were actually like.
         acoustic: Optional[List[Optional[WordAcoustics]]] = None
         if phoneme_log_probs is not None and self.inventory is not None and len(phoneme_log_probs):
-            acoustic = analyse_acoustics(ref_tokens, phoneme_log_probs, self.inventory)
+            # A British target also accepts non-rhotic forms ("car" without its /r/).
+            acoustic = (
+                analyse_acoustics(ref_tokens, phoneme_log_probs, self.inventory, accent)
+                if accent != "american"
+                else analyse_acoustics(ref_tokens, phoneme_log_probs, self.inventory)
+            )
 
         ops, _ = phonetics.align(ref_tokens, [t.text for t in spoken], phonetics.word_cost)
 
@@ -197,6 +281,9 @@ class PronunciationScorer:
             ref_word = ref_tokens[ri] if ri is not None else None
             token = spoken[hi] if hi is not None else None
             entry = self._word_entry(index, ref_word, ref_display[ri] if ri is not None else None, token)
+            if ref_word is not None:
+                # Whisper gets no hint of the target, so it stands in for a listener hearing the words cold.
+                entry.update(misheard=kind != "equal", heard_as=token.text if kind == "replace" and token else None)
 
             if kind == "delete":
                 pron = phonetics.primary_pronunciation(ref_word)  # type: ignore[arg-type]
@@ -250,10 +337,14 @@ class PronunciationScorer:
                     spoken_ipa=phonetics.ipa_string(comparison.hyp),
                     expected_phonemes=list(comparison.ref.phonemes) if phoneme_mode else [],
                     spoken_phonemes=list(comparison.hyp.phonemes) if phoneme_mode else [],
+                    # Without the audio model the only evidence is Whisper hearing another
+                    # word, which is what a listener would hear too, so it is a "fix" slip.
                     alignment=[
-                        {"op": op_kind, "expected": expected, "actual": actual}
+                        {"op": op_kind, "expected": expected, "actual": actual,
+                         "tier": FIX if op_kind != "equal" else None}
                         for op_kind, expected, actual in comparison.ops
                     ] if phoneme_mode else [],
+                    tier=FIX if status == "mispronounced" else None,
                     syllables=phonetics.syllabify(reference_pron),
                     source=comparison.ref.source,
                 )
@@ -262,12 +353,18 @@ class PronunciationScorer:
                     self._apply_acoustic(entry, heard, kind, confidence, unclear_below, mistakes)
             entries.append(entry)
 
+        for entry in entries:
+            if entry["status"] == "mispronounced":
+                entry["changes_word"] = self._changed_word(entry)
+                entry["affects_understanding"] = bool(entry["misheard"] or entry["changes_word"])
+
         speech = self._speech_stats(entries, duration, settings)
         metrics = self._metrics(entries, ref_tokens, speech, settings)
         score = self._overall(metrics, settings)
         word_accuracy = 100.0 * sum(1 for e in entries if e["status"] in ("correct", "unclear")) / len(ref_tokens)
 
         insights = self._insights(entries, speech, settings, score)
+        recovered = sum(1 for e in entries if e["reference"] and not e["misheard"])
         sources = {e["source"] for e in entries if e["reference"]}
         backend = "cmudict" if sources <= {"cmudict"} else ("mixed" if "cmudict" in sources else sources.pop())
 
@@ -279,6 +376,14 @@ class PronunciationScorer:
             "words": entries,
             "insights": insights,
             "weak_phonemes": [ph for ph, _ in mistakes.most_common(3)],
+            # "Would a listener understand you?": the share of target words recovered by a recogniser
+            # that is not told the target. A machine estimate, not part of the score.
+            "intelligibility": {
+                "score": round(100.0 * recovered / len(ref_tokens), 1),
+                "recovered": recovered,
+                "words": len(ref_tokens),
+                "estimate": True,
+            },
             "speech": speech,
             "feedback": self._headline(score),
             "phoneme_analysis": {
@@ -309,16 +414,17 @@ class PronunciationScorer:
         ops = []
         spoken_phonemes = []
         errors = []
-        for p in heard.phonemes:
-            if p.probability >= PHONEME_ERROR:
-                ops.append({"op": "equal", "expected": p.phoneme, "actual": p.phoneme})
+        tiers = [sound_tier(p.probability) for p in heard.phonemes]
+        for p, tier in zip(heard.phonemes, tiers, strict=True):
+            if tier is None:
+                ops.append({"op": "equal", "expected": p.phoneme, "actual": p.phoneme, "tier": None})
                 spoken_phonemes.append(p.phoneme)
                 continue
             errors.append(p)
             if p.alternative == gop.DELETED:
-                ops.append({"op": "delete", "expected": p.phoneme, "actual": ""})
+                ops.append({"op": "delete", "expected": p.phoneme, "actual": "", "tier": tier})
             else:
-                ops.append({"op": "replace", "expected": p.phoneme, "actual": p.alternative})
+                ops.append({"op": "replace", "expected": p.phoneme, "actual": p.alternative, "tier": tier})
                 spoken_phonemes.append(p.alternative)
 
         # Whisper's words and the audio each see things the other misses, so
@@ -332,8 +438,9 @@ class PronunciationScorer:
         if errors:
             status = "mispronounced"
             score = min(MISPRONOUNCED_CEILING, score)
-            for p in errors:
-                mistakes[p.phoneme] += 1
+            for p, tier in zip(heard.phonemes, tiers, strict=True):
+                if tier == FIX:
+                    mistakes[p.phoneme] += 1
         elif kind == "replace":
             # The sounds look fine to the audio model but Whisper heard another
             # word. Never call that "correct": say it was not recognised.
@@ -358,18 +465,40 @@ class PronunciationScorer:
             acoustic=True,
             text_score=round(text_score, 1),
             acoustic_score=round(heard.score, 1),
+            tier=FIX if FIX in tiers else CHECK if CHECK in tiers else None,
             phonemes=[
                 {
                     "phoneme": p.phoneme,
                     "score": round(100.0 * p.probability, 1),
-                    "flagged": p.probability < PHONEME_ERROR,
-                    "alternative": None if p.probability >= PHONEME_ERROR else p.alternative,
+                    # The raw goodness of pronunciation (log-posterior, <= 0) behind the score.
+                    "gop": round(p.gop, 3) if np.isfinite(p.gop) else None,
+                    "flagged": tier is not None,
+                    "tier": tier,
+                    "alternative": None if tier is None else p.alternative,
                     "start": p.start,
                     "end": p.end,
                 }
-                for p in heard.phonemes
+                for p, tier in zip(heard.phonemes, tiers, strict=True)
             ],
         )
+
+    @staticmethod
+    def _changed_word(entry: Dict[str, Any]) -> Optional[str]:
+        """The dictionary word the learner's sounds spell instead of the target, if any."""
+        if entry["spoken"] and entry["spoken"] != entry["reference"] and not entry.get("acoustic"):
+            return entry["spoken"]  # Whisper itself heard another word
+        sounds = []
+        for op in entry["alignment"]:
+            if op["op"] == "replace":
+                if op["actual"] in (gop.OTHER, ""):
+                    return None  # not a standard English sound: no word to land on
+                sounds.append(op["actual"])
+            elif op["op"] == "equal":
+                sounds.append(op["expected"])
+            elif op["op"] == "insert":
+                sounds.append(op["actual"])
+        word = phonetics.word_with_sounds(sounds) if sounds else None
+        return word if word and word != entry["reference"] else None
 
     @staticmethod
     def _speech_stats(entries: List[Dict[str, Any]], duration: Optional[float], settings: Dict[str, Any]) -> Dict[str, Any]:
@@ -474,10 +603,10 @@ class PronunciationScorer:
         insights: List[Dict[str, Any]] = []
 
         def add(kind: str, severity: str, title: str, index: Optional[int] = None,
-                expected: Optional[str] = None, actual: Optional[str] = None) -> None:
+                expected: Optional[str] = None, actual: Optional[str] = None, tier: Optional[str] = None) -> None:
             insights.append({
                 "kind": kind, "severity": severity, "title": title,
-                "word_index": index, "expected": expected, "actual": actual,
+                "word_index": index, "expected": expected, "actual": actual, "tier": tier,
             })
 
         for entry in entries:
@@ -485,21 +614,27 @@ class PronunciationScorer:
             if entry["status"] == "mispronounced":
                 ops = [op for op in entry["alignment"] if op["op"] != "equal"]
                 if not ops:
-                    add("word", "high", f"You said “{entry['spoken']}” instead of “{word}”.", entry["index"])
+                    add("word", "high", f"You said “{entry['spoken']}” instead of “{word}”.", entry["index"], tier=FIX)
                     continue
-                op = ops[0]
+                # Lead with the surest slip in the word; a borderline one is worded as uncertain.
+                op = next((o for o in ops if o.get("tier") == FIX), ops[0])
+                sure = op.get("tier") != CHECK
+                severity, tier = ("high", FIX) if sure else ("medium", CHECK)
                 if op["op"] == "replace" and op["actual"] == gop.OTHER:
-                    add("substitution", "high", f"In “{word}”, the /{op['expected']}/ sound wasn’t clear.",
-                        entry["index"], op["expected"], op["actual"])
+                    title = (f"In “{word}”, the /{op['expected']}/ sound wasn’t clear." if sure
+                             else f"In “{word}”, the /{op['expected']}/ sound may not have been clear. Worth checking.")
+                    add("substitution", severity, title, entry["index"], op["expected"], op["actual"], tier)
                 elif op["op"] == "replace":
-                    add("substitution", "high", f"In “{word}”, /{op['expected']}/ sounded like /{op['actual']}/.",
-                        entry["index"], op["expected"], op["actual"])
+                    title = (f"In “{word}”, /{op['expected']}/ sounded like /{op['actual']}/." if sure
+                             else f"In “{word}”, /{op['expected']}/ may have sounded like /{op['actual']}/. Worth checking.")
+                    add("substitution", severity, title, entry["index"], op["expected"], op["actual"], tier)
                 elif op["op"] == "delete":
-                    add("deletion", "high", f"In “{word}”, the /{op['expected']}/ sound was dropped.",
-                        entry["index"], op["expected"])
+                    title = (f"In “{word}”, the /{op['expected']}/ sound was dropped." if sure
+                             else f"In “{word}”, the /{op['expected']}/ sound may have been dropped. Worth checking.")
+                    add("deletion", severity, title, entry["index"], op["expected"], tier=tier)
                 else:
                     add("insertion", "medium", f"In “{word}”, an extra /{op['actual']}/ sound crept in.",
-                        entry["index"], None, op["actual"])
+                        entry["index"], None, op["actual"], tier)
             elif entry["status"] == "missing":
                 add("missing", "high", f"You skipped “{word}”.", entry["index"])
             elif entry["status"] == "unclear" and entry["spoken"] and entry["spoken"] != word:
@@ -541,6 +676,7 @@ class PronunciationScorer:
             "words": [],
             "insights": [],
             "weak_phonemes": [],
+            "intelligibility": {"score": 0.0, "recovered": 0, "words": 0, "estimate": True},
             "speech": {"duration": None, "speaking_time": None, "wpm": None, "long_pauses": 0, "word_count": 0},
             "feedback": feedback,
             "phoneme_analysis": {
