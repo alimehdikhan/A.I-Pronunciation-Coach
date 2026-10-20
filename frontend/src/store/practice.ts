@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { phrasesFor } from '@/lib/sentences'
-import type { EvaluationResult } from '@/lib/types'
+import type { EvaluationResult, WordResult } from '@/lib/types'
 
 export type TargetSource = 'library' | 'custom' | 'drill' | 'word'
 
@@ -26,6 +26,8 @@ interface PracticeState {
   setTarget: (target: Target) => void
   setAttempt: (attempt: Attempt) => void
   clearAttempt: () => void
+  /** Changes one word of the current attempt (e.g. after "Say just this word"). */
+  updateWord: (index: number, patch: Partial<WordResult>) => void
 }
 
 const first = phrasesFor('beginner')[1]
@@ -47,6 +49,12 @@ export const usePractice = create<PracticeState>()(
         if (previous) URL.revokeObjectURL(previous.audioUrl)
         const scores = [...(scoreHistory[target.text] ?? []), attempt.result.score].slice(-8)
         set({ attempt, scoreHistory: { ...scoreHistory, [target.text]: scores } })
+      },
+      updateWord: (index, patch) => {
+        const { attempt } = get()
+        if (!attempt) return
+        const words = attempt.result.words.map((w) => (w.index === index ? { ...w, ...patch } : w))
+        set({ attempt: { ...attempt, result: { ...attempt.result, words } } })
       },
       clearAttempt: () => {
         const { attempt } = get()
