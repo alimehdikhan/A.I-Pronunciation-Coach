@@ -32,8 +32,10 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 
 from backend.api import routers
+from backend.api.sharing import purge_on_startup
 from backend.config import PROJECT_ROOT, settings
 from backend.database import init_db
+from backend.errors import CodedHTTPException
 from backend.observability import RequestContextMiddleware, configure_logging
 from backend.repositories import ProfileLocked
 from backend.runtime import load_all, runtime
@@ -51,6 +53,11 @@ MAX_REQUEST_BYTES = settings.max_upload_bytes + 256 * 1024
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     runtime.db_ready = await run_in_threadpool(init_db)
+    if runtime.db_ready:
+        try:
+            await run_in_threadpool(purge_on_startup)
+        except Exception:
+            logger.warning("Could not purge expired share links", exc_info=True)
     loader: asyncio.Task | None = None
     if settings.load_models_on_startup:
         # Serve the app (and /health) immediately; models warm up in the
@@ -94,6 +101,11 @@ async def profile_locked_handler(request: Request, exc: ProfileLocked) -> JSONRe
         {"detail": "This name is in use on another device. Choose a different name in Settings.", "code": "profile_locked"},
         status_code=403,
     )
+
+
+@app.exception_handler(CodedHTTPException)
+async def coded_error_handler(request: Request, exc: CodedHTTPException) -> JSONResponse:
+    return JSONResponse({"detail": exc.detail, "code": exc.code}, status_code=exc.status_code, headers=exc.headers)
 
 
 @app.exception_handler(AuthError)
