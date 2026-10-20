@@ -1,4 +1,4 @@
-import { ArrowsInLineHorizontalIcon, CheckCircleIcon, ClockIcon, EyeSlashIcon, GaugeIcon, type Icon, LightbulbIcon, PlusCircleIcon, SealCheckIcon, SpeakerSlashIcon, WarningCircleIcon } from '@phosphor-icons/react'
+import { ArrowsInLineHorizontalIcon, CheckCircleIcon, ClockIcon, EyeSlashIcon, GaugeIcon, type Icon, LightbulbIcon, PlusCircleIcon, SealCheckIcon, SpeakerSlashIcon, WarningCircleIcon, WaveSineIcon } from '@phosphor-icons/react'
 import { SectionLabel } from '@/components/common'
 import type { Insight } from '@/lib/types'
 import { cn } from '@/lib/utils'
@@ -14,6 +14,7 @@ const KIND_ICON: Record<Insight['kind'], Icon> = {
   pause: ClockIcon,
   pace: GaugeIcon,
   praise: SealCheckIcon,
+  stress: WaveSineIcon,
 }
 
 const SEVERITY: Record<Insight['severity'], string> = {
