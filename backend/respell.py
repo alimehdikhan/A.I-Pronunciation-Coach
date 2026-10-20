@@ -19,6 +19,8 @@ _LETTERS = {
     "i": "ee", "ɪ": "i", "ɛ": "eh", "æ": "a", "ɑ": "ah", "ɔ": "aw", "ʊ": "oo", "u": "oo",
     "ʌ": "uh", "ə": "uh", "ɚ": "ur", "ɝ": "ur",
     "eɪ": "ay", "aɪ": "y", "ɔɪ": "oy", "aʊ": "ow", "oʊ": "oh",
+    # British display symbols (phonetics.british_display)
+    "əʊ": "oh", "ɜː": "er",
 }
 
 
@@ -26,14 +28,16 @@ def _syllable(phonemes: list[str]) -> str:
     return "".join(_LETTERS.get(p, p) for p in phonemes)
 
 
-def respell(word: str) -> str | None:
-    """The word in plain letters, or None when the dictionary does not know it."""
+def respell(word: str, accent: str = "american") -> str | None:
+    """The word in plain letters, or None when the dictionary does not know it ("car": KAHR, British: KAH)."""
     try:
         pron = phonetics.primary_pronunciation(word)
     except Exception:
         return None
     if pron.source == "spelling" or not pron.phonemes:
         return None
+    if accent == "british":
+        pron = phonetics.british_display(pron)
     syllables = phonetics.syllabify(pron)
     parts = [_syllable(list(s["phonemes"])) for s in syllables]
     if len(parts) > 1:
