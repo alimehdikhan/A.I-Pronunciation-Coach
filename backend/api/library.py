@@ -23,13 +23,17 @@ CACHEABLE = "public, max-age=3600, stale-while-revalidate=86400"
 
 
 @router.get("/api/pronounce")
-def pronounce_text(response: Response, text: str = Query(..., min_length=1, max_length=settings.max_target_chars)) -> dict[str, Any]:
-    """IPA, syllables and stress for each word of a sentence (shown before recording)."""
+def pronounce_text(
+    response: Response,
+    text: str = Query(..., min_length=1, max_length=settings.max_target_chars),
+    accent: str = Query("american", pattern="^(american|british)$"),
+) -> dict[str, Any]:
+    """IPA, syllables and stress for each word of a sentence (shown before recording); British IPA on request."""
     words = []
     for display in text.split():
         tokens = phonetics.tokenize(display)
-        details = [phonetics.describe_word(token) for token in tokens]
-        spelled = [respell(token) for token in tokens]
+        details = [phonetics.describe_word(token, accent) for token in tokens]
+        spelled = [respell(token, accent) for token in tokens]
         words.append({
             "text": display,
             "ipa": " ".join(d["ipa"] for d in details if d["ipa"]),
