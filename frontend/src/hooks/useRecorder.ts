@@ -37,7 +37,13 @@ export const recordingSupported =
  * Stops automatically after `maxSeconds`.
  */
 export function useRecorder({ maxSeconds = 30, minSeconds = 0.5, onRecorded, onError }: Options) {
-  const [state, setState] = useState<RecorderState>('idle')
+  const [state, setRenderedState] = useState<RecorderState>('idle')
+  // The same state, readable at once: a caller holding an older render's `start` still sees the truth.
+  const stateRef = useRef<RecorderState>('idle')
+  const setState = useCallback((next: RecorderState) => {
+    stateRef.current = next
+    setRenderedState(next)
+  }, [])
   const [elapsed, setElapsed] = useState(0)
   const analyserRef = useRef<AnalyserNode | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -75,7 +81,7 @@ export function useRecorder({ maxSeconds = 30, minSeconds = 0.5, onRecorded, onE
   }, [stop])
 
   const start = useCallback(async () => {
-    if (recorderRef.current || state !== 'idle') return
+    if (recorderRef.current || stateRef.current !== 'idle') return
     if (!recordingSupported) {
       callbacks.current.onError?.('Recording is not supported in this browser. Try Chrome, Edge, Firefox or Safari.')
       return
@@ -142,12 +148,12 @@ export function useRecorder({ maxSeconds = 30, minSeconds = 0.5, onRecorded, onE
             : 'Could not start recording. Is another app using the microphone?',
       )
     }
-  }, [cleanup, maxSeconds, minSeconds, state, stop])
+  }, [cleanup, maxSeconds, minSeconds, setState, stop])
 
   const toggle = useCallback(() => {
-    if (state === 'recording') stop()
-    else if (state === 'idle') void start()
-  }, [start, state, stop])
+    if (stateRef.current === 'recording') stop()
+    else if (stateRef.current === 'idle') void start()
+  }, [start, stop])
 
   useEffect(() => {
     mounted.current = true
