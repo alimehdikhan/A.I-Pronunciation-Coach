@@ -38,6 +38,8 @@ class AudioEngine {
   private raw = new Map<string, Promise<ArrayBuffer>>()
   private decoded = new Map<string, Promise<AudioBuffer>>()
   private token = 0
+  /** Settles the current `speak` call: true when it played to the end, false when cut off. */
+  private finish: ((completed: boolean) => void) | null = null
 
   /** The shared output analyser (null until the first playback). */
   get analyser(): AnalyserNode | null {
@@ -108,11 +110,11 @@ class AudioEngine {
   }
 
   /**
-   * Speak `text` with the neural voice through the analyser. Resolves when the
-   * audio finishes (or is interrupted); rejects if speech is unavailable so the
-   * caller can fall back.
+   * Speak `text` with the neural voice through the analyser. Resolves true when
+   * the audio plays to the end and false when it is interrupted; rejects if
+   * speech is unavailable so the caller can fall back.
    */
-  async speak(text: string, { key, rate = 1, voice = '' }: { key: string; rate?: number; voice?: string }): Promise<void> {
+  async speak(text: string, { key, rate = 1, voice = '' }: { key: string; rate?: number; voice?: string }): Promise<boolean> {
     const context = this.ensure()
     this.stop()
     const token = ++this.token
@@ -120,24 +122,26 @@ class AudioEngine {
 
     try {
       const buffer = await this.loadSpeech(context, text, rate, voice)
-      if (token !== this.token) return
+      if (token !== this.token) return false
 
       const source = context.createBufferSource()
       source.buffer = buffer
       source.connect(this.output!)
       this.source = source
-      const finished = new Promise<void>((resolve) => {
+      const finished = new Promise<boolean>((resolve) => {
+        this.finish = resolve
         source.onended = () => {
           if (this.source === source) {
             this.source = null
             useVoiceStore.setState({ speakingKey: null, active: false, preparing: false })
           }
-          resolve()
+          if (this.finish === resolve) this.finish = null
+          resolve(true)
         }
       })
       source.start()
       useVoiceStore.setState({ speakingKey: key, active: true, preparing: false })
-      await finished
+      return await finished
     } catch (error) {
       if (token === this.token) useVoiceStore.setState({ speakingKey: null, active: false, preparing: false })
       throw error
@@ -171,6 +175,9 @@ class AudioEngine {
   /** Stop whatever is playing (speech, recording playback, browser fallback). */
   stop() {
     this.token++
+    const finish = this.finish
+    this.finish = null
+    finish?.(false)
     if (this.source) {
       const source = this.source
       this.source = null
