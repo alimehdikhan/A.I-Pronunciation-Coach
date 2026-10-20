@@ -24,6 +24,7 @@ from starlette.datastructures import Headers, MutableHeaders
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from backend.errors import CodedHTTPException
 from backend.observability import RATE_LIMITED
 
 PROFILE_KEY_HEADER = "X-Profile-Key"
@@ -66,10 +67,8 @@ class RateLimiter:
             if len(hits) >= self.limit:
                 RATE_LIMITED.labels(self.name).inc()
                 retry_after = max(1, int(self.window - (now - hits[0])))
-                raise HTTPException(
-                    status_code=429,
-                    detail="Too many requests. Please wait a moment and try again.",
-                    headers={"Retry-After": str(retry_after)},
+                raise CodedHTTPException(
+                    429, "Too many requests. Please wait a moment and try again.", "rate_limited", {"Retry-After": str(retry_after)}
                 )
             hits.append(now)
             self._checks += 1
@@ -297,7 +296,7 @@ class BodySizeLimitMiddleware:
                 await JSONResponse({"detail": "Invalid Content-Length header."}, status_code=400)(scope, receive, send)
                 return
             if int(declared) > self.max_bytes:
-                await JSONResponse({"detail": "Request body is too large."}, status_code=413)(scope, receive, send)
+                await JSONResponse({"detail": "Request body is too large.", "code": "upload_too_large"}, status_code=413)(scope, receive, send)
                 return
 
         received = 0
@@ -308,7 +307,7 @@ class BodySizeLimitMiddleware:
             if message["type"] == "http.request":
                 received += len(message.get("body", b""))
                 if received > self.max_bytes:
-                    raise HTTPException(status_code=413, detail="Request body is too large.")
+                    raise CodedHTTPException(413, "Request body is too large.", "upload_too_large")
             return message
 
         await self.app(scope, limited_receive, send)
