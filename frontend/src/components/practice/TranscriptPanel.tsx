@@ -1,14 +1,33 @@
 import { PauseIcon, PlayIcon, TextTIcon } from '@phosphor-icons/react'
 import { motion, useTransform } from 'motion/react'
 import { useMemo } from 'react'
-import { SectionLabel } from '@/components/common'
+import { SectionLabel, Tip } from '@/components/common'
 import { ListenButton } from '@/components/tutor/SpeakButton'
 import { useAudioPeaks } from '@/hooks/useAudioPeaks'
 import type { Playback } from '@/hooks/usePlayback'
 import type { EvaluationResult, WordResult } from '@/lib/types'
-import { STATUS_META, cn, formatDuration } from '@/lib/utils'
+import { STATUS_META, TIER_META, cn, formatDuration, wordTier } from '@/lib/utils'
+import { useSettings } from '@/store/settings'
 
-const LEGEND: WordResult['status'][] = ['correct', 'unclear', 'mispronounced', 'missing', 'extra']
+type LegendKey = WordResult['status'] | 'check'
+const LEGEND: LegendKey[] = ['correct', 'unclear', 'mispronounced', 'check', 'missing', 'extra']
+
+function legendKey(word: WordResult): LegendKey {
+  if (word.confirmed === 'fine') return 'correct'
+  return wordTier(word) === 'check' ? 'check' : word.status
+}
+
+const LEGEND_META: Record<LegendKey, { label: string; color: string; dashed?: boolean }> = {
+  ...STATUS_META,
+  mispronounced: { label: TIER_META.fix.label, color: TIER_META.fix.color },
+  check: { label: TIER_META.check.label, color: TIER_META.check.color, dashed: true },
+}
+
+/** The colour a word gets in the waveform. */
+function wordColor(word: WordResult): string {
+  if (legendKey(word) === 'correct') return 'var(--primary)'
+  return wordTier(word) === 'check' ? TIER_META.check.color : STATUS_META[word.status].color
+}
 
 function WordToken({
   word,
@@ -21,21 +40,35 @@ function WordToken({
   active: boolean
   onSelect: () => void
 }) {
-  const styles: Record<WordResult['status'], string> = {
+  const styles: Record<LegendKey, string> = {
     correct: 'text-foreground',
     unclear: 'text-warn decoration-warn/60 underline decoration-dotted decoration-2 underline-offset-[6px]',
     mispronounced: 'text-bad bg-bad-soft',
+    // Borderline: softer, with a dashed outline so it never reads as a confirmed mistake (also without colour).
+    check: 'text-warn bg-warn-soft outline-2 outline-dashed -outline-offset-2 outline-warn/50',
     missing: 'text-subtle line-through decoration-2',
     extra: 'text-extra text-[0.8em] italic',
   }
+  const key = legendKey(word)
+  const goal = useSettings((s) => s.goal)
+  // Goal "be clearly understood": a sure slip that changes nothing a listener understands is shown quietly.
+  const minor = goal === 'understood' && key === 'mispronounced' && word.affects_understanding === false
   return (
     <motion.button
       layout
       type="button"
       onClick={onSelect}
+      aria-label={
+        [word.display, key === 'check' ? TIER_META.check.label.toLowerCase() : null, word.misheard ? 'a listener may mishear this' : null]
+          .filter(Boolean)
+          .join(', ') || undefined
+      }
       className={cn(
         'word-token relative rounded-[10px] px-1.5 py-0.5 transition-[background,box-shadow,color] duration-200',
-        styles[word.status],
+        styles[key],
+        // Separate from sound slips: a listener would likely not catch this word.
+        word.misheard && word.reference && word.status !== 'missing' && 'misheard',
+        minor && 'bg-transparent opacity-80 underline decoration-bad/40 decoration-2 underline-offset-[6px]',
         selected && 'ring-2 ring-primary ring-offset-2 ring-offset-card',
         active && 'bg-primary-soft text-primary',
       )}
@@ -55,8 +88,7 @@ function Waveform({ result, blob, playback, onSelect }: { result: EvaluationResu
     return data.peaks.map((_, i) => {
       const t = ((i + 0.5) / data.peaks.length) * duration
       const word = result.words.find((w) => w.start != null && w.end != null && t >= w.start && t <= w.end)
-      if (!word) return 'var(--subtle)'
-      return word.status === 'correct' ? 'var(--primary)' : STATUS_META[word.status].color
+      return word ? wordColor(word) : 'var(--subtle)'
     })
   }, [data, duration, result.words])
 
@@ -118,17 +150,25 @@ export function TranscriptPanel({
   selected: number | null
   onSelect: (index: number) => void
 }) {
-  const statuses = new Set(result.words.map((w) => w.status))
+  const statuses = new Set(result.words.map(legendKey))
   return (
     <div className="surface results-item p-6 sm:p-8">
       <SectionLabel
         icon={<TextTIcon weight="fill" />}
         action={
           <div className="hidden flex-wrap justify-end gap-3 sm:flex">
+            {result.words.some((w) => w.misheard && w.reference) && (
+              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <span className="misheard-swatch" aria-hidden /> May be misheard
+              </span>
+            )}
             {LEGEND.filter((s) => statuses.has(s)).map((s) => (
               <span key={s} className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <span className="size-2 rounded-full" style={{ background: STATUS_META[s].color }} />
-                {STATUS_META[s].label}
+                <span
+                  className={cn('size-2 rounded-full', LEGEND_META[s].dashed && 'size-2.5 border border-dashed bg-transparent')}
+                  style={LEGEND_META[s].dashed ? { borderColor: LEGEND_META[s].color } : { background: LEGEND_META[s].color }}
+                />
+                {LEGEND_META[s].label}
               </span>
             ))}
           </div>
@@ -156,8 +196,17 @@ export function TranscriptPanel({
       <div className="mt-6 rounded-2xl bg-fill p-4">
         <Waveform result={result} blob={blob} playback={playback} onSelect={onSelect} />
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
-          <span className="text-[13px] text-muted-foreground">
+          <span className="flex flex-wrap items-center gap-2 text-[13px] text-muted-foreground">
             Your recording{result.speech.wpm ? ` · ${result.speech.wpm} words/min` : ''}
+            {result.speech.careful && (
+              <Tip
+                content={`Under ${result.speech.careful_below ?? 100} words a minute: slow, careful reading scores higher than everyday speech. Try it at the pace you would talk.${result.counted === false ? ' With natural speed on, this attempt doesn’t count toward your sounds, streak or goal.' : ''}`}
+              >
+                <span className="rounded-full bg-warn-soft px-2 py-0.5 text-[12px] font-medium text-warn">
+                  Careful speech{result.counted === false ? ' · not counted' : ''}
+                </span>
+              </Tip>
+            )}
           </span>
           <ListenButton text={result.reference_text} speakKey="compare-native" label="Reference voice" className="h-8 bg-card" />
         </div>
