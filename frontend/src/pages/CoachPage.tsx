@@ -220,7 +220,7 @@ function Session({ plan, username }: { plan: CoachPlan; username: string }) {
                 onClick={() => setIndex(i)}
                 aria-label={s.title}
                 aria-current={i === index}
-                className={cn('h-2 rounded-full transition-all', i === index ? 'w-8 bg-primary' : i < index ? 'w-4 bg-primary/50' : 'w-4 bg-fill-strong')}
+                className={cn('h-2 rounded-full transition-[width,background-color] duration-200 ease-out', i === index ? 'w-8 bg-primary' : i < index ? 'w-4 bg-primary/50' : 'w-4 bg-fill-strong')}
               />
             </li>
           ))}
@@ -347,7 +347,7 @@ function Session({ plan, username }: { plan: CoachPlan; username: string }) {
         </Button>
         {last ? (
           <Button asChild size="lg" className="rounded-xl">
-            <Link to="/">
+            <Link to="/practice">
               Back to practice <ArrowRightIcon weight="bold" />
             </Link>
           </Button>
