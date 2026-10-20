@@ -7,6 +7,7 @@ so they stay fast for users with thousands of sessions.
 
 from __future__ import annotations
 
+import json
 from datetime import date, timedelta
 from typing import Any
 
@@ -17,10 +18,14 @@ from sqlalchemy.orm import Session, selectinload
 from backend.database import (
     BaselineRecording,
     Dispute,
+    InterviewSession,
+    ListenerAnswer,
+    ListenerClip,
     PasswordReset,
     PerceptionTrial,
     PhonemeMistake,
     PhonemeObservation,
+    ProgressClip,
     PronunciationRecord,
     Share,
     ShareComment,
@@ -143,6 +148,8 @@ def drop_other_devices(db: Session, user: User, keep_key: str) -> None:
 
 def delete_account(db: Session, user: User) -> None:
     delete_history(db, user)
+    # What this learner heard in other people's recordings goes with the account.
+    db.execute(delete(ListenerAnswer).where(ListenerAnswer.listener_id == user.id))
     db.execute(delete(UserKey).where(UserKey.user_id == user.id))
     db.execute(delete(PasswordReset).where(PasswordReset.user_id == user.id))
     db.delete(user)
@@ -394,6 +401,65 @@ def delete_baseline_audio(db: Session, user: User) -> int:
     return int(count or 0)
 
 
+# --- Mock interviews (text only) --------------------------------------------------
+
+
+def create_interview(
+    db: Session, user: User, kind: str, role: str, level: str, questions: list[Any], keep: int
+) -> InterviewSession:
+    """Start a saved interview; only the newest `keep` interviews are kept.
+
+    `questions` holds bank question ids, or whole questions written for this candidate (from their CV).
+    """
+    row = InterviewSession(
+        user_id=user.id, interview_type=kind, role=role, level=level,
+        questions=json.dumps(questions, ensure_ascii=False), answers="{}",
+    )
+    db.add(row)
+    db.flush()
+    stale = select(InterviewSession.id).where(InterviewSession.user_id == user.id).order_by(
+        InterviewSession.created_at.desc(), InterviewSession.id.desc()
+    ).offset(keep)
+    db.execute(delete(InterviewSession).where(InterviewSession.id.in_(stale)).execution_options(synchronize_session=False))
+    db.commit()
+    return row
+
+
+def interview_rows(db: Session, user: User, limit: int = 20) -> list[InterviewSession]:
+    """The learner's interviews, newest first."""
+    return list(
+        db.scalars(
+            select(InterviewSession)
+            .where(InterviewSession.user_id == user.id)
+            .order_by(InterviewSession.created_at.desc(), InterviewSession.id.desc())
+            .limit(limit)
+        )
+    )
+
+
+def find_interview(db: Session, user: User, session_id: int) -> InterviewSession | None:
+    return db.scalar(select(InterviewSession).where(InterviewSession.id == session_id, InterviewSession.user_id == user.id))
+
+
+def save_interview_answer(db: Session, row: InterviewSession, index: int, answer: dict[str, Any]) -> None:
+    """Store (or replace) the answer to question `index`."""
+    answers = json.loads(row.answers or "{}")
+    answers[str(index)] = answer
+    row.answers = json.dumps(answers, ensure_ascii=False)
+    row.updated_at = utcnow()
+    db.commit()
+
+
+def delete_interview(db: Session, user: User, session_id: int) -> bool:
+    count = db.execute(
+        delete(InterviewSession)
+        .where(InterviewSession.id == session_id, InterviewSession.user_id == user.id)
+        .execution_options(synchronize_session=False)
+    ).rowcount
+    db.commit()
+    return bool(count)
+
+
 def save_perception(db: Session, user: User, trials: list[dict[str, Any]]) -> None:
     """Store listening-drill answers (correctness decided here, not by the client)."""
     for t in trials:
@@ -494,6 +560,12 @@ def delete_history(db: Session, user: User) -> int:
     db.execute(delete(ShareComment).where(ShareComment.record_id.in_(record_ids)).execution_options(synchronize_session=False))
     db.execute(delete(Share).where(Share.user_id == user.id).execution_options(synchronize_session=False))
     db.execute(delete(PerceptionTrial).where(PerceptionTrial.user_id == user.id).execution_options(synchronize_session=False))
+    db.execute(delete(InterviewSession).where(InterviewSession.user_id == user.id).execution_options(synchronize_session=False))
+    # Recordings shared with real listeners belong to the attempts, so they go too, with what listeners heard.
+    clip_ids = select(ListenerClip.id).where(ListenerClip.user_id == user.id)
+    db.execute(delete(ListenerAnswer).where(ListenerAnswer.clip_id.in_(clip_ids)).execution_options(synchronize_session=False))
+    db.execute(delete(ListenerClip).where(ListenerClip.user_id == user.id).execution_options(synchronize_session=False))
+    db.execute(delete(ProgressClip).where(ProgressClip.user_id == user.id).execution_options(synchronize_session=False))
     db.execute(
         delete(PhonemeMistake).where(PhonemeMistake.record_id.in_(record_ids)).execution_options(synchronize_session=False)
     )
