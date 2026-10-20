@@ -25,7 +25,7 @@ export function SessionRow({ record }: { record: HistoryRecord }) {
           className="min-w-0 flex-1 text-left"
           onClick={() => {
             setTarget({ text: record.target_text, source: 'custom' })
-            navigate('/')
+            navigate('/practice')
           }}
         >
           <div className="truncate text-[15px] font-medium hover:text-primary">{record.target_text}</div>
