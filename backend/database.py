@@ -334,12 +334,96 @@ class Dispute(Base):
     created_at = Column(DateTime, default=utcnow)
 
 
+class InterviewSession(Base):
+    """One mock interview: the questions asked and, per question, the latest scored answer.
+
+    Text only: the transcript and the feedback, never audio. Deleted with the learner's
+    history or account, or one at a time.
+    """
+
+    __tablename__ = "interview_sessions"
+    __table_args__ = (Index("ix_interview_sessions_user_created", "user_id", "created_at"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    # backend.interview.TYPES: "full", "hr", "behavioural", "technical", "phone", "university" or "visa".
+    interview_type = Column(String(16), nullable=True)
+    role = Column(String(20), nullable=False)
+    level = Column(String(10), nullable=False)
+    questions = Column(Text, nullable=False)  # JSON: the question ids, in order
+    answers = Column(Text, nullable=False, default="{}")  # JSON: {question index: stored answer}
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow)
+
+
+class ProgressClip(Base):
+    """One recording of the "Day 1 vs Day 30" interview answer: round 0 is day one, then one round per month.
+
+    Stored only with consent; the measures (pace, fillers, pauses, sound score) are kept with it so the
+    rounds can be compared, and the video of the two is made in the browser, never on the server.
+    """
+
+    __tablename__ = "progress_clips"
+    __table_args__ = (Index("ix_progress_clips_user_round", "user_id", "round", unique=True),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    round = Column(Integer, nullable=False)
+    prompt_id = Column(String(20), nullable=False)
+    audio = Column(LargeBinary, nullable=True)
+    audio_type = Column(String(40), nullable=True)
+    transcript = Column(Text, nullable=False)
+    measures = Column(Text, nullable=False)  # JSON: delivery, sound score, slips
+    consent_at = Column(DateTime, nullable=False)
+    created_at = Column(DateTime, default=utcnow)
+
+
+class ListenerClip(Base):
+    """One practice recording a learner chose to play to other learners (anonymously), for 30 days.
+
+    The audio is stored only with consent and is deleted when the clip expires, is deleted by its
+    owner, or is reported. The sentence comes from the saved attempt, never from the client.
+    """
+
+    __tablename__ = "listener_clips"
+    __table_args__ = (Index("ix_listener_clips_user", "user_id"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    record_id = Column(Integer, ForeignKey("pronunciation_records.id"), nullable=True)
+    target_text = Column(String(500), nullable=False)
+    audio = Column(LargeBinary, nullable=True)
+    audio_type = Column(String(40), nullable=True)
+    consent_at = Column(DateTime, nullable=False)
+    created_at = Column(DateTime, default=utcnow)
+    expires_at = Column(DateTime, nullable=False)
+    # Reported by a listener: no longer played to anyone.
+    hidden = Column(Boolean, nullable=False, default=False)
+
+
+class ListenerAnswer(Base):
+    """What one listener heard in one clip: per word, heard or not (the typed text itself is not shown to the owner)."""
+
+    __tablename__ = "listener_answers"
+    __table_args__ = (Index("ix_listener_answers_clip_listener", "clip_id", "listener_id", unique=True),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    clip_id = Column(Integer, ForeignKey("listener_clips.id"), nullable=False)
+    listener_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    words_total = Column(Integer, nullable=False)
+    words_heard = Column(Integer, nullable=False)
+    # JSON: [{"word": target word, "heard": bool, "as": what was typed instead or null}]
+    words = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=utcnow)
+
+
 # Columns added after the first release. create_all() never alters existing
 # tables, so add any that are missing with a plain ALTER TABLE.
 ADDED_COLUMNS = {
     "pronunciation_records": ["pronunciation", "fluency", "completeness", "clarity", "wpm", "counted"],
     "users": ["key_hash", "email", "password_hash", "display_name", "first_language", "goal", "tip_language"],
     "phoneme_observations": ["tier"],
+    "interview_sessions": ["interview_type"],
 }
 
 
