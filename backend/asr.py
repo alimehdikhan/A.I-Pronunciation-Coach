@@ -76,11 +76,13 @@ class WhisperASR:
         segments, _ = self.model.transcribe(noise, language="en", beam_size=1, vad_filter=False, without_timestamps=True)
         list(segments)
 
-    def transcribe(self, audio: np.ndarray, language: str = "en") -> dict[str, Any]:
+    def transcribe(self, audio: np.ndarray, language: str = "en", prompt: str | None = None) -> dict[str, Any]:
         """Transcribe 16 kHz mono float32 audio.
 
         Returns ``text``, ``words`` (``word``, ``start``, ``end``,
-        ``probability``), ``language`` and ``duration``.
+        ``probability``), ``language`` and ``duration``. Scoring never passes a
+        ``prompt``: Whisper is not told the target sentence. Free speaking passes a
+        generic disfluent one so that filler words are written down.
         """
         duration = len(audio) / SAMPLE_RATE
         if duration < MIN_AUDIO_SECONDS:
@@ -93,6 +95,7 @@ class WhisperASR:
             beam_size=self.beam_size,
             word_timestamps=True,
             condition_on_previous_text=False,
+            initial_prompt=prompt,
             vad_filter=True,
             vad_parameters={"min_silence_duration_ms": 500, "speech_pad_ms": 300},
         )
