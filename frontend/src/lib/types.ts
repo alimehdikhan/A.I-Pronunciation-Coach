@@ -179,6 +179,9 @@ export interface Health {
   free_speech_seconds?: number
   /** Password reset by email is set up on this server. */
   password_reset?: boolean
+  /** Who runs this deployment and how to reach them (Privacy, Terms, About). */
+  operator?: string
+  contact_email?: string | null
   version: string
 }
 
@@ -615,4 +618,291 @@ export interface CoachPlan {
   mastery: SoundMastery[]
   session: SessionStep[]
   briefing: { text: string; source: 'groq' | 'template' }
+}
+
+/* Mock interviews */
+
+export type InterviewType = 'full' | 'hr' | 'behavioural' | 'technical' | 'tough' | 'phone' | 'university' | 'visa' | 'cv'
+export type InterviewKind =
+  | 'intro'
+  | 'motivation'
+  | 'behavioural'
+  | 'role'
+  | 'strengths'
+  | 'logistics'
+  | 'tough'
+  | 'closing'
+  | 'uni_background'
+  | 'uni_why'
+  | 'uni_goals'
+  | 'visa_background'
+  | 'visa_study'
+  | 'visa_funding'
+  | 'visa_plans'
+export type FollowUpId = 'example' | 'result' | 'ownership' | 'more'
+
+export interface InterviewQuestion {
+  id: string
+  /** Position in the interview; answers are keyed by it. */
+  index: number | null
+  kind: InterviewKind | 'follow_up'
+  text: string
+  /** What interviewers listen for in an answer to this kind of question. */
+  look_for: string
+  phrases: string[]
+  /** The usual length of a good answer, in seconds. */
+  target_seconds: [number, number]
+  /** A story question, answered Situation, Task, Action, Result. */
+  star: boolean
+  follow_up?: FollowUpId
+  /** CV interviews: what on the CV or job advert the question is about. */
+  about?: string | null
+}
+
+/** What was read from a CV and job advert (shown to the learner, never stored). */
+export interface CvRead {
+  current_role: string
+  job_title: string
+  projects: string[]
+  skills: string[]
+  shared_skills: string[]
+  missing_skills: string[]
+}
+
+export interface InterviewOptions {
+  /** `role` and `level`: whether the job role and experience shape this kind of interview. */
+  types: { id: InterviewType; label: string; description: string; role: boolean; level: boolean }[]
+  roles: { id: string; label: string }[]
+  levels: { id: string; label: string }[]
+  counts: number[]
+  max_seconds: number
+}
+
+/** Labels are null when that setting doesn't apply to the interview type (a student visa has no job role). */
+export interface InterviewLabels {
+  type: InterviewType
+  type_label: string
+  role: string
+  role_label: string | null
+  level: string
+  level_label: string | null
+}
+
+export interface InterviewStart extends InterviewLabels {
+  /** Null when the interview isn't saved (no name). */
+  id: number | null
+  saved: boolean
+  questions: InterviewQuestion[]
+  max_seconds: number
+  /** CV interviews: who wrote the questions, and what was read from the CV. */
+  source?: 'groq' | 'template'
+  read?: CvRead
+}
+
+export interface InterviewCheck {
+  id: string
+  ok: boolean
+  label: string
+  /** What to do, when the check failed. */
+  fix: string | null
+}
+
+export type ContentKey = 'relevance' | 'structure' | 'specificity' | 'clarity'
+
+export interface InterviewRubric {
+  scores: Record<ContentKey, number>
+  star: { situation: boolean; task: boolean; action: boolean; result: boolean } | null
+  strengths: string[]
+  improvements: string[]
+  /** The candidate's own answer, clearer; [brackets] mark what they still need to add. */
+  stronger_answer: string | null
+  follow_up?: string | null
+  /** What the interviewer says after the answer, showing they listened. */
+  reaction?: string | null
+  summary: string | null
+}
+
+export type InterviewDelivery = NonNullable<SpeakResult['delivery']>
+
+export interface InterviewAnswerResult {
+  question: InterviewQuestion
+  transcription: string
+  no_speech: boolean
+  note: string
+  max_seconds: number
+  delivery: InterviewDelivery | null
+  words: (WordResult & { reported?: boolean })[]
+  slips: SpeakResult['slips']
+  pronunciation: number | null
+  checks: InterviewCheck[]
+  rubric: InterviewRubric | null
+  rubric_source: 'groq' | 'template' | null
+  /** What the interviewer would ask next about this answer, if it missed something. */
+  follow_up: { id: FollowUpId; text: string } | null
+  /** The interviewer's answer to the candidate's own questions at the end. */
+  reply: string | null
+  saved: boolean
+  attempt: number
+}
+
+/** What a saved interview keeps of one answer: text and numbers, never audio. */
+export interface StoredInterviewAnswer {
+  question_id: string
+  transcript: string
+  delivery: Omit<InterviewDelivery, 'pause_lengths' | 'fillers'> & { fillers: { count: number; words: string[] } }
+  checks: InterviewCheck[]
+  rubric: InterviewRubric | null
+  slips: { word: string; expected: string; actual: string; changes_word: string | null }[]
+  pronunciation: number | null
+  attempt: number
+  answered_at: string
+  follow_up?: Omit<StoredInterviewAnswer, 'follow_up'> & { id: FollowUpId; text: string }
+}
+
+export interface InterviewReport {
+  answered: number
+  average_wpm: number | null
+  fillers_per_minute: number | null
+  long_pauses: number
+  content: Record<ContentKey, number> | null
+  content_overall: number | null
+  checks_passed: number
+  checks_total: number
+  /** The three things most worth working on, most common first. */
+  focus: string[]
+  /** Sounds that slipped most often (IPA). */
+  sounds: string[]
+}
+
+export interface InterviewSummary extends InterviewLabels {
+  id: number
+  created_at: string
+  updated_at: string
+  total: number
+  answered: number
+  finished: boolean
+  content_score: number | null
+}
+
+export interface InterviewDetail extends InterviewSummary {
+  questions: InterviewQuestion[]
+  answers: Record<string, StoredInterviewAnswer>
+  report: InterviewReport
+  max_seconds: number
+}
+
+/* Group discussion */
+
+export interface GdTopics {
+  topics: { id: string; title: string }[]
+  personas: { name: string; voice: string; stance: 'for' | 'against' | 'balanced' }[]
+  max_seconds: number
+}
+
+/** One turn in the discussion; `you` marks the learner's. */
+export interface GdTurn {
+  speaker: string
+  text: string
+  you: boolean
+  seconds?: number | null
+  /** The learner started talking while someone else was mid-sentence. */
+  cut_in?: boolean
+  /** The learner's summary at the end. */
+  summary?: boolean
+  delivery?: InterviewDelivery | null
+}
+
+export interface GdContribution {
+  text: string
+  no_speech: boolean
+  delivery: InterviewDelivery | null
+  slips: SpeakResult['slips']
+}
+
+export type GdKey = 'content' | 'communication' | 'teamwork' | 'leadership'
+
+export interface GdReport {
+  topic: { id: string; title: string }
+  checks: InterviewCheck[]
+  stats: {
+    contributions: number
+    share: number
+    your_seconds: number
+    words: number
+    average_wpm: number | null
+    fillers_per_minute: number | null
+    cut_ins: number
+  }
+  rubric: {
+    scores: Record<GdKey, number>
+    strengths: string[]
+    improvements: string[]
+    better_point: string | null
+    summary: string | null
+  } | null
+  rubric_source: 'groq' | 'template' | null
+}
+
+/* Real listeners */
+
+export interface ListenerWordResult {
+  word: string
+  heard: boolean
+  /** What was typed in its place, when something was. */
+  as: string | null
+}
+
+export interface ListenerClipResult {
+  id: number
+  record_id: number | null
+  text: string
+  created_at: string | null
+  expires_at: string
+  active: boolean
+  /** A listener reported it; it is no longer played. */
+  hidden: boolean
+  listeners: number
+  /** Share of words real listeners understood (0-100), once someone has listened. */
+  understood: number | null
+  words: { word: string; heard: number; of: number; heard_as: string[] }[]
+  missed: { word: string; heard: number; of: number; heard_as: string[] }[]
+}
+
+/* Day 1 vs Day 30 */
+
+export interface Day30Measures {
+  wpm: number | null
+  duration: number
+  words: number
+  long_pauses: number
+  fillers: number
+  fillers_per_minute: number | null
+  pronunciation: number | null
+  slips: { word: string; expected: string; actual: string }[]
+}
+
+export interface Day30Round {
+  round: number
+  prompt: { id: string; text: string }
+  transcript: string
+  measures: Day30Measures
+  has_audio: boolean
+  created_at: string | null
+}
+
+export interface Day30Change {
+  before: number
+  after: number
+  delta: number
+  /** null when nothing changed. */
+  better: boolean | null
+}
+
+export interface Day30Status {
+  prompts: { id: string; text: string }[]
+  max_seconds: number
+  every_days: number
+  rounds: Day30Round[]
+  next: { round: number; due: boolean; due_at: string | null }
+  comparison: Partial<Record<'fillers_per_minute' | 'long_pauses' | 'slips' | 'pronunciation' | 'wpm' | 'duration', Day30Change | null>> | null
 }
