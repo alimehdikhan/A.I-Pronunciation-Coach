@@ -9,6 +9,7 @@ import {
   UserCircleIcon,
   UserIcon,
 } from '@phosphor-icons/react'
+import { useProfileSync } from '@/hooks/useProfileSync'
 import { AnimatePresence, motion } from 'motion/react'
 import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Navigate, NavLink, useLocation, useNavigate, useOutlet } from 'react-router'
@@ -34,6 +35,7 @@ import { NAV } from './nav'
 const CommandMenu = lazy(() => import('./CommandMenu').then((m) => ({ default: m.CommandMenu })))
 const VoiceAgent = lazy(() => import('@/components/voice/VoiceAgent').then((m) => ({ default: m.VoiceAgent })))
 const ChatLauncher = lazy(() => import('@/components/coach/ChatLauncher').then((m) => ({ default: m.ChatLauncher })))
+const MicCheckDialog = lazy(() => import('@/components/practice/MicCheck').then((m) => ({ default: m.MicCheckDialog })))
 const SettingsDialog = lazy(() => import('./SettingsDialog').then((m) => ({ default: m.SettingsDialog })))
 const OnboardingDialog = lazy(() => import('./OnboardingDialog').then((m) => ({ default: m.OnboardingDialog })))
 const PhonemeSheet = lazy(() => import('@/components/tutor/PhonemeSheet').then((m) => ({ default: m.PhonemeSheet })))
@@ -262,7 +264,7 @@ function MobileHeader() {
 function TabBar() {
   return (
     <nav className="material fixed inset-x-0 bottom-0 z-30 border-t border-border pb-[env(safe-area-inset-bottom)] lg:hidden">
-      <div className="grid grid-cols-6">
+      <div className="grid grid-cols-7">
         {NAV.map(({ to, short, icon: IconComp }) => (
           <NavLink key={to} to={to} end={to === '/'} className="flex flex-col items-center gap-0.5 pt-2 pb-1.5">
             {({ isActive }) => (
@@ -309,6 +311,7 @@ function useEntryGate(pathname: string): boolean {
 export function AppShell() {
   useThemeSync()
   useAccountSync()
+  useProfileSync()
   useCommandShortcut()
   const location = useLocation()
   const gated = useEntryGate(location.pathname)
@@ -345,6 +348,7 @@ export function AppShell() {
       <Suspense fallback={null}>
         <CommandMenu />
         <SettingsDialog />
+        <MicCheckDialog />
         <OnboardingDialog />
         <PhonemeSheet />
         <ChatLauncher />
