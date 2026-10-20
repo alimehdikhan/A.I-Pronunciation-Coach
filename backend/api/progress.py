@@ -20,6 +20,7 @@ from backend.repositories import (
     find_user,
     history,
     history_total,
+    perception_stats,
     weakness_rows,
 )
 from backend.security import clean_username
@@ -41,6 +42,7 @@ EMPTY_ANALYTICS: dict[str, Any] = {
     "daily_activity": [],
     "sound_mastery": [],
     "tricky_words": [],
+    "perception": [],
 }
 
 
@@ -95,7 +97,8 @@ def get_analytics(
     if not user:
         return EMPTY_ANALYTICS
     authorize(db, user, key)
-    return analytics(db, user, tz_offset) or EMPTY_ANALYTICS
+    # Listening drills count even before the first spoken attempt.
+    return analytics(db, user, tz_offset) or {**EMPTY_ANALYTICS, "perception": perception_stats(db, user)}
 
 
 @router.get("/api/tutor/personalized-practice/{username}")
@@ -106,13 +109,15 @@ def get_personalized_practice_endpoint(
     name = clean_username(username) or ""
     user = find_user(db, name)
     weaknesses: list[tuple[str, int]] = []
+    first_language = None
     if user:
         try:
             authorize(db, user, key)
             weaknesses = weakness_rows(db, user, 4)
+            first_language = user.first_language
         except ProfileLocked:
             pass  # Someone else's profile: offer the default drills instead.
-    practice = get_personalized_practice(weaknesses)
+    practice = get_personalized_practice(weaknesses, first_language)
     return {
         "username": name,
         "personalized": bool(practice and practice[0]["personalized"]),
