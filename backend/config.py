@@ -103,6 +103,9 @@ class Settings:
     smtp_user: str = field(default_factory=lambda: os.getenv("PRONUNCIATION_COACH_SMTP_USER", "").strip())
     smtp_password: str = field(default_factory=lambda: os.getenv("PRONUNCIATION_COACH_SMTP_PASSWORD", ""))
     mail_from: str = field(default_factory=lambda: os.getenv("PRONUNCIATION_COACH_MAIL_FROM", "").strip())
+    # Who runs this deployment and how to reach them, shown on the Privacy, Terms and About pages.
+    operator_name: str = field(default_factory=lambda: os.getenv("PRONUNCIATION_COACH_OPERATOR", "Ali Mehdi Khan").strip())
+    contact_email: str = field(default_factory=lambda: os.getenv("PRONUNCIATION_COACH_CONTACT_EMAIL", "").strip())
     # The address learners open the app at, for links in emails (e.g. https://coach.example.com).
     public_url: str = field(default_factory=lambda: os.getenv("PRONUNCIATION_COACH_PUBLIC_URL", "").strip().rstrip("/"))
     gemini_live_model: str = field(
@@ -157,6 +160,10 @@ class Settings:
     max_audio_seconds: float = field(default_factory=lambda: _float("PRONUNCIATION_COACH_MAX_AUDIO_SECONDS", 60.0))
     # Longest answer in "Speak freely" (that mode only; everything else keeps max_audio_seconds).
     free_speech_seconds: float = field(default_factory=lambda: max(10.0, _float("PRONUNCIATION_COACH_FREE_SPEECH_SECONDS", 120.0)))
+    # Longest answer in a mock interview: a full STAR story runs to two minutes, so a little more room.
+    interview_seconds: float = field(default_factory=lambda: max(30.0, _float("PRONUNCIATION_COACH_INTERVIEW_SECONDS", 150.0)))
+    # Days between the "Day 1" interview answer and the next recording of the same answer.
+    compare_days: int = field(default_factory=lambda: max(0, _int("PRONUNCIATION_COACH_COMPARE_DAYS", 30)))
     max_target_chars: int = 500
     # Remove room noise and quieter background voices from recordings before scoring.
     noise_cleanup: bool = field(default_factory=lambda: _flag("PRONUNCIATION_COACH_NOISE_CLEANUP", "1"))
