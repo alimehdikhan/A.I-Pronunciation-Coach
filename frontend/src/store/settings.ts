@@ -10,6 +10,10 @@ export function newProfileKey(): string {
   return btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 }
 
+export type Goal = 'understood' | 'accent'
+export type Accent = 'american' | 'british'
+export type TipLanguage = 'English' | 'Hindi' | 'Urdu' | 'Hinglish'
+
 interface SettingsState {
   username: string
   theme: Theme
@@ -18,6 +22,16 @@ interface SettingsState {
   dailyGoal: number
   /** The learner's first language, so the coach can say what is typically hard for them. Stays in this browser. */
   nativeLanguage: string | null
+  /** Careful (slow) speech is shown but not counted toward mastery, streaks or the daily goal. */
+  naturalSpeed: boolean
+  /** 'understood': slips that change what a listener understands come first; 'accent': every slip. */
+  goal: Goal
+  /** Experimental: check which syllable of each long word was stressed. */
+  stressCheck: boolean
+  /** The English the coach aims for: American (default) or British (non-rhotic forms accepted, British IPA and voice). */
+  accent: Accent
+  /** The language coaching tips are written in. */
+  tipLanguage: TipLanguage
   /** Which neural voice the server speaks with; null is the server's default. */
   coachVoice: string | null
   rate: number
@@ -38,6 +52,11 @@ interface SettingsState {
   setVoiceURI: (uri: string | null) => void
   setDailyGoal: (goal: number) => void
   setNativeLanguage: (language: string | null) => void
+  setNaturalSpeed: (on: boolean) => void
+  setGoal: (goal: Goal) => void
+  setStressCheck: (on: boolean) => void
+  setAccent: (accent: Accent) => void
+  setTipLanguage: (language: TipLanguage) => void
   setCoachVoice: (voice: string | null) => void
   setRate: (rate: number) => void
   setLevel: (level: Level) => void
@@ -58,6 +77,11 @@ export const useSettings = create<SettingsState>()(
       theme: 'dark',
       voiceURI: null,
       dailyGoal: 5,
+      naturalSpeed: false,
+      goal: 'understood',
+      stressCheck: false,
+      accent: 'american',
+      tipLanguage: 'English',
       nativeLanguage: null,
       coachVoice: null,
       rate: 0.95,
@@ -73,6 +97,11 @@ export const useSettings = create<SettingsState>()(
       setTheme: (theme) => set({ theme }),
       setVoiceURI: (voiceURI) => set({ voiceURI }),
       setDailyGoal: (dailyGoal) => set({ dailyGoal }),
+      setNaturalSpeed: (naturalSpeed) => set({ naturalSpeed }),
+      setGoal: (goal) => set({ goal }),
+      setStressCheck: (stressCheck) => set({ stressCheck }),
+      setAccent: (accent) => set({ accent }),
+      setTipLanguage: (tipLanguage) => set({ tipLanguage }),
       setNativeLanguage: (nativeLanguage) => set({ nativeLanguage }),
       setCoachVoice: (coachVoice) => set({ coachVoice }),
       setRate: (rate) => set({ rate }),
