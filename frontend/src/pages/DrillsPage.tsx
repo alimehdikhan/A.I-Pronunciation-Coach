@@ -5,7 +5,8 @@ import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
-import { Panel, Pill, SectionLabel } from '@/components/common'
+import { Panel, Pill, Segmented, SectionLabel } from '@/components/common'
+import { ListenDrill } from '@/components/drills/ListenDrill'
 import { PageHeader } from '@/components/layout/AppShell'
 import { LazySiriOrb as SiriOrb } from '@/components/orb/LazySiriOrb'
 import { PhonemeGuide } from '@/components/tutor/PhonemeGuide'
@@ -215,6 +216,13 @@ export default function DrillsPage() {
   const { data: practice, isLoading } = usePracticeDrills(username)
   const drills = practice?.practices ?? []
   const requested = params.get('sound')
+  const mode = params.get('mode') === 'listen' ? 'listen' : 'speak'
+  const setMode = (next: 'speak' | 'listen') => {
+    const nextParams = new URLSearchParams(params)
+    if (next === 'listen') nextParams.set('mode', 'listen')
+    else nextParams.delete('mode')
+    setParams(nextParams)
+  }
   const symbol = requested ?? drills[0]?.target_phoneme ?? null
   const { data: phoneme } = usePhoneme(symbol)
   const scope = useRef<HTMLDivElement>(null)
@@ -237,11 +245,22 @@ export default function DrillsPage() {
             : 'Start with the sounds English learners find hardest. Practise a few phrases and this list adapts to you.'
         }
         actions={
-          <Button asChild variant="secondary">
-            <Link to="/sounds">
-              All sounds <ArrowRightIcon weight="bold" />
-            </Link>
-          </Button>
+          <div className="flex flex-wrap items-center gap-3">
+            <Segmented<'speak' | 'listen'>
+              layoutId="drill-mode"
+              value={mode}
+              onChange={setMode}
+              options={[
+                { value: 'speak', label: 'Speak' },
+                { value: 'listen', label: 'Listen' },
+              ]}
+            />
+            <Button asChild variant="secondary">
+              <Link to="/sounds">
+                All sounds <ArrowRightIcon weight="bold" />
+              </Link>
+            </Button>
+          </div>
         }
       />
 
@@ -255,7 +274,7 @@ export default function DrillsPage() {
               <button
                 key={item.symbol}
                 type="button"
-                onClick={() => setParams({ sound: item.symbol })}
+                onClick={() => setParams(mode === 'listen' ? { sound: item.symbol, mode } : { sound: item.symbol })}
                 className={cn(
                   'surface lift flex w-44 shrink-0 items-center gap-3 rounded-[22px] p-4 text-left',
                   active && 'ring-ai',
@@ -282,7 +301,16 @@ export default function DrillsPage() {
         </div>
       </div>
 
-      {phoneme ? (
+      {mode === 'listen' ? (
+        <Panel className="drill-item p-6 sm:p-8">
+          <p className="mb-5 max-w-2xl text-[15px] leading-relaxed text-muted-foreground">
+            You hear one word of a pair, each time in a different voice, and pick which one it was. Training your ear on many
+            voices is what helps you hear (and then say) the difference in real speech.
+            {!requested && ' With no sound picked, it trains the sounds you mix up most.'}
+          </p>
+          <ListenDrill key={requested ?? 'weakest'} focus={requested} />
+        </Panel>
+      ) : phoneme ? (
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] lg:items-start">
           <PairChallenge phoneme={phoneme} />
           <Panel className="drill-item p-6 sm:p-8">
