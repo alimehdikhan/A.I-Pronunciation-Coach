@@ -74,7 +74,7 @@ export function CommandMenu() {
                 run(() => {
                   setLevel(phrase.level)
                   setTarget({ text: phrase.text, source: 'library', phraseId: phrase.id })
-                  navigate('/')
+                  navigate('/practice')
                 })
               }
             >
