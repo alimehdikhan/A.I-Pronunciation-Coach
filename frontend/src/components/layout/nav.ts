@@ -1,5 +1,6 @@
 import {
   BookOpenTextIcon,
+  BriefcaseIcon,
   ChalkboardTeacherIcon,
   ChartLineUpIcon,
   ChatsCircleIcon,
@@ -10,7 +11,8 @@ import {
 } from '@phosphor-icons/react'
 
 export const NAV: { to: string; label: string; short: string; icon: Icon }[] = [
-  { to: '/', label: 'Practice', short: 'Practice', icon: MicrophoneIcon },
+  { to: '/practice', label: 'Practice', short: 'Practice', icon: MicrophoneIcon },
+  { to: '/interview', label: 'Interview prep', short: 'Interview', icon: BriefcaseIcon },
   { to: '/speak', label: 'Speak freely', short: 'Speak', icon: ChatsCircleIcon },
   { to: '/journey', label: 'Journey', short: 'Journey', icon: MapTrifoldIcon },
   { to: '/coach', label: 'Coach', short: 'Coach', icon: ChalkboardTeacherIcon },
