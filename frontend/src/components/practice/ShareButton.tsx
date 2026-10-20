@@ -1,6 +1,7 @@
 import { CheckIcon, CopyIcon, ShareNetworkIcon } from '@phosphor-icons/react'
 import { useMutation } from '@tanstack/react-query'
 import { useState } from 'react'
+import { Link } from 'react-router'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -79,7 +80,10 @@ export function ShareButton({ attempt }: { attempt: Attempt }) {
                 />
                 <span>
                   I agree that this recording is stored so that anyone with the link can play it for 7 days. After that, or if I stop
-                  the link, the recording is deleted.
+                  the link, the recording is deleted.{' '}
+                  <Link to="/privacy" className="text-primary hover:underline">
+                    Privacy Policy
+                  </Link>
                 </span>
               </label>
               <Button onClick={() => create.mutate()} disabled={!consent || create.isPending}>
