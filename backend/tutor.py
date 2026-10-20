@@ -88,14 +88,21 @@ def generate_tutor_card(word: str, expected_phoneme: str, actual_phoneme: str) -
 WeaknessInput = Union[str, Tuple[str, int]]
 
 
-def get_personalized_practice(weaknesses: Sequence[WeaknessInput]) -> List[Dict[str, Any]]:
-    """Build drills for weak phonemes (symbols, or (symbol, mistake_count) pairs)."""
+def get_personalized_practice(weaknesses: Sequence[WeaknessInput], first_language: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Build drills for weak phonemes (symbols, or (symbol, mistake_count) pairs).
+
+    Without any weaknesses yet, the sounds usually hard for speakers of the learner's first
+    language come first, then the sounds most learners find hardest.
+    """
+    from backend.learners import common_sounds
+
     items: List[Tuple[str, Optional[int]]] = [
         (w, None) if isinstance(w, str) else (w[0], w[1]) for w in weaknesses
     ]
     personalised = any(get_phoneme(symbol) for symbol, _ in items)
     if not personalised:
-        items = [(symbol, None) for symbol in DEFAULT_FOCUS]
+        starters = list(dict.fromkeys([*common_sounds(first_language), *DEFAULT_FOCUS]))[: max(5, len(DEFAULT_FOCUS))]
+        items = [(symbol, None) for symbol in starters]
 
     practice = []
     for symbol, count in items:
