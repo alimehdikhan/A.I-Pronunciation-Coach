@@ -1,11 +1,25 @@
-import { ArrowRightIcon, CalendarBlankIcon, ChartLineUpIcon, GaugeIcon, LockKeyIcon, SparkleIcon, TrashIcon, UserCirclePlusIcon, WarningCircleIcon, WaveformIcon, EarIcon } from '@phosphor-icons/react'
+import {
+  ArrowRightIcon,
+  CalendarBlankIcon,
+  ChartLineUpIcon,
+  GaugeIcon,
+  LockKeyIcon,
+  SparkleIcon,
+  TrashIcon,
+  UserCirclePlusIcon,
+  WarningCircleIcon,
+  WaveformIcon,
+  EarIcon,
+} from '@phosphor-icons/react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useRef, useState } from 'react'
-import { Link } from 'react-router'
+import { Link, useNavigate } from 'react-router'
 import { toast } from 'sonner'
 import { EmptyState, Panel, Segmented, SectionLabel } from '@/components/common'
 import { SignInActions } from '@/components/auth/SignInGate'
 import { PageHeader } from '@/components/layout/AppShell'
+import { PastInterviews } from '@/components/interview/PastInterviews'
+import { Day30Link } from '@/components/progress/Day30'
 import { ActivityCalendar } from '@/components/progress/ActivityCalendar'
 import { HistoryPanel } from '@/components/progress/HistoryPanel'
 import { FocusSounds } from '@/components/progress/FocusSounds'
@@ -33,6 +47,7 @@ import { api, ApiError } from '@/lib/api'
 import { useScrollReveal, useStaggerIn } from '@/lib/gsap'
 import { keys, useAnalytics } from '@/lib/queries'
 import { SCORE_WORDS } from '@/lib/plain'
+import { cn } from '@/lib/utils'
 import { useSettings } from '@/store/settings'
 import { useUI } from '@/store/ui'
 
@@ -47,6 +62,8 @@ const TREND_COLORS: Record<TrendMetric, string> = {
 
 export default function ProgressPage() {
   const username = useSettings((s) => s.username)
+  const displayName = useSettings((s) => s.displayName)
+  const navigate = useNavigate()
   const signedIn = useSettings((s) => !!s.accountEmail)
   const setSettingsOpen = useUI((s) => s.setSettingsOpen)
   const { data: analytics, isLoading, error } = useAnalytics(username)
@@ -121,7 +138,7 @@ export default function ProgressPage() {
     <div ref={scope}>
       <PageHeader
         eyebrow="Progress"
-        title={`Nice work, ${username.split(' ')[0]}.`}
+        title={hasData ? `Nice work, ${(displayName || username).split(' ')[0]}.` : 'See how far you’ve come.'}
         description="How you are doing, and what to practise next."
         actions={
           hasData && (
@@ -177,11 +194,11 @@ export default function ProgressPage() {
         <Panel>
           <EmptyState
             icon={<ChartLineUpIcon weight="fill" />}
-            title="No sessions yet"
-            description="Record your first phrase and your progress will appear here."
+            title="No phrases practised yet"
+            description="Record your first phrase and your sounds, scores and streaks will appear here."
             action={
               <Button asChild size="lg">
-                <Link to="/">
+                <Link to="/practice">
                   Start practising <ArrowRightIcon weight="bold" />
                 </Link>
               </Button>
@@ -246,7 +263,9 @@ export default function ProgressPage() {
                       <div className="min-w-0 flex-1">
                         <div className="flex items-baseline justify-between gap-2">
                           <span className="text-[14px] font-medium">{SCORE_WORDS[key].label}</span>
-                          <span className="text-[15px] font-semibold tabular-nums">{averages[key] != null ? Math.round(averages[key]!) : '—'}</span>
+                          <span className="text-[15px] font-semibold tabular-nums">
+                            {averages[key] != null ? Math.round(averages[key]!) : '—'}
+                          </span>
                         </div>
                         <div className="text-xs text-subtle">{SCORE_WORDS[key].hint}</div>
                       </div>
@@ -271,7 +290,9 @@ export default function ProgressPage() {
             </Panel>
           )}
 
-          <div className="grid gap-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] lg:items-start">
+          <div
+            className={cn('grid gap-5', !!analytics.tricky_words?.length && 'lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] lg:items-start')}
+          >
             <Panel className="progress-item p-6 sm:p-8">
               <SectionLabel icon={<CalendarBlankIcon weight="fill" />}>Practice calendar</SectionLabel>
               <ActivityCalendar days={analytics.daily_activity ?? []} />
@@ -285,6 +306,15 @@ export default function ProgressPage() {
           </div>
 
           <HistoryPanel username={username} />
+        </div>
+      )}
+
+      {!isLoading && (
+        <div className="mt-5">
+          <PastInterviews hideEmpty onOpen={(item) => navigate(`/interview?report=${item.id}`)} />
+          <div className="mt-5">
+            <Day30Link />
+          </div>
         </div>
       )}
     </div>
