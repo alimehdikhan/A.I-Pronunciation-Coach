@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from backend import journey, teaching
 from backend.api.deps import profile_key
 from backend.database import PronunciationRecord, as_utc, get_db, utcnow
-from backend.repositories import _local_days, _streak, authorize, find_user, observations
+from backend.repositories import COUNTED, _local_days, _streak, authorize, find_user, observations
 from backend.security import clean_username
 
 router = APIRouter()
@@ -47,7 +47,7 @@ def learning_journey(
             (created, float(score))
             for created, score in db.execute(
                 select(PronunciationRecord.created_at, PronunciationRecord.score)
-                .where(PronunciationRecord.user_id == user.id)
+                .where(PronunciationRecord.user_id == user.id, COUNTED)
                 .order_by(PronunciationRecord.created_at.desc())
                 .limit(MAX_ATTEMPTS_COUNTED)
             ).all()
