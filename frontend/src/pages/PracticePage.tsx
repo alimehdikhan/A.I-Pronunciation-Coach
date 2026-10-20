@@ -105,7 +105,7 @@ export default function PracticePage() {
   // Leaving the page must never submit a half-finished recording, even while
   // the page is still mounted for its exit transition.
   useEffect(() => {
-    if (pathname !== '/') cancelRecording()
+    if (pathname !== '/practice') cancelRecording()
   }, [pathname, cancelRecording])
 
   const ready = !!health?.models_loaded
