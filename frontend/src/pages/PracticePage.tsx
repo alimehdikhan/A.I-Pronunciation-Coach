@@ -1,6 +1,7 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { lazy, Suspense, useCallback, useEffect } from 'react'
-import { useLocation } from 'react-router'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { ArrowRightIcon, MicrophoneIcon } from '@phosphor-icons/react'
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
+import { Link, useLocation } from 'react-router'
 import { toast } from 'sonner'
 import { Segmented } from '@/components/common'
 import { LockedResults } from '@/components/auth/SignInGate'
@@ -10,10 +11,13 @@ import { TalkButton } from '@/components/voice/TalkButton'
 import { PhraseStage } from '@/components/practice/PhraseStage'
 import { Recorder } from '@/components/practice/Recorder'
 import { Results } from '@/components/practice/Results'
+import { Button } from '@/components/ui/button'
+import { Kbd } from '@/components/ui/kbd'
 import { useHotkeys } from '@/hooks/useHotkeys'
 import { useRecorder, type Recording } from '@/hooks/useRecorder'
 import { api } from '@/lib/api'
 import { audioEngine } from '@/lib/audioEngine'
+import { markMicChecked, micChecked } from '@/lib/micCheck'
 import { keys, useHealth } from '@/lib/queries'
 import { LEVELS, PHRASES, phrasesFor } from '@/lib/sentences'
 import { SLOW_RATE, useSpeaker } from '@/lib/speech'
@@ -31,6 +35,16 @@ export default function PracticePage() {
   const signedIn = useSettings((s) => !!s.accountEmail)
   const { target, setTarget, attempt, setAttempt, clearAttempt, scoreHistory } = usePractice()
   const setLibraryOpen = useUI((s) => s.setLibraryOpen)
+  const setMicCheckOpen = useUI((s) => s.setMicCheckOpen)
+  const micCheckOpen = useUI((s) => s.micCheckOpen)
+  const [offerMicCheck, setOfferMicCheck] = useState(() => !micChecked())
+  const { data: baseline } = useQuery({
+    queryKey: ['baseline', username],
+    queryFn: () => api.baselineStatus(username),
+    enabled: !!username,
+    staleTime: 10 * 60_000,
+  })
+  const baselineDue = !!baseline?.next.due && baseline.next.round > 0
   const { data: health, isError: offline } = useHealth()
   const { speak, prefetch } = useSpeaker()
   const queryClient = useQueryClient()
@@ -42,9 +56,16 @@ export default function PracticePage() {
   const evaluate = useMutation({
     mutationFn: api.evaluateRecording,
     onSuccess: ({ result, audio }) => {
+      if (result.no_speech ?? !result.transcription) {
+        // Silence is not an attempt: say why, instead of showing empty results.
+        toast.warning('We didn’t hear any speech', {
+          description: 'Check the right microphone is selected and not muted, then speak a little louder.',
+          action: { label: 'Check microphone', onClick: () => setMicCheckOpen(true) },
+        })
+        return
+      }
       setAttempt({ result, audioBlob: audio, audioUrl: URL.createObjectURL(audio), createdAt: Date.now() })
-      if (!result.transcription) toast.warning('We couldn’t hear any speech. Check your microphone and try again.')
-      else if (result.save_error === 'profile_locked')
+      if (result.save_error === 'profile_locked')
         toast.warning('This name is in use on another device, so this attempt wasn’t saved. Choose a different name in Settings.')
       if (username) {
         void queryClient.invalidateQueries({ queryKey: keys.analytics(username) })
@@ -134,7 +155,13 @@ export default function PracticePage() {
     arrowright: () => go(1),
     arrowleft: () => go(-1),
     l: () => speak(target.text, { key: 'stage-normal' }),
+    m: () => setMicCheckOpen(true),
   })
+
+  // Offered once per session, before the first recording; closing the check counts as done.
+  useEffect(() => {
+    if (!micCheckOpen && offerMicCheck && micChecked()) setOfferMicCheck(false)
+  }, [micCheckOpen, offerMicCheck])
 
   return (
     <>
@@ -178,6 +205,32 @@ export default function PracticePage() {
           onUpload={onRecorded}
         />
       </PhraseStage>
+
+      {baselineDue && !attempt && (
+        <Link
+          to="/before-after"
+          className="mt-4 flex items-center justify-between gap-3 rounded-2xl bg-primary-soft px-4 py-3 text-[14px] font-medium text-primary hover:underline"
+        >
+          Time to re-record your five sentences and hear how you have changed. <ArrowRightIcon size={16} weight="bold" />
+        </Link>
+      )}
+
+      {offerMicCheck && !attempt && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-fill px-4 py-3 text-[14px]">
+          <span className="flex items-center gap-2 text-muted-foreground">
+            <MicrophoneIcon size={18} weight="fill" className="shrink-0 text-primary" />
+            First recording this session? A 3-second mic check catches a quiet, distorted or noisy microphone.
+          </span>
+          <span className="flex gap-2">
+            <Button variant="ghost" size="sm" onClick={() => { markMicChecked(); setOfferMicCheck(false) }}>
+              Skip
+            </Button>
+            <Button variant="secondary" size="sm" onClick={() => setMicCheckOpen(true)}>
+              Check microphone <Kbd className="ml-1 hidden sm:inline-flex">M</Kbd>
+            </Button>
+          </span>
+        </div>
+      )}
 
       {attempt && (
         <div className="mt-5">
