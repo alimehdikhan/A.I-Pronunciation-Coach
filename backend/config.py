@@ -97,6 +97,14 @@ class Settings:
     groq_model: str = field(default_factory=lambda: os.getenv("PRONUNCIATION_COACH_LLM_MODEL", "openai/gpt-oss-120b"))
     # The live voice conversation (Gemini Live). The key stays on the server; the browser talks to us.
     gemini_api_key: str = field(default_factory=lambda: os.getenv("GEMINI_API_KEY", "").strip())
+    # Password reset by email (optional): any SMTP provider. Without a host and sender it is off.
+    smtp_host: str = field(default_factory=lambda: os.getenv("PRONUNCIATION_COACH_SMTP_HOST", "").strip())
+    smtp_port: int = field(default_factory=lambda: _int("PRONUNCIATION_COACH_SMTP_PORT", 587))
+    smtp_user: str = field(default_factory=lambda: os.getenv("PRONUNCIATION_COACH_SMTP_USER", "").strip())
+    smtp_password: str = field(default_factory=lambda: os.getenv("PRONUNCIATION_COACH_SMTP_PASSWORD", ""))
+    mail_from: str = field(default_factory=lambda: os.getenv("PRONUNCIATION_COACH_MAIL_FROM", "").strip())
+    # The address learners open the app at, for links in emails (e.g. https://coach.example.com).
+    public_url: str = field(default_factory=lambda: os.getenv("PRONUNCIATION_COACH_PUBLIC_URL", "").strip().rstrip("/"))
     gemini_live_model: str = field(
         default_factory=lambda: os.getenv("PRONUNCIATION_COACH_VOICE_MODEL", "gemini-3.1-flash-live-preview").strip()
     )
@@ -111,6 +119,13 @@ class Settings:
     # Talk time per caller (IP address) per UTC day. 0 switches the daily allowance off.
     voice_daily_minutes: float = field(default_factory=lambda: max(0.0, _float("PRONUNCIATION_COACH_VOICE_DAILY_MINUTES", 20.0)))
     # A call where the learner says nothing for this long is ended (the coach checks in halfway).
+    # Slower than this (words per minute) an attempt is "careful speech". 95% of the readers that
+    # speechocean762's experts rated fluent spoke faster (5th percentile: 103 wpm, train split).
+    careful_wpm: float = field(default_factory=lambda: max(0.0, _float("PRONUNCIATION_COACH_CAREFUL_WPM", 100.0)))
+    # Below this share of listening trials heard right, the coach session trains the ear first.
+    perception_threshold: float = field(
+        default_factory=lambda: min(1.0, max(0.0, _float("PRONUNCIATION_COACH_PERCEPTION_THRESHOLD", 0.8)))
+    )
     voice_idle_seconds: int = field(default_factory=lambda: max(20, _int("PRONUNCIATION_COACH_VOICE_IDLE_SECONDS", 90)))
 
     @property
@@ -140,6 +155,8 @@ class Settings:
     # Uploads
     max_upload_bytes: int = field(default_factory=lambda: _int("PRONUNCIATION_COACH_MAX_UPLOAD_BYTES", 25 * 1024 * 1024))
     max_audio_seconds: float = field(default_factory=lambda: _float("PRONUNCIATION_COACH_MAX_AUDIO_SECONDS", 60.0))
+    # Longest answer in "Speak freely" (that mode only; everything else keeps max_audio_seconds).
+    free_speech_seconds: float = field(default_factory=lambda: max(10.0, _float("PRONUNCIATION_COACH_FREE_SPEECH_SECONDS", 120.0)))
     max_target_chars: int = 500
     # Remove room noise and quieter background voices from recordings before scoring.
     noise_cleanup: bool = field(default_factory=lambda: _flag("PRONUNCIATION_COACH_NOISE_CLEANUP", "1"))
