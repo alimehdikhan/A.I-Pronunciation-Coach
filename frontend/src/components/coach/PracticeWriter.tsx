@@ -95,7 +95,7 @@ export function PracticeWriter({ username, phoneme }: { username: string; phonem
                     size="sm"
                     onClick={() => {
                       setTarget({ text: sentence.text, source: 'custom' })
-                      navigate('/')
+                      navigate('/practice')
                     }}
                   >
                     Practise
