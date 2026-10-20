@@ -8,7 +8,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useScrollReveal } from '@/lib/gsap'
 import { trackSpotlight } from '@/lib/pointer'
 import { describeSound, GROUP_PLAIN, voiceText } from '@/lib/plain'
-import { useAnalytics, usePhonemes } from '@/lib/queries'
+import { useAnalytics, useLearnerOptions, usePhonemes } from '@/lib/queries'
 import type { PhonemeSummary } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { useSettings } from '@/store/settings'
@@ -55,6 +55,12 @@ export default function SoundsPage() {
   const [filter, setFilter] = useState<Filter>('all')
   const [query, setQuery] = useState('')
   const scope = useRef<HTMLDivElement>(null)
+  const nativeLanguage = useSettings((s) => s.nativeLanguage)
+  const { data: options } = useLearnerOptions()
+  const forYou = useMemo(() => {
+    const symbols = (nativeLanguage && options?.common_sounds[nativeLanguage]) || []
+    return symbols.map((s) => (phonemes ?? []).find((p) => p.symbol === s)).filter((p): p is PhonemeSummary => !!p)
+  }, [nativeLanguage, options, phonemes])
 
   const mistakes = useMemo(
     () => Object.fromEntries((analytics?.top_weaknesses ?? []).map((w) => [w.phoneme, w.count])),
@@ -114,6 +120,19 @@ export default function SoundsPage() {
       )}
 
       <div className="space-y-10">
+        {filter === 'all' && !query.trim() && forYou.length > 0 && (
+          <section>
+            <div className="mb-4 flex items-baseline gap-3">
+              <h2 className="text-[22px] font-semibold tracking-tight">Usually hard for {nativeLanguage} speakers</h2>
+              <p className="hidden text-[14px] text-muted-foreground sm:block">A good place to start. Tap one to see why.</p>
+            </div>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
+              {forYou.map((p) => (
+                <SoundTile key={p.symbol} phoneme={p} mistakes={mistakes[p.symbol]} onOpen={() => openPhoneme(p.symbol)} />
+              ))}
+            </div>
+          </section>
+        )}
         {groups.map(([group, items]) => (
           <section key={group}>
             <div className="mb-4 flex items-baseline gap-3">
