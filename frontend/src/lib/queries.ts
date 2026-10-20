@@ -1,13 +1,14 @@
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { api } from './api'
 import type { CoachRequest, HistoryFilters } from './types'
+import { useSettings } from '@/store/settings'
 
 export const keys = {
   health: ['health'] as const,
   voices: ['voices'] as const,
   phonemes: ['phonemes'] as const,
   phoneme: (symbol: string) => ['phoneme', symbol] as const,
-  pronounce: (text: string) => ['pronounce', text] as const,
+  pronounce: (text: string, accent = 'american') => ['pronounce', text, accent] as const,
   tutor: (word: string, expected: string, actual: string) => ['tutor', word, expected, actual] as const,
   analytics: (username: string) => ['analytics', username] as const,
   history: (username: string) => ['history', username] as const,
@@ -21,6 +22,11 @@ export const keys = {
 /** The coach voices the server can speak with. Fixed for a deploy, so it is fetched once. */
 export function useVoiceCatalog() {
   return useQuery({ queryKey: keys.voices, queryFn: api.voices, staleTime: Infinity, retry: false })
+}
+
+/** The profile choices and the sounds each first language puts first. Fixed for a deploy. */
+export function useLearnerOptions() {
+  return useQuery({ queryKey: ['learner-options'], queryFn: api.learnerOptions, staleTime: Infinity })
 }
 
 export function useHealth() {
@@ -46,9 +52,10 @@ export function usePhoneme(symbol: string | null) {
 }
 
 export function usePronunciation(text: string) {
+  const accent = useSettings((s) => s.accent)
   return useQuery({
-    queryKey: keys.pronounce(text),
-    queryFn: () => api.pronounce(text),
+    queryKey: keys.pronounce(text, accent),
+    queryFn: () => api.pronounce(text, accent),
     enabled: text.trim().length > 0,
     staleTime: Infinity,
   })
