@@ -339,3 +339,19 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* A word a listener would likely not catch (intelligibility estimate): a wavy line under it,
+   separate from the colour that marks sound slips. */
+.misheard {
+  text-decoration-line: underline;
+  text-decoration-style: wavy;
+  text-decoration-color: var(--extra);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 7px;
+}
+.misheard-swatch {
+  display: inline-block;
+  width: 14px;
+  height: 6px;
+  border-bottom: 2px dotted var(--extra);
+}
