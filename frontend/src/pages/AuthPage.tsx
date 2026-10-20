@@ -9,7 +9,7 @@ import { LogoMark } from '@/components/layout/Logo'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { api, ApiError } from '@/lib/api'
-import { keys } from '@/lib/queries'
+import { keys, useHealth } from '@/lib/queries'
 import { cn } from '@/lib/utils'
 import { useSettings } from '@/store/settings'
 
@@ -126,6 +126,7 @@ export default function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
   }
   const invalid = Object.values(local).some(Boolean)
 
+  const { data: health } = useHealth()
   const submit = useMutation({
     mutationFn: () =>
       signup
@@ -144,7 +145,8 @@ export default function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
       signIn({ username: profile.username, displayName: profile.display_name, email: profile.email })
       void queryClient.invalidateQueries()
       toast.success(signup ? `Welcome, ${profile.display_name}` : `Signed in as ${profile.display_name}`)
-      navigate('/', { replace: true })
+      // A new account is offered the before-and-after baseline (it asks for consent before storing anything).
+      navigate(signup ? '/before-after?welcome=1' : '/', { replace: true })
     },
   })
 
@@ -325,6 +327,14 @@ export default function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
             </div>
           )}
 
+          {!signup && health?.password_reset && (
+            <div className="-mt-1 text-right">
+              <Link to="/forgot" className="text-[13px] font-medium text-primary hover:underline">
+                Forgot password?
+              </Link>
+            </div>
+          )}
+
           <div aria-live="polite" className={cn('min-h-5 text-[13px] text-bad', !generalError && 'hidden')}>
             {generalError}
           </div>
@@ -350,8 +360,9 @@ export default function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
 
         <p className="mx-auto mt-8 flex max-w-[340px] items-start gap-2 text-xs leading-relaxed text-subtle">
           <ShieldCheckIcon size={16} className="mt-px shrink-0" />
-          Passwords are stored as salted scrypt hashes. There is no email verification or password reset yet, so keep your
-          password somewhere safe.
+          {health?.password_reset
+            ? 'Passwords are stored as salted scrypt hashes. If you forget yours, you can reset it by email.'
+            : 'Passwords are stored as salted scrypt hashes. There is no email verification or password reset yet, so keep your password somewhere safe.'}
         </p>
       </div>
     </div>
