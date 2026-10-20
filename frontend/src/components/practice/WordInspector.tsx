@@ -10,9 +10,12 @@ import type { Playback } from '@/hooks/usePlayback'
 import { useTutorCard } from '@/lib/queries'
 import { useSpeaker } from '@/lib/speech'
 import type { AlignmentOp, PhonemeEvidence, WordResult } from '@/lib/types'
-import { STATUS_META, cn } from '@/lib/utils'
+import { STATUS_META, TIER_META, cn, wordTier } from '@/lib/utils'
 import { usePractice } from '@/store/practice'
+import { useSettings } from '@/store/settings'
 import { useUI } from '@/store/ui'
+import { DisputeSounds } from './Dispute'
+import { CheckNote, ConfirmedNote, SayItAlone } from './WorthChecking'
 
 function PhonemeAlignment({ ops, evidence }: { ops: AlignmentOp[]; evidence?: PhonemeEvidence[] }) {
   // Acoustic scoring yields one entry per expected sound, in alignment order.
@@ -21,6 +24,7 @@ function PhonemeAlignment({ ops, evidence }: { ops: AlignmentOp[]; evidence?: Ph
     <div className="flex flex-wrap gap-1.5">
       {ops.map((op, i) => {
         const wrong = op.op !== 'equal'
+        const unsure = wrong && op.tier === 'check'
         const slot = scores?.[i]
         const score = slot?.score
         return (
@@ -31,8 +35,9 @@ function PhonemeAlignment({ ops, evidence }: { ops: AlignmentOp[]; evidence?: Ph
             transition={{ delay: i * 0.035 }}
             className={cn(
               'ipa flex min-w-11 flex-col items-center overflow-hidden rounded-xl text-center',
-              wrong ? 'bg-bad-soft' : 'bg-fill',
+              unsure ? 'border border-dashed border-warn/60 bg-warn-soft' : wrong ? 'bg-bad-soft' : 'bg-fill',
             )}
+            title={unsure ? TIER_META.check.hint : wrong ? TIER_META.fix.hint : undefined}
           >
             <span className={cn('w-full px-2 pt-1.5 pb-1 text-[19px] leading-none', op.op === 'insert' && 'text-subtle')}>
               {op.expected || '∅'}
@@ -40,7 +45,13 @@ function PhonemeAlignment({ ops, evidence }: { ops: AlignmentOp[]; evidence?: Ph
             <span
               className={cn(
                 'w-full px-2 pt-1 pb-1.5 text-[13px] leading-none',
-                op.op === 'equal' ? 'text-subtle' : op.op === 'delete' ? 'text-bad line-through' : 'font-semibold text-bad',
+                op.op === 'equal'
+                  ? 'text-subtle'
+                  : unsure
+                    ? cn('text-warn', op.op === 'delete' ? 'line-through' : 'font-semibold')
+                    : op.op === 'delete'
+                      ? 'text-bad line-through'
+                      : 'font-semibold text-bad',
               )}
             >
               {op.op === 'delete' ? op.expected : op.actual || '∅'}
@@ -49,7 +60,7 @@ function PhonemeAlignment({ ops, evidence }: { ops: AlignmentOp[]; evidence?: Ph
               <span
                 className={cn(
                   'w-full border-t border-border/60 px-2 py-1 text-[11px] leading-none font-medium tabular-nums',
-                  slot?.flagged ? 'text-bad' : score < 90 ? 'text-warn' : 'text-good',
+                  slot?.flagged ? (slot.tier === 'check' ? 'text-warn' : 'text-bad') : score < 90 ? 'text-warn' : 'text-good',
                 )}
               >
                 {Math.round(score)}%
@@ -64,19 +75,32 @@ function PhonemeAlignment({ ops, evidence }: { ops: AlignmentOp[]; evidence?: Ph
 
 function Syllables({ word }: { word: WordResult }) {
   if (word.syllables.length < 2) return null
+  const heard = word.stress?.heard
   return (
-    <div className="flex items-center gap-1">
-      {word.syllables.map((s, i) => (
-        <span
-          key={i}
-          className={cn(
-            'ipa rounded-lg px-2 py-1 text-[15px]',
-            s.stress === 1 ? 'bg-primary text-primary-foreground' : s.stress === 2 ? 'bg-primary-soft text-primary' : 'bg-fill text-muted-foreground',
-          )}
-        >
-          {s.phonemes.join('')}
-        </span>
-      ))}
+    <div>
+      <div className="flex items-start gap-1">
+        {word.syllables.map((s, i) => (
+          <span key={i} className="flex flex-col items-center gap-1">
+            <span
+              className={cn(
+                'ipa rounded-lg px-2 py-1 text-[15px]',
+                s.stress === 1 ? 'bg-primary text-primary-foreground' : s.stress === 2 ? 'bg-primary-soft text-primary' : 'bg-fill text-muted-foreground',
+              )}
+            >
+              {s.phonemes.join('')}
+            </span>
+            {heard === i && (
+              <span className={cn('text-[11px] font-medium', word.stress?.error ? 'text-warn' : 'text-subtle')}>you stressed</span>
+            )}
+          </span>
+        ))}
+      </div>
+      {word.stress && (
+        <p className="mt-2 text-[12px] text-subtle">
+          Experimental: which syllable sounded stressed comes from length, loudness and pitch, and often disagrees with expert
+          listeners.
+        </p>
+      )}
     </div>
   )
 }
@@ -115,8 +139,18 @@ function TargetLine({ word, ipa }: { word: string; ipa?: string | null }) {
   )
 }
 
-export function WordInspector({ word, playback }: { word: WordResult | null; playback: Playback }) {
+export function WordInspector({
+  word,
+  playback,
+  recordId,
+}: {
+  word: WordResult | null
+  playback: Playback
+  /** The saved attempt, so a word checked alone can update its history. */
+  recordId?: number | null
+}) {
   const { speak } = useSpeaker()
+  const goal = useSettings((s) => s.goal)
   const setTarget = usePractice((s) => s.setTarget)
 
   if (!word) {
@@ -127,8 +161,18 @@ export function WordInspector({ word, playback }: { word: WordResult | null; pla
     )
   }
 
-  const meta = STATUS_META[word.status]
-  const firstError = word.alignment.find((op) => op.op === 'replace' || op.op === 'delete')
+  const tier = wordTier(word)
+  const meta =
+    word.confirmed === 'fine'
+      ? { label: 'Sounded fine', soft: STATUS_META.correct.soft, text: STATUS_META.correct.text }
+      : tier
+        ? { label: TIER_META[tier].label, soft: TIER_META[tier].soft, text: TIER_META[tier].text }
+        : STATUS_META[word.status]
+  // Only a slip the coach is sure about (or one confirmed by saying the word alone) gets the "Fix the sound" tutor.
+  const firstError =
+    word.confirmed === 'fine'
+      ? undefined
+      : word.alignment.find((op) => (op.op === 'replace' || op.op === 'delete') && (op.tier !== 'check' || word.confirmed === 'slip'))
   const target = word.reference ?? word.spoken ?? ''
   const hasTiming = word.start != null && word.end != null
 
@@ -147,14 +191,14 @@ export function WordInspector({ word, playback }: { word: WordResult | null; pla
             <div>
               <div className="flex items-center gap-3">
                 <h3 className="headline text-[40px]">{word.display}</h3>
-                <Pill className={cn(meta.soft, meta.text)}>{meta.label}</Pill>
+                <Pill className={cn(meta.soft, meta.text, tier === 'check' && 'border border-dashed border-warn/50')}>{meta.label}</Pill>
               </div>
               <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[15px]">
                 <TargetLine word={word.display} ipa={word.expected_ipa} />
                 {word.status === 'mispronounced' && word.spoken && (
                   <span className="text-muted-foreground">
                     Heard{' '}
-                    <span className="text-bad">{word.spoken ? `“${word.spoken}”` : word.spoken_ipa ? `/${word.spoken_ipa}/` : ''}</span>
+                    <span className={tier === 'check' ? 'text-warn' : 'text-bad'}>{word.spoken ? `“${word.spoken}”` : word.spoken_ipa ? `/${word.spoken_ipa}/` : ''}</span>
                   </span>
                 )}
               </div>
@@ -198,6 +242,36 @@ export function WordInspector({ word, playback }: { word: WordResult | null; pla
             </div>
           )}
 
+          {word.misheard && word.reference && (
+            <p className="mt-6 rounded-2xl bg-extra-soft p-4 text-[15px] leading-relaxed">
+              <b>A listener might not catch this word.</b>{' '}
+              {word.heard_as ? (
+                <>
+                  Heard cold, it came across as <b>“{word.heard_as}”</b>.
+                </>
+              ) : (
+                <>Heard cold, it didn’t come through at all.</>
+              )}{' '}
+              <span className="text-muted-foreground">(machine estimate)</span>
+            </p>
+          )}
+
+          {tier === 'fix' && word.changes_word && (
+            <p className="mt-6 rounded-2xl bg-bad-soft p-4 text-[15px] leading-relaxed">
+              Said this way, it sounds like <b>“{word.changes_word}”</b>, a different word, so a listener may get the wrong
+              meaning.
+            </p>
+          )}
+          {tier === 'fix' && word.affects_understanding === false && goal === 'understood' && (
+            <p className="mt-6 rounded-2xl bg-fill p-4 text-[15px] leading-relaxed">
+              <b>Won’t confuse a listener.</b> The sound differs a little from the standard one, but the word still comes across.
+              Your goal is to be understood, so this one can wait.
+            </p>
+          )}
+
+          {tier === 'check' && <CheckNote word={word} action={<SayItAlone word={word} recordId={recordId} hotkey />} />}
+          {word.confirmed && <ConfirmedNote word={word} />}
+
           {word.status === 'correct' && (
             <div className="mt-6 flex items-center gap-3 rounded-2xl bg-good-soft p-4 text-[15px]">
               <CheckCircleIcon size={22} weight="fill" className="shrink-0 text-good" />
@@ -231,6 +305,8 @@ export function WordInspector({ word, playback }: { word: WordResult | null; pla
           )}
 
           {firstError && word.reference && <Tutor word={word.reference} op={firstError} />}
+
+          {word.confirmed !== 'fine' && <DisputeSounds word={word} recordId={recordId} />}
         </motion.div>
       </AnimatePresence>
     </div>
