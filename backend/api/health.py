@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse, Response
 
-from backend import phonetics
+from backend import mailer, phonetics
 from backend.config import settings
 from backend.database import check_db
 from backend.observability import metrics_response
@@ -51,6 +51,8 @@ async def health_check(request: Request) -> dict[str, Any]:
         "acoustic_scoring": runtime.phonemes is not None,
         "coach_llm": bool(settings.groq_api_key),
         "voice_agent": bool(settings.gemini_api_key),
+        "free_speech_seconds": settings.free_speech_seconds,
+        "password_reset": mailer.enabled(),
         "coach": runtime.coach.describe() if runtime.coach is not None else None,
         "version": request.app.version,
     }
