@@ -1,2 +1,5 @@
 pytest>=8,<9
 ruff>=0.17,<0.18
+# scripts/eval_speechocean.py reads the dataset with pyarrow; polars is the fallback where pyarrow
+# can't load (for example under Windows Application Control).
+polars>=1.0
