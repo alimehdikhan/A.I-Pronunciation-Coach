@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /shared/
+Disallow: /reset
+Disallow: /forgot
+Sitemap: https://alimehdi973-ai-pronunciation-coach.hf.space/sitemap.xml
