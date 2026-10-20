@@ -19,7 +19,8 @@ import { Button } from '@/components/ui/button'
 import { CountUp, ScoreRing } from '@/components/ui/score-ring'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useRecorder, type Recording } from '@/hooks/useRecorder'
-import { api, ApiError } from '@/lib/api'
+import { api } from '@/lib/api'
+import { errorLine } from '@/lib/errors'
 import { keys } from '@/lib/queries'
 import type { Level } from '@/lib/types'
 import { cn, scoreTone, toneText } from '@/lib/utils'
@@ -207,9 +208,7 @@ export default function CheckupPage() {
                 : evaluate.isPending
                   ? 'Checking…'
                   : evaluate.error
-                    ? evaluate.error instanceof ApiError
-                      ? evaluate.error.message
-                      : 'Something went wrong. Try again.'
+                    ? errorLine(evaluate.error)
                     : scored != null
                       ? (
                           <span className="inline-flex items-center gap-1.5 font-semibold text-good">
