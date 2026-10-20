@@ -139,7 +139,7 @@ export function CoachChat() {
                               onClick={() => {
                                 setTarget({ text: sentence.text, source: 'custom' })
                                 setOpen(false)
-                                navigate('/')
+                                navigate('/practice')
                               }}
                             >
                               Practise
