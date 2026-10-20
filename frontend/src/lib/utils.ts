@@ -1,6 +1,6 @@
 import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
-import type { MetricKey, WordStatus } from './types'
+import type { MetricKey, SlipTier, WordResult, WordStatus } from './types'
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -48,6 +48,31 @@ export const STATUS_META: Record<WordStatus, { label: string; color: string; sof
   mispronounced: { label: 'Mispronounced', color: 'var(--bad)', soft: 'bg-bad-soft', text: 'text-bad' },
   missing: { label: 'Skipped', color: 'var(--subtle)', soft: 'bg-fill-strong', text: 'text-subtle' },
   extra: { label: 'Extra', color: 'var(--extra)', soft: 'bg-extra-soft', text: 'text-extra' },
+}
+
+/** How a mispronounced word reads in the results, by how sure the coach is. */
+export const TIER_META: Record<SlipTier, { label: string; hint: string; color: string; soft: string; text: string }> = {
+  fix: {
+    label: 'Fix this',
+    hint: 'A slip the coach is confident about.',
+    color: 'var(--bad)',
+    soft: 'bg-bad-soft',
+    text: 'text-bad',
+  },
+  check: {
+    label: 'Worth checking',
+    hint: 'Borderline: it may have been fine. Listen back or say the word again.',
+    color: 'var(--warn)',
+    soft: 'bg-warn-soft',
+    text: 'text-warn',
+  },
+}
+
+/** A word's slip tier; results saved before tiers existed count as 'fix'. A word checked alone takes the verdict. */
+export function wordTier(word: Pick<WordResult, 'status' | 'tier' | 'confirmed'>): SlipTier | null {
+  if (word.status !== 'mispronounced' || word.confirmed === 'fine') return null
+  if (word.confirmed === 'slip') return 'fix'
+  return word.tier ?? 'fix'
 }
 
 export const METRIC_META: Record<MetricKey, { label: string; hint: string }> = {
