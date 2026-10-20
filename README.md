@@ -304,6 +304,96 @@ Whisper usually tidies "um" and "uh" away. `scripts/eval_fillers.py` tested whet
 
 Limits: with no script, a sound that Whisper and the sound model both "hear" as intended is never caught, so free-speech scores are generous. Pauses are measured between Whisper's word timings. The structure feedback is the language model's opinion and has not been compared with examiners.
 
+## Interview prep
+
+**Interview prep** (`/interview`) is a mock interview with a spoken interviewer. You choose:
+
+- **The kind of interview.** Full interview, HR round, behavioural (STAR stories), role-specific, tough questions (career gaps, layoffs, frequent job changes, switching fields, salary pushback), recruiter phone screen, university admission, or student visa.
+- **Your role** (eight fields) and **experience** (fresher, experienced, senior), when the kind of interview uses them. A visa or admission interview ignores the job role.
+- **Length** (3, 5 or 7 questions) and **style**:
+  - *Real interview*: no tips and no feedback until the end; recording starts when the question ends; the interviewer follows up when an answer misses something.
+  - *Practice*: tips, optional thinking time, and feedback after every answer, with "Answer again" and "Take the follow-up".
+
+The questions follow the order a real interview of that kind uses (`backend/interview.py`, `TYPES`).
+
+**It runs like a real interview.** The room looks like a video call: the interviewer's window, yours in the corner with a live microphone level, the question as a caption, and a control bar (repeat, captions on or off, answer, tips in practice, end). In real interview mode:
+
+- The interviewer opens with small talk ("How are you doing?"). Your reply is not sent anywhere.
+- After each answer, the interviewer reacts to something you said before moving on (with Groq; otherwise a short thank-you).
+- When you ask questions at the end, the interviewer answers them in general terms, without inventing facts about a company.
+- When an answer runs far past its usual length, the interviewer cuts in politely and moves on, as a real one would. The interviewer, Alex, greets you by name, asks each question aloud in the coach voice, thanks you and moves on, and says the last question is the last. You can repeat a question, hide its text to practise listening (like a phone call), or have the interviewer speak a quarter faster. If you go quiet for six seconds while answering, phrases that buy time appear ("That's a good question, let me think for a second", "Could you repeat the question, please?").
+
+**What each answer gets.** Delivery (length against the usual length for that kind of question, pace, pauses, fillers, sure sound slips) is measured as in Speak freely. Simple checks need no model: a real example, "I" for your own actions, a result, a question asked at the end, a calm answer with no blame for the tough questions, specific reasons instead of stock phrases ("dream university", "world-class") for visa, admission and motivation questions, and, on a retry, whether you repeated your earlier answer almost word for word. With Groq, a rubric scores relevance, structure, specificity and clarity (1 to 5), marks the STAR parts of a story, lists strengths and improvements, and writes "a clearer version of your answer". That version may only reorder and tidy what you said. Anything missing is a [bracketed gap], and a version with a number you never said is dropped.
+
+**Follow-ups.** When the checks find a story with no example, result or "I", or an answer that is far too short, the interviewer asks one follow-up. With Groq the follow-up is about what you actually said ("You mentioned the release was late. What happened once it shipped?"); otherwise it is a standard one ("And what was the result in the end?"). The answer to it is checked for the missing part.
+
+**The report.** Average content scores, checks passed, pace, fillers per minute, the three things most worth working on, the sounds that slipped most, and every answer with its feedback.
+
+**Saving.** Under your name, an interview is saved after every answer, as text: questions, transcripts and feedback, never audio. You can carry on an unfinished one later. The newest 50 are kept. You can delete one from its report, and all of them go with your practice history or account. Guests can take an interview but need an account to see the feedback, as everywhere else.
+
+### Interview from your CV
+
+Generic questions are the top complaint about interview apps, so **From your CV** (`/interview/cv`) builds the interview from the learner's own CV and, optionally, the job advert. Upload a PDF, Word (.docx) or text file, or paste the resume or CV. Then pick experience, length and style as above.
+
+- **The questions.** With Groq, the model reads the CV and advert and writes the questions a real interviewer for that job would ask that candidate, in a real interview's order:
+  - an opening that mentions something real from the CV;
+  - why this job;
+  - their own projects, jobs and tools, by name ("I see you built ... What was your part?");
+  - at least one requirement in the advert that the CV shows little of;
+  - an invitation to ask questions.
+
+  Without the model, the questions are filled in from parsing (`backend/cv.py`): the current role, project titles, skills from a list of about 150, the job title, and the advert's skills the CV has and lacks, in the order the advert lists them.
+- **What you see before starting.** "Your interview is ready" shows what was read: your current role, the job, the projects it may ask about, the skills the job wants that you have, and the ones it asks for that aren't on your CV.
+- **Privacy.**
+  - The CV and the advert are read once to write the questions and are never stored.
+  - Email addresses, phone numbers and links are removed before the text goes to the model.
+  - A saved interview keeps only the questions.
+  - Scanned PDFs (with no text layer) are explained, with the option to paste instead.
+- **Taking it again.** "Practise again" on a CV interview's report reuses the same questions (`POST /api/interview/sessions/{username}/{id}/repeat`).
+
+Limits: parsing finds skills from a fixed list and project titles only under a "Projects" heading, so a CV in an unusual layout gives plainer questions without the model. The model's questions are checked for length and form, not for accuracy against the CV.
+
+### Group discussion
+
+Many campus placements and job selections include a group discussion (GD): four or five people discuss a topic while assessors watch who starts, who adds new points, who listens and builds on others, and who summarises. **Group discussion** (`/interview/group`) recreates it as a video call. You join three participants and a moderator:
+
+- **The participants:** Priya (mostly for), Rahul (mostly against) and Meera (sees both sides), each in their own voice. Alex moderates.
+- **The topics:** ten common GD topics, such as work from home, AI and jobs, cashless economy, startup or stable job, and the four-day week.
+- **How it runs:**
+  - Alex introduces the topic and asks who will start. You have a few seconds to open the discussion; otherwise Priya does.
+  - Participants speak in turn. With Groq, each turn reacts to what was just said, agreeing or disagreeing politely, and names the person it answers. Without the model, each says the next unused point from the topic's bank, joined to the previous speaker ("I see it differently from Rahul.").
+  - The next participant's words and voice are prepared while the current one talks, so there is no silence between turns.
+  - **Jump in** (Space) at any moment, even mid-sentence, as in a real discussion. Your contribution is transcribed and measured like a free answer.
+  - If you stay quiet for three turns, someone invites you in, but never twice in a row.
+  - Near the end, Alex asks you to summarise (you can skip).
+- **The report:**
+  - What an assessor counts: whether you started, how many times you spoke (3 to 5 is good), your share of speaking time (about a quarter in a group of four), whether you built on others' points, gave an example, summarised, and how often you cut in mid-sentence. Also your pace and filler words.
+  - With Groq: scores from 1 to 5 for content, communication, teamwork and leadership, strengths and improvements, and one of your points made stronger using only your ideas.
+- **Saving:** nothing. The transcript stays in the browser, and contributions are transcribed and discarded.
+
+Limits:
+
+- Participants' speaking time is estimated from their word count (150 words a minute).
+- "Built on others" is a phrase pattern ("adding to", "I agree with", "as Priya said").
+- The assessment is the language model's opinion. It has not been compared with real GD assessors.
+
+**Built from real problems.** The question bank and checks come from what candidates report going wrong:
+
+- Freezing on reflective questions.
+- Stories that lack the structure interviewers expect. Non-native speakers are penalised more for narrative style than for accent.
+- One-word or rambling answers.
+- Rehearsed answers that sound scripted, a common reason for student visa refusals.
+- Visa answers that are too long: officers expect roughly 10 to 30 seconds, and those questions use that target.
+- India-specific HR questions: current CTC, notice-period buyout, night shifts and service bonds.
+- Explaining gaps, layoffs and frequent job changes without blame.
+
+Limits:
+
+- The content rubric is a language model's opinion. It has not been checked against real interviewers or visa officers.
+- The checks are keyword patterns, so they can miss an example phrased in an unusual way.
+- Practice for a visa interview is not immigration advice. The setup screen says to always answer truthfully, and the model is told never to suggest facts or reasons to claim.
+- Answers can run up to 150 seconds (`PRONUNCIATION_COACH_INTERVIEW_SECONDS`).
+
 ## Listening drills
 
 It is hard to say a sound you can't hear. The **Listen** drills (Drills → Listen) use high variability phonetic training: you hear one word of a minimal pair (think / sink, vest / west, ship / sip) and pick which one it was, with the answer straight away and both words to replay. Each trial is said by a different voice: all eight Kokoro voices, American and British, female and male, plus Piper. That variety, of voices and of words, is what helps the training carry over to real speakers.
@@ -319,6 +409,17 @@ Limits: with fewer than three voices installed (Piper only, for example) the dri
 
 `GET /api/listen/session/{username}` returns the trials and `POST /api/listen/results` stores the answers (correctness is checked on the server, and only real pairs are accepted).
 
+## Real listeners
+
+The scorer is a machine; what matters in the end is whether a person understands you. **Real listeners** (Drills → Real listeners) lets signed-in learners test that on each other:
+
+- **Share:** under a practice result, "Ask real listeners" stores that recording, with consent, and plays it to other signed-in learners for 30 days without your name. The sentence comes from the saved attempt, not from the browser. You can have up to 10 recordings out at once.
+- **Listen:** another learner plays the recording (twice at most, as you might ask someone to repeat) and types what they heard. Each word of the sentence is then marked heard or missed (`backend/listeners.py`, a word alignment). The sentence is revealed afterwards, so the listener learns too. Nobody hears their own recordings, and nobody hears the same recording twice.
+- **Your results:** for each recording, how many listeners heard it, the share of your words they understood, and the words they missed, with what they heard instead ("think: missed by 2 of 3, heard as 'sink'"). You never see who listened or their exact answer. An abusive answer keeps its heard and missed marks but never its words.
+- **Safety:** a listener can report a recording. It stops being played and its audio is deleted at once. Recordings expire after 30 days, when their audio is deleted. Deleting a recording, your history or your account deletes it and its results. Deleting an account also deletes what that person heard in others' recordings.
+
+Limits: results depend on who is listening, and other learners are not native speakers. Spelling matters: "dont" is not "don't". With few learners online there may be nothing to listen to yet.
+
 ## Before and after
 
 Scores are numbers; hearing yourself is proof. **Before & after** (`/before-after`, offered right after sign-up) records five fixed sentences that cover the sounds learners find hardest. After 14 days, and then every 30 days, the practice page reminds you to record them again, and the page plays each sentence side by side (*Before* and *Now*) with both scores.
@@ -328,6 +429,20 @@ Scores are numbers; hearing yourself is proof. **Before & after** (`/before-afte
 - `GET /api/baseline/{username}` gives the rounds, scores and when the next one is due; `POST /api/baseline/{username}/record` scores and stores one sentence; `GET .../audio/{id}` plays one back to its owner; `DELETE .../audio` deletes all stored audio.
 
 Limits: these attempts are not part of practice history (they don't change streaks or mastery). Re-recordings are only accepted once they are due. A recording made in a different room or on a different microphone can sound different for reasons that have nothing to do with pronunciation.
+
+### Day 1 vs Day 30
+
+Before & after → **Interview answer** (`/before-after?mode=interview`; also linked from Interview prep and Progress) is the same idea for speaking freely:
+
+- **Record.** Answer one interview question today ("Tell me about yourself", "Why should we hire you?" or a challenge you overcame), for up to a minute. The recording is stored only with your consent. After `PRONUNCIATION_COACH_COMPARE_DAYS` days (30), you answer the same question again, and once more every month after that.
+- **Measure.** Each recording is measured like a free answer: pace, long pauses, fillers a minute, sure sound slips and the sound score.
+- **Compare.** Day 1 sits next to the latest round: play either one, read both transcripts, and see each measure's change. A change counts as better when fillers, pauses or slips go down, the sound score goes up, or the pace moves towards an easy 140 words a minute.
+- **Make a video.** "Make a video" builds a vertical 720×1280 video entirely in the browser (`frontend/src/lib/progressVideo.ts`):
+  - It plays both recordings through Web Audio while a canvas draws the captions, a waveform that moves with the voice, the numbers, and a "What changed" ending. MediaRecorder captures the two (MP4 where the browser supports it, otherwise WebM).
+  - It is never uploaded. You download it or share it from the device.
+  - At about 1 Mbit/s, two full one-minute answers stay under WhatsApp's 16 MB limit.
+
+Delete the recordings any time on the page; deleting your history or account deletes them too. Limits: the video is recorded in real time, so the tab must stay open for as long as both answers last plus about eight seconds.
 
 ## Share with a teacher
 
@@ -353,6 +468,17 @@ A scorer tells you how you did. A coach gives you a route and a reason to come b
 | **Time to review** | Words missed at least twice and at least a quarter of the time, not seen for 12 hours, most missed first. |
 
 `GET /api/journey/{username}` returns all of it in one call, and `GET /api/journey/placement` returns the check-up sentences.
+
+## Home, help and legal pages
+
+Visitors who are not signed in land on the home page (`/`); the practice screen lives at `/practice`. These public pages sit outside the app shell, so anyone can read them before signing up:
+
+- **Help centre** (`/help`). Getting started in four steps, a short guide to every feature, every keyboard shortcut, and searchable questions and troubleshooting (blocked microphone, models warming up, no speech heard, rate limits).
+- **Privacy Policy** (`/privacy`). What is kept, why and for how long (a table that becomes cards on a phone), recordings, the outside services (Groq, Google Gemini, email), cookies and browser storage, security, your rights and how to delete everything.
+- **Terms of Use** (`/terms`). Thirteen short numbered sections, including AI features and sharing with teachers and real listeners.
+- **About** (`/about`). Why the Coach exists, how it works, what it can do, how accurate it is, and who made it.
+
+Each page has a contents list that follows your reading, a link to every section, its own browser-tab title, and the same footer. The operator's name and contact come from `PRONUNCIATION_COACH_OPERATOR` and `PRONUNCIATION_COACH_CONTACT_EMAIL` (via `/health`); without an email, the pages point to the project's GitHub issues. `robots.txt` and `sitemap.xml` list the public pages; share and password-reset links are sent with `noindex` and `no-referrer`.
 
 ## The coach's notes
 
@@ -573,6 +699,10 @@ All settings are environment variables. See [`.env.example`](.env.example).
 | `PRONUNCIATION_COACH_MAX_UPLOAD_BYTES` | `26214400` | Largest accepted upload (25 MB) |
 | `PRONUNCIATION_COACH_MAX_AUDIO_SECONDS` | `60` | Longest accepted recording |
 | `PRONUNCIATION_COACH_FREE_SPEECH_SECONDS` | `120` | Longest answer in Speak freely (that mode only) |
+| `PRONUNCIATION_COACH_INTERVIEW_SECONDS` | `150` | Longest answer in a mock interview |
+| `PRONUNCIATION_COACH_COMPARE_DAYS` | `30` | Days between Day 1 vs Day 30 recordings |
+| `PRONUNCIATION_COACH_OPERATOR` | `Ali Mehdi Khan` | Who runs this copy, named on the Privacy, Terms and About pages |
+| `PRONUNCIATION_COACH_CONTACT_EMAIL` | (none) | Contact shown on those pages; without it they link to GitHub issues |
 | `PRONUNCIATION_COACH_RATE_LIMIT` | `30` | Audio requests per client IP per minute (`0` disables) |
 | `PRONUNCIATION_COACH_TTS` | `1` | Neural coach voice at `/api/tts` (`0` falls back to browser speech) |
 | `PRONUNCIATION_COACH_TTS_ENGINE` | `auto` | `auto` uses Kokoro when installed, `kokoro` or `piper` force one |
@@ -610,6 +740,26 @@ All settings are environment variables. See [`.env.example`](.env.example).
 | `POST` | `/api/disputes` | "I think this is wrong" about one flagged sound in your saved attempt (`username`, `record_id`, `word`, `expected`, `detected`, `gop`, optional `reason`) |
 | `GET` | `/api/speak/prompts` | Interview questions, IELTS-style cue cards and everyday situations |
 | `POST` | `/api/speak/evaluate` | Score a free answer (`audio`, optional `prompt_id`): delivery, sure sound slips and (with Groq) feedback on structure |
+| `GET` | `/api/interview/options` | Kinds of interview, roles, levels, lengths and the longest answer |
+| `POST` | `/api/interview/sessions` | Start an interview (`type`, `role`, `level`, `count`, optional `username` to save it) |
+| `POST` | `/api/interview/answer` | Score one answer (`audio`, `question_id`, `interview_type`, `role`, `level`; with `session_id`, `question_index`, `username` it is saved; `follow_up`, `follow_up_text` for the follow-up) |
+| `POST` | `/api/interview/cv` | Questions from a CV (`cv_file` PDF/DOCX/TXT or `cv_text`, optional `job_ad`, `level`, `count`, `username`); the CV is never stored |
+| `POST` | `/api/interview/sessions/{username}/{id}/repeat` | A new interview with the same questions |
+| `GET` | `/api/interview/sessions/{username}[/{id}]` | Your saved interviews / one with every answer and the report |
+| `DELETE` | `/api/interview/sessions/{username}/{id}` | Delete one saved interview |
+| `GET` | `/api/gd/topics` | Group discussion topics and participants |
+| `POST` | `/api/gd/turn` | A participant's next turn (`topic_id`, `speaker`, `user_name`, `turns`) |
+| `POST` | `/api/gd/contribution` | Transcribe and measure one of your contributions (`audio`); not saved |
+| `POST` | `/api/gd/report` | The assessor's report (`topic_id`, `user_name`, `turns`) |
+| `POST`/`GET` | `/api/listeners/{username}/clips` | Share a saved attempt with real listeners (`audio`, `record_id`, `consent=true`) / your recordings and what listeners understood |
+| `DELETE` | `/api/listeners/{username}/clips/{id}` | Stop sharing and delete a recording and its results |
+| `GET` | `/api/listeners/{username}/next` | Someone else's recording to listen to (accounts only) |
+| `GET` | `/api/listeners/{username}/audio/{id}` | A shared recording, to its owner or a listener while it is shared |
+| `POST` | `/api/listeners/{username}/answer/{id}` | What you heard (`typed`); returns the sentence and each word heard or missed |
+| `POST` | `/api/listeners/{username}/report/{id}` | Report a recording: it stops being played and its audio is deleted |
+| `GET`/`DELETE` | `/api/day30/{username}` | Day 1 vs Day 30 rounds, when the next is due and the comparison / delete every round |
+| `POST` | `/api/day30/{username}/record` | Record the next round (`audio`, `prompt_id` on day 1, `consent=true`) |
+| `GET` | `/api/day30/{username}/audio/{round}` | One round's recording, to its owner only |
 | `GET` | `/api/baseline/{username}` | Before-and-after rounds, scores and when the next is due |
 | `POST` | `/api/baseline/{username}/record` | Score and store one sentence (`audio`, `sentence_index`, `consent=true`) |
 | `GET`/`DELETE` | `/api/baseline/{username}/audio[/{id}]` | Play one stored recording (owner only) / delete all stored audio |
