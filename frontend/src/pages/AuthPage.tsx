@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 're
 import { Link, useNavigate } from 'react-router'
 import { toast } from 'sonner'
 import { StorageNotice } from '@/components/auth/StorageNotice'
+import { LegalLinks } from '@/components/site/LegalLinks'
 import { Background } from '@/components/layout/Background'
 import { LogoMark } from '@/components/layout/Logo'
 import { Button } from '@/components/ui/button'
@@ -44,17 +45,7 @@ function strength(password: string): { score: number; label: string; tone: strin
   return { score: final, label: labels[final], tone: tones[final] }
 }
 
-function Field({
-  label,
-  hint,
-  error,
-  children,
-}: {
-  label: string
-  hint?: ReactNode
-  error?: ReactNode
-  children: ReactNode
-}) {
+function Field({ label, hint, error, children }: { label: string; hint?: ReactNode; error?: ReactNode; children: ReactNode }) {
   return (
     <label className="block">
       <span className="mb-1.5 block text-[13px] font-medium text-muted-foreground">{label}</span>
@@ -146,7 +137,7 @@ export default function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
       void queryClient.invalidateQueries()
       toast.success(signup ? `Welcome, ${profile.display_name}` : `Signed in as ${profile.display_name}`)
       // A new account is offered the before-and-after baseline (it asks for consent before storing anything).
-      navigate(signup ? '/before-after?welcome=1' : '/', { replace: true })
+      navigate(signup ? '/before-after?welcome=1' : '/practice', { replace: true })
     },
   })
 
@@ -173,7 +164,7 @@ export default function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
       <Background />
       <div className="w-full max-w-[420px]">
         <div className="mb-8 flex flex-col items-center text-center">
-          <Link to="/" onClick={continueAsGuest} aria-label="Back to practice">
+          <Link to="/" aria-label="Home">
             <LogoMark className="size-14 rounded-2xl shadow-[0_12px_40px_-10px_rgb(201_89_221/0.6)]" />
           </Link>
           <h1 className="headline mt-6 text-[30px]">{signup ? 'Create your account' : 'Welcome back'}</h1>
@@ -189,7 +180,13 @@ export default function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
         <StorageNotice className="mb-4" />
 
         {/* A real form with named, typed fields: that is what lets the browser offer to save and fill the password. */}
-        <form onSubmit={onSubmit} noValidate method="post" className="surface space-y-4 p-6" aria-label={signup ? 'Create account' : 'Sign in'}>
+        <form
+          onSubmit={onSubmit}
+          noValidate
+          method="post"
+          className="surface space-y-4 p-6"
+          aria-label={signup ? 'Create account' : 'Sign in'}
+        >
           {signup ? (
             <>
               <Field
@@ -238,7 +235,7 @@ export default function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
                   autoCapitalize="none"
                   spellCheck={false}
                   maxLength={40}
-                  aria-invalid={!!local.username || !!server.username}
+                  aria-invalid={((touched || !!username.trim()) && !!local.username) || !!server.username}
                   className="h-11 rounded-xl text-[15px]"
                 />
               </Field>
@@ -339,6 +336,20 @@ export default function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
             {generalError}
           </div>
 
+          {signup && (
+            <p className="text-[12px] leading-relaxed text-subtle">
+              By creating an account you agree to the{' '}
+              <Link to="/terms" className="font-medium text-primary hover:underline">
+                Terms of Use
+              </Link>{' '}
+              and the{' '}
+              <Link to="/privacy" className="font-medium text-primary hover:underline">
+                Privacy Policy
+              </Link>
+              .
+            </p>
+          )}
+
           <Button type="submit" size="lg" disabled={submit.isPending} className="h-12 w-full rounded-xl text-[15px]">
             {submit.isPending ? 'One moment…' : signup ? 'Create account' : 'Sign in'}
             {!submit.isPending && <ArrowRightIcon weight="bold" />}
@@ -352,13 +363,15 @@ export default function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
           </Link>
         </p>
         <p className="mt-3 text-center text-[13px]">
-          <Link to="/" onClick={continueAsGuest} className="font-medium text-subtle hover:text-foreground">
+          <Link to="/practice" onClick={continueAsGuest} className="font-medium text-subtle hover:text-foreground">
             Practice without signing in
           </Link>
           <span className="mt-1 block text-xs text-subtle">You will need an account to see your scores.</span>
         </p>
 
-        <p className="mx-auto mt-8 flex max-w-[340px] items-start gap-2 text-xs leading-relaxed text-subtle">
+        <LegalLinks className="mt-6 justify-center" />
+
+        <p className="mx-auto mt-4 flex max-w-[340px] items-start gap-2 text-xs leading-relaxed text-subtle">
           <ShieldCheckIcon size={16} className="mt-px shrink-0" />
           {health?.password_reset
             ? 'Passwords are stored as salted scrypt hashes. If you forget yours, you can reset it by email.'
