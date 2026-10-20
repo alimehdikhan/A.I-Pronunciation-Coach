@@ -10,15 +10,11 @@ import {
   UserIcon,
 } from '@phosphor-icons/react'
 import { useProfileSync } from '@/hooks/useProfileSync'
+import { LegalLinks } from '@/components/site/LegalLinks'
 import { AnimatePresence, motion } from 'motion/react'
 import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Navigate, NavLink, useLocation, useNavigate, useOutlet } from 'react-router'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Kbd } from '@/components/ui/kbd'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useHeadlineReveal } from '@/lib/gsap'
@@ -39,7 +35,6 @@ const MicCheckDialog = lazy(() => import('@/components/practice/MicCheck').then(
 const SettingsDialog = lazy(() => import('./SettingsDialog').then((m) => ({ default: m.SettingsDialog })))
 const OnboardingDialog = lazy(() => import('./OnboardingDialog').then((m) => ({ default: m.OnboardingDialog })))
 const PhonemeSheet = lazy(() => import('@/components/tutor/PhonemeSheet').then((m) => ({ default: m.PhonemeSheet })))
-
 
 function useThemeSync() {
   const theme = useSettings((s) => s.theme)
@@ -120,7 +115,9 @@ function StreakCard() {
         <span className="text-[22px] font-semibold tracking-tight">{streak}</span>
         <span className="text-[13px] text-muted-foreground">{streak === 1 ? 'day' : 'days'}</span>
       </div>
-      <div className="text-xs text-subtle">{data ? `${data.sessions_this_week} sessions this week` : '—'}</div>
+      <div className="text-xs text-subtle">
+        {data ? `${data.sessions_this_week} ${data.sessions_this_week === 1 ? 'session' : 'sessions'} this week` : '—'}
+      </div>
     </NavLink>
   )
 }
@@ -184,7 +181,7 @@ function Sidebar() {
 
       <nav className="mt-5 flex flex-col gap-0.5 px-3">
         {NAV.map(({ to, label, icon: IconComp }) => (
-          <NavLink key={to} to={to} end={to === '/'}>
+          <NavLink key={to} to={to} end={to === '/practice'}>
             {({ isActive }) => (
               <div
                 className={cn(
@@ -209,6 +206,7 @@ function Sidebar() {
 
       <div className="mt-auto flex flex-col gap-2 pb-3">
         <StreakCard />
+        <LegalLinks className="px-3" />
         <div className="flex items-center justify-between px-3 pt-1">
           <HealthPill />
           <ThemeButton />
@@ -233,11 +231,19 @@ function MobileHeader() {
         <span className="text-[15px] font-semibold tracking-tight">Coach</span>
       </div>
       <div className="flex items-center">
-        <button onClick={() => setCommandOpen(true)} className="grid size-8 place-items-center rounded-full text-muted-foreground" aria-label="Search">
+        <button
+          onClick={() => setCommandOpen(true)}
+          className="grid size-8 place-items-center rounded-full text-muted-foreground"
+          aria-label="Search"
+        >
           <MagnifyingGlassIcon size={18} weight="bold" />
         </button>
         <ThemeButton />
-        <button onClick={() => setSettingsOpen(true)} className="grid size-8 place-items-center rounded-full text-muted-foreground" aria-label="Settings">
+        <button
+          onClick={() => setSettingsOpen(true)}
+          className="grid size-8 place-items-center rounded-full text-muted-foreground"
+          aria-label="Settings"
+        >
           <GearSixIcon size={18} weight="bold" />
         </button>
         {accountEmail ? (
@@ -264,9 +270,9 @@ function MobileHeader() {
 function TabBar() {
   return (
     <nav className="material fixed inset-x-0 bottom-0 z-30 border-t border-border pb-[env(safe-area-inset-bottom)] lg:hidden">
-      <div className="grid grid-cols-7">
+      <div className="grid grid-cols-8">
         {NAV.map(({ to, short, icon: IconComp }) => (
-          <NavLink key={to} to={to} end={to === '/'} className="flex flex-col items-center gap-0.5 pt-2 pb-1.5">
+          <NavLink key={to} to={to} end={to === '/practice'} className="flex flex-col items-center gap-0.5 pt-2 pb-1.5">
             {({ isActive }) => (
               <>
                 <IconComp size={24} weight={isActive ? 'fill' : 'regular'} className={isActive ? 'text-primary' : 'text-subtle'} />
@@ -305,7 +311,7 @@ function useEntryGate(pathname: string): boolean {
   const accountEmail = useSettings((s) => s.accountEmail)
   const guestChosen = useSettings((s) => s.guestChosen)
   const onboarded = useSettings((s) => s.onboarded)
-  return pathname === '/' && !accountEmail && !guestChosen && !onboarded
+  return pathname === '/practice' && !accountEmail && !guestChosen && !onboarded
 }
 
 export function AppShell() {
@@ -320,7 +326,8 @@ export function AppShell() {
     window.scrollTo({ top: 0 })
   }, [location.pathname])
 
-  if (gated) return <Navigate to="/login" replace />
+  // First-time visitors see the front page; it leads to sign-up, sign-in or practising as a guest.
+  if (gated) return <Navigate to="/" replace />
 
   return (
     <div className="relative min-h-dvh">
@@ -365,6 +372,7 @@ export function PageHeader({
   description,
   actions,
 }: {
+  /** The section this page belongs to; shown in the browser tab. */
   eyebrow?: string
   title: ReactNode
   description?: ReactNode
@@ -372,10 +380,18 @@ export function PageHeader({
 }) {
   const headline = useRef<HTMLHeadingElement>(null)
   useHeadlineReveal(headline, [typeof title === 'string' ? title : ''])
+  // The section name names the browser tab; on the page, the sidebar already says where you are.
+  useEffect(() => {
+    if (!eyebrow) return
+    const previous = document.title
+    document.title = `${eyebrow} · AI Pronunciation Coach`
+    return () => {
+      document.title = previous
+    }
+  }, [eyebrow])
   return (
     <div className="mb-8 flex flex-col gap-5 sm:mb-10 sm:flex-row sm:items-end sm:justify-between">
       <div>
-        {eyebrow && <div className="mb-2 text-[13px] font-semibold text-primary">{eyebrow}</div>}
         <h1 ref={headline} className="headline text-[34px] sm:text-[48px]">
           {title}
         </h1>
