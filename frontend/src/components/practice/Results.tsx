@@ -9,12 +9,17 @@ import { CoachCard } from './CoachCard'
 import { InsightsPanel } from './InsightsPanel'
 import { RoomNotice } from './RoomNotice'
 import { ScoreSummary } from './ScoreSummary'
+import { ShareButton } from './ShareButton'
 import { TranscriptPanel } from './TranscriptPanel'
+import { wordTier } from '@/lib/utils'
 import { WordInspector } from './WordInspector'
 
 function defaultWord(attempt: Attempt): number | null {
   const words = attempt.result.words
-  const problem = words.find((w) => w.status === 'mispronounced') ?? words.find((w) => w.status === 'missing' || w.status === 'unclear')
+  const problem =
+    words.find((w) => wordTier(w) === 'fix') ??
+    words.find((w) => w.status === 'missing' || w.status === 'unclear') ??
+    words.find((w) => wordTier(w) === 'check')
   return (problem ?? words[0])?.index ?? null
 }
 
@@ -35,13 +40,14 @@ export function Results({
   const timed = useMemo(() => result.words.map((w) => ({ index: w.index, start: w.start, end: w.end })), [result.words])
   const playback = usePlayback(attempt.audioUrl, timed)
 
+  // Keyed on the recording, not the object: a word updated in place ("Say just this word") keeps the view.
   useEffect(() => {
     setSelected(defaultWord(attempt))
-  }, [attempt])
+  }, [attempt.createdAt])
 
   useEffect(() => {
     scope.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }, [attempt])
+  }, [attempt.createdAt])
 
   useStaggerIn(scope, '.results-item', [attempt.createdAt])
 
@@ -53,14 +59,15 @@ export function Results({
       <RoomNotice cleanup={result.audio_cleanup} />
       <TranscriptPanel result={result} blob={attempt.audioBlob} playback={playback} selected={selected} onSelect={setSelected} />
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] lg:items-start">
-        <WordInspector word={word} playback={playback} />
+        <WordInspector word={word} playback={playback} recordId={result.record_id} />
         <InsightsPanel insights={result.insights} onSelect={setSelected} />
       </div>
-      <CoachCard result={result} previousScore={previousScore} />
+      <CoachCard result={result} previousScore={previousScore} onSelect={setSelected} />
       <div className="results-item flex flex-col-reverse items-center justify-center gap-3 pt-4 sm:flex-row">
         <Button variant="secondary" size="lg" onClick={onRetry} className="h-12 px-6 text-[15px]">
           <ArrowClockwiseIcon weight="bold" /> Try again <Kbd className="ml-1 hidden sm:inline-flex">R</Kbd>
         </Button>
+        <ShareButton attempt={attempt} />
         <Button size="lg" onClick={onNext} className="h-12 px-6 text-[15px]">
           Next phrase <ArrowRightIcon weight="bold" /> <Kbd className="ml-1 hidden bg-white/20 text-white sm:inline-flex">N</Kbd>
         </Button>
