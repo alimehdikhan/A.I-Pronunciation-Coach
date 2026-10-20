@@ -2,10 +2,15 @@ export type Level = 'beginner' | 'intermediate' | 'advanced'
 
 export type WordStatus = 'correct' | 'unclear' | 'mispronounced' | 'missing' | 'extra'
 
+/** How sure the coach is about a slip: 'fix' is a likely real slip, 'check' a borderline one. */
+export type SlipTier = 'fix' | 'check'
+
 export interface AlignmentOp {
   op: 'equal' | 'replace' | 'delete' | 'insert'
   expected: string
   actual: string
+  /** Set on slips; missing from results saved before tiers existed (treat as 'fix'). */
+  tier?: SlipTier | null
 }
 
 export interface Syllable {
@@ -31,6 +36,21 @@ export interface WordResult {
   syllables: Syllable[]
   source: 'cmudict' | 'epitran' | 'rules' | 'spelling'
   pause_before: number | null
+  /** The surest slip in the word ('fix' wins over 'check'); null when it has none. */
+  tier?: SlipTier | null
+  /** A listener would likely not catch this target word: the recogniser heard another word (`heard_as`) or none. */
+  misheard?: boolean | null
+  heard_as?: string | null
+  /** The real word the slip turned this into ("think" said as "sink"). */
+  changes_word?: string | null
+  /** Would the slip change what a listener understands? false = a minor accent feature. */
+  affects_understanding?: boolean | null
+  /** Experimental word stress: the dictionary's stressed syllable, the one that sounded stressed, and whether that is a slip. */
+  stress?: { expected: number; heard: number; margin: number; error: boolean; prominence: number[] }
+  /** Set in the browser after "Say just this word": the borderline slip was real, or it was fine. */
+  confirmed?: 'slip' | 'fine'
+  /** The verdict replaced the uncertain one in the learner's saved history. */
+  confirmedSaved?: boolean
   /** True when the sounds were scored from the audio itself, not just Whisper's words. */
   acoustic?: boolean
   /** Per-sound evidence, one entry per expected sound (acoustic scoring only). */
@@ -41,8 +61,12 @@ export interface PhonemeEvidence {
   phoneme: string
   /** 0-100: probability the sound would be rated clean. Most clean sounds score above 90. */
   score: number
+  /** The raw goodness of pronunciation (log-posterior, 0 = certainly right) behind `score`. */
+  gop?: number | null
   /** True when the sound is reported as a slip. */
   flagged: boolean
+  /** For a flagged sound: 'fix' (likely real) or 'check' (borderline). */
+  tier?: SlipTier | null
   /** What it most likely was instead ('?' = no standard English sound, '' = dropped). */
   alternative: string | null
   start: number | null
@@ -50,12 +74,13 @@ export interface PhonemeEvidence {
 }
 
 export interface Insight {
-  kind: 'substitution' | 'deletion' | 'insertion' | 'word' | 'missing' | 'unclear' | 'extra' | 'pause' | 'pace' | 'praise'
+  kind: 'substitution' | 'deletion' | 'insertion' | 'word' | 'missing' | 'unclear' | 'extra' | 'pause' | 'pace' | 'praise' | 'stress'
   severity: 'high' | 'medium' | 'low' | 'positive'
   title: string
   word_index: number | null
   expected: string | null
   actual: string | null
+  tier?: SlipTier | null
 }
 
 export interface Metrics {
@@ -73,6 +98,10 @@ export interface EvaluationResult {
   reference_text: string
   record_id: number | null
   saved: boolean
+  /** "Would a listener understand you?": share of target words a recogniser recovered without being told the target. */
+  intelligibility?: { score: number; recovered: number; words: number; estimate: true }
+  /** Nothing was heard (silence, muted or wrong microphone). */
+  no_speech?: boolean
   /** Why the attempt wasn't saved, e.g. 'profile_locked' (name owned by another device). */
   save_error?: string
   score: number
@@ -96,7 +125,23 @@ export interface EvaluationResult {
     wpm: number | null
     long_pauses: number
     word_count: number
+    /** Slower than `careful_below` words per minute: careful, read-aloud speech. */
+    careful?: boolean
+    careful_below?: number
   }
+  /** False when natural-speed mode is on and this was careful speech: shown, but not counted. */
+  counted?: boolean
+}
+
+/** `POST /api/evaluate/confirm`: how a borderline word came out when said alone. */
+export interface ConfirmResult {
+  word: string
+  /** 'unheard': the word wasn't heard clearly enough to judge; 'unavailable': no sound model on the server. */
+  verdict: 'slip' | 'fine' | 'unheard' | 'unavailable'
+  sounds: { phoneme: string; verdict: 'slip' | 'fine' | 'unheard'; score: number | null; alternative: string | null }[]
+  /** Saved sounds in the original attempt that now carry this verdict. */
+  updated: number
+  transcription: string
 }
 
 /** One coach voice the server offers (`GET /api/voices`). */
@@ -130,6 +175,10 @@ export interface Health {
   coach_llm?: boolean
   /** The live voice conversation is available. */
   voice_agent?: boolean
+  /** Longest answer in Speak freely (seconds). */
+  free_speech_seconds?: number
+  /** Password reset by email is set up on this server. */
+  password_reset?: boolean
   version: string
 }
 
@@ -225,8 +274,13 @@ export interface HistoryRecord {
   fluency: number | null
   completeness: number | null
   clarity: number | null
+  wpm?: number | null
+  /** False: careful speech saved under natural-speed mode, not counted toward mastery or goals. */
+  counted?: boolean | null
   created_at: string
   mistakes: { word: string; expected_phoneme: string; actual_phoneme: string }[]
+  /** Teachers' comments left through a share link. */
+  comments?: { author: string | null; text: string; created_at: string }[]
 }
 
 export interface Analytics {
@@ -247,6 +301,42 @@ export interface Analytics {
   sound_mastery?: SoundMastery[]
   /** Words that went wrong most often. */
   tricky_words?: { word: string; misses: number }[]
+  /** Listening drills: share heard right per contrast, weakest first. */
+  perception?: PerceptionStat[]
+}
+
+/** How well the learner hears one contrast (e.g. th vs s) in listening drills. */
+export interface PerceptionStat {
+  phoneme: string
+  other: string
+  trials: number
+  correct: number
+  accuracy: number
+}
+
+export interface ListenTrial {
+  index: number
+  phoneme: string
+  other: string
+  /** The two words of the pair; `answer` is the index of the one that is played. */
+  words: [string, string]
+  answer: 0 | 1
+  word: string
+  voice: string
+}
+
+export interface ListenSession {
+  contrasts: { phoneme: string; other: string; label: string; other_label: string; pairs: string[][] }[]
+  trials: ListenTrial[]
+  voices: string[]
+  note: string | null
+  perception: PerceptionStat[]
+}
+
+export interface ListenResults {
+  saved: number
+  session: PerceptionStat[]
+  perception: PerceptionStat[]
 }
 
 export interface ChatTurn {
@@ -331,6 +421,10 @@ export interface CoachSlip {
   kind: 'substitution' | 'deletion' | 'insertion' | 'missing' | 'unclear' | 'extra'
   expected: string
   actual: string
+  /** 'check' slips get no tip; their words come back in `worth_checking`. */
+  tier?: SlipTier | null
+  /** false: the slip won't confuse a listener (goal "be clearly understood" lists it as minor). */
+  affects?: boolean | null
 }
 
 export interface CoachRequest {
@@ -342,6 +436,8 @@ export interface CoachRequest {
   /** The score of the previous attempt at this phrase, when there is one. */
   previous_score?: number | null
   native_language?: string | null
+  goal?: 'understood' | 'accent'
+  tip_language?: 'English' | 'Hindi' | 'Urdu' | 'Hinglish'
 }
 
 export interface CoachReply {
@@ -352,6 +448,97 @@ export interface CoachReply {
   practice_sentence: string | null
   /** The single most useful change to try on the next attempt. */
   one_thing: string | null
+  /** Words whose only slips were borderline: no tip, but worth a second listen. */
+  worth_checking?: string[]
+  /** Goal "be clearly understood": words whose slips won't confuse a listener. */
+  minor?: string[]
+  /** The language the tips are in, and a note when it isn't the one asked for. */
+  language?: string
+  language_note?: string | null
+}
+
+export interface SpeakPrompt {
+  id: string
+  kind: 'interview' | 'ielts' | 'everyday'
+  title: string
+  hint?: string
+  /** IELTS cue cards: what to cover. */
+  points?: string[]
+}
+
+export interface SpeakPrompts {
+  kinds: Record<SpeakPrompt['kind'], { label: string; prep_seconds: number }>
+  prompts: SpeakPrompt[]
+  max_seconds: number
+}
+
+export interface SpeakResult {
+  prompt: SpeakPrompt | null
+  transcription: string
+  no_speech: boolean
+  note: string
+  max_seconds: number
+  delivery: {
+    wpm: number | null
+    words: number
+    duration: number | null
+    long_pauses: number
+    pause_lengths: number[]
+    longest_pause: number | null
+    fillers: { count: number; words: string[]; approximate: boolean }
+  } | null
+  /** Every word of the answer; `reported` marks the sure slips. */
+  words: (WordResult & { reported?: boolean })[]
+  slips: { index: number; word: string; expected: string; actual: string; changes_word: string | null }[]
+  /** Sound accuracy (0-100) when the sound model ran; null otherwise. */
+  pronunciation: number | null
+  /** One paragraph on clarity and structure, when the language model is available. */
+  feedback: { text: string; source: 'groq' | 'template' } | null
+}
+
+export interface BaselineTake {
+  id: number
+  score: number | null
+  has_audio: boolean
+  created_at: string | null
+}
+
+export interface BaselineStatus {
+  sentences: string[]
+  rounds: { round: number; complete: boolean; finished_at: string | null; average: number | null; sentences: Record<string, BaselineTake> }[]
+  /** The round to record next; `due_at` is when a re-recording opens. */
+  next: { round: number; due: boolean; due_at: string | null }
+  stored_audio: number
+}
+
+/** What a teacher sees through a share link. */
+export interface SharedAttempt {
+  attempt: {
+    reference_text: string
+    transcription: string
+    score: number
+    metrics: Record<string, number | null>
+    words: { display: string; status: WordStatus; tier: SlipTier | null }[]
+    insights: string[]
+    wpm: number | null
+    created_at: string | null
+  }
+  expires_at: string
+  has_audio: boolean
+  comments: { author: string | null; text: string; created_at: string }[]
+}
+
+export interface LearnerProfile {
+  first_language: string | null
+  goal: 'understood' | 'accent'
+  tip_language: 'English' | 'Hindi' | 'Urdu' | 'Hinglish'
+}
+
+export interface LearnerOptions {
+  first_languages: string[]
+  goals: { id: 'understood' | 'accent'; label: string; default: boolean }[]
+  tip_languages: string[]
+  common_sounds: Record<string, string[]>
 }
 
 /** The signed-in account for this browser, or `{ account: false }` for a guest. */
@@ -389,7 +576,7 @@ export interface SoundMastery {
 }
 
 export interface SessionStep {
-  kind: 'learn' | 'listen' | 'words' | 'sentence' | 'review'
+  kind: 'learn' | 'listen' | 'discriminate' | 'words' | 'sentence' | 'review'
   title: string
   instruction: string
   steps?: string[]
@@ -397,6 +584,10 @@ export interface SessionStep {
   words?: string[]
   your_words?: string[]
   sentence?: string
+  /** 'discriminate': the sound to train the ear on, how well it is heard so far, and how many trials. */
+  phoneme?: string
+  accuracy?: number
+  trials?: number
 }
 
 export interface CoachPlan {
@@ -407,7 +598,7 @@ export interface CoachPlan {
     label: string
     name: string
     category: string
-    why: 'history' | 'starter' | 'maintenance'
+    why: 'history' | 'early' | 'starter' | 'maintenance' | 'chosen'
     reason: string
     stats: SoundMastery | null
     placement: string
