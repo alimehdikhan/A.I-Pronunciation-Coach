@@ -8,8 +8,13 @@ import type {
   CoachReply,
   CoachRequest,
   ConfirmResult,
+  Day30Status,
   EvaluationResult,
   BaselineStatus,
+  GdContribution,
+  GdReport,
+  GdTopics,
+  GdTurn,
   LearnerOptions,
   SharedAttempt,
   SpeakPrompts,
@@ -21,6 +26,13 @@ import type {
   HistoryPage,
   Journey,
   HistoryRecord,
+  InterviewAnswerResult,
+  InterviewDetail,
+  InterviewOptions,
+  InterviewStart,
+  InterviewSummary,
+  ListenerClipResult,
+  ListenerWordResult,
   PhonemeDetail,
   PhonemeSummary,
   PracticeResponse,
@@ -210,6 +222,173 @@ export const api = {
     if (input.promptId) form.append('prompt_id', input.promptId)
     return request<SpeakResult>('/api/speak/evaluate', { method: 'POST', body: form })
   },
+
+  interviewOptions: () => request<InterviewOptions>('/api/interview/options'),
+
+  /** Picks the questions; with a name the interview is saved (text only) after every answer. */
+  interviewStart: (body: { type: string; role: string; level: string; count: number; username?: string }) =>
+    request<InterviewStart>('/api/interview/sessions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(body.username ? profileHeaders() : {}) },
+      body: JSON.stringify(body),
+    }),
+
+  /** Questions from the learner's CV (a file or pasted text) and, optionally, the job advert. The CV is never stored. */
+  interviewFromCv: (input: { file?: File | null; text?: string; jobAd?: string; level: string; count: number; username?: string }) => {
+    const form = new FormData()
+    if (input.file) form.append('cv_file', input.file, input.file.name)
+    if (input.text?.trim()) form.append('cv_text', input.text)
+    if (input.jobAd?.trim()) form.append('job_ad', input.jobAd)
+    form.append('level', input.level)
+    form.append('count', String(input.count))
+    if (input.username) form.append('username', input.username)
+    return request<InterviewStart>('/api/interview/cv', {
+      method: 'POST',
+      body: form,
+      headers: input.username ? profileHeaders() : undefined,
+    })
+  },
+
+  /** Scores one spoken answer (levelled to 16 kHz WAV first); a follow-up answer names its follow-up. */
+  interviewAnswer: async (input: {
+    audio: Blob
+    filename: string
+    questionId: string
+    /** A CV question in an interview that isn't saved: the server has no copy of it. */
+    custom?: { text: string; kind: string }
+    type: string
+    role: string
+    level: string
+    sessionId?: number | null
+    questionIndex?: number | null
+    username?: string
+    followUp?: { id: string; text: string } | null
+  }) => {
+    const prepared = await prepareRecording(input.audio, input.filename)
+    const form = new FormData()
+    form.append('audio', prepared.blob, prepared.filename)
+    form.append('question_id', input.questionId)
+    form.append('interview_type', input.type)
+    form.append('role', input.role)
+    form.append('level', input.level)
+    const saved = input.sessionId != null && input.questionIndex != null && !!input.username
+    if (saved) {
+      form.append('session_id', String(input.sessionId))
+      form.append('question_index', String(input.questionIndex))
+      form.append('username', input.username!)
+    }
+    if (!saved && input.custom) {
+      form.append('question_text', input.custom.text)
+      form.append('question_kind', input.custom.kind)
+    }
+    if (input.followUp) {
+      form.append('follow_up', input.followUp.id)
+      form.append('follow_up_text', input.followUp.text)
+    }
+    return request<InterviewAnswerResult>('/api/interview/answer', {
+      method: 'POST',
+      body: form,
+      headers: saved ? profileHeaders() : undefined,
+    })
+  },
+
+  interviews: (username: string) =>
+    request<{ sessions: InterviewSummary[] }>(`/api/interview/sessions/${enc(username)}`, { headers: profileHeaders() }).then(
+      (r) => r.sessions,
+    ),
+
+  interview: (username: string, id: number) =>
+    request<InterviewDetail>(`/api/interview/sessions/${enc(username)}/${id}`, { headers: profileHeaders() }),
+
+  /** A new interview with the same questions as a saved one. */
+  repeatInterview: (username: string, id: number) =>
+    request<InterviewStart>(`/api/interview/sessions/${enc(username)}/${id}/repeat`, { method: 'POST', headers: profileHeaders() }),
+
+  deleteInterview: (username: string, id: number) =>
+    request<{ deleted: boolean }>(`/api/interview/sessions/${enc(username)}/${id}`, { method: 'DELETE', headers: profileHeaders() }),
+
+  gdTopics: () => request<GdTopics>('/api/gd/topics'),
+
+  /** What a participant says next in a group discussion. */
+  gdTurn: (body: { topic_id: string; speaker: string; user_name: string; turns: GdTurn[] }) =>
+    request<{ speaker: string; text: string; source: 'groq' | 'template' }>('/api/gd/turn', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+
+  /** One of the learner's contributions, transcribed and measured (levelled to 16 kHz WAV first). Not saved. */
+  gdContribution: async (input: { audio: Blob; filename: string }) => {
+    const prepared = await prepareRecording(input.audio, input.filename)
+    const form = new FormData()
+    form.append('audio', prepared.blob, prepared.filename)
+    return request<GdContribution>('/api/gd/contribution', { method: 'POST', body: form })
+  },
+
+  gdReport: (body: { topic_id: string; user_name: string; turns: GdTurn[] }) =>
+    request<GdReport>('/api/gd/report', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+
+  /** Share one practice recording (with consent) for other learners to hear, anonymously, for 30 days. */
+  listenerShare: (username: string, input: { recordId: number; audio: Blob }) => {
+    const form = new FormData()
+    form.append('audio', input.audio, 'attempt.wav')
+    form.append('record_id', String(input.recordId))
+    form.append('consent', 'true')
+    return request<ListenerClipResult>(`/api/listeners/${enc(username)}/clips`, { method: 'POST', body: form, headers: profileHeaders() })
+  },
+
+  listenerClips: (username: string) =>
+    request<{ clips: ListenerClipResult[]; helped: number }>(`/api/listeners/${enc(username)}/clips`, { headers: profileHeaders() }),
+
+  listenerDelete: (username: string, id: number) =>
+    request<{ deleted: boolean }>(`/api/listeners/${enc(username)}/clips/${id}`, { method: 'DELETE', headers: profileHeaders() }),
+
+  /** Someone else's recording to listen to, or null when there is none right now. */
+  listenerNext: (username: string) =>
+    request<{ clip: { id: number; words: number } | null; helped: number }>(`/api/listeners/${enc(username)}/next`, {
+      headers: profileHeaders(),
+    }),
+
+  listenerAudio: async (username: string, id: number): Promise<Blob> => {
+    const response = await fetch(`${BASE}/api/listeners/${enc(username)}/audio/${id}`, { headers: profileHeaders() })
+    if (!response.ok) throw new ApiError(response.status, 'Could not load that recording.')
+    return response.blob()
+  },
+
+  listenerAnswer: (username: string, id: number, typed: string) =>
+    request<{ text: string; words: ListenerWordResult[]; heard: number; total: number }>(`/api/listeners/${enc(username)}/answer/${id}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...profileHeaders() },
+      body: JSON.stringify({ typed }),
+    }),
+
+  listenerReport: (username: string, id: number) =>
+    request<{ reported: boolean }>(`/api/listeners/${enc(username)}/report/${id}`, { method: 'POST', headers: profileHeaders() }),
+
+  day30Status: (username: string) => request<Day30Status>(`/api/day30/${enc(username)}`, { headers: profileHeaders() }),
+
+  /** Records the next Day 1 vs Day 30 round (levelled to 16 kHz WAV first); stored with the learner's consent. */
+  day30Record: async (username: string, input: { audio: Blob; filename: string; promptId: string; consent: boolean }) => {
+    const prepared = await prepareRecording(input.audio, input.filename)
+    const form = new FormData()
+    form.append('audio', prepared.blob, prepared.filename)
+    form.append('prompt_id', input.promptId)
+    form.append('consent', input.consent ? 'true' : 'false')
+    return request<Day30Status>(`/api/day30/${enc(username)}/record`, { method: 'POST', body: form, headers: profileHeaders() })
+  },
+
+  day30Audio: async (username: string, round: number): Promise<Blob> => {
+    const response = await fetch(`${BASE}/api/day30/${enc(username)}/audio/${round}`, { headers: profileHeaders() })
+    if (!response.ok) throw new ApiError(response.status, 'Could not load that recording.')
+    return response.blob()
+  },
+
+  day30Delete: (username: string) =>
+    request<{ deleted: number }>(`/api/day30/${enc(username)}`, { method: 'DELETE', headers: profileHeaders() }),
 
   learnerOptions: () => request<LearnerOptions>('/api/learner/options'),
 
