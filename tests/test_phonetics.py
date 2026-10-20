@@ -65,3 +65,27 @@ def test_rule_pronunciation_basics():
     assert phonetics.rule_pronunciation("bike").phonemes == ("b", "aɪ", "k")
     assert phonetics.rule_pronunciation("merit").phonemes == ("m", "ɛ", "r", "ɪ", "t")
     assert phonetics.rule_pronunciation("bus").phonemes == ("b", "ʌ", "s")
+
+
+def test_function_words_accept_their_weak_forms():
+    def forms(word):
+        return {"".join(p.phonemes) for p in phonetics.pronunciations(word)}
+
+    reduced = {"a": "ə", "an": "ən", "the": "ðə", "to": "tə", "for": "fɚ", "of": "əv", "and": "ən", "can": "kən",
+               "was": "wəz", "were": "wɚ", "have": "həv", "has": "həz", "them": "ðəm", "from": "frəm", "you": "jə",
+               "your": "jɚ", "at": "ət", "as": "əz", "but": "bət", "that": "ðət"}
+    for word, weak in reduced.items():
+        assert weak in forms(word), word
+    assert phonetics.primary_pronunciation("and").phonemes == ("ə", "n", "d")  # the citation form still comes first
+
+
+def test_weak_forms_never_change_a_consonant():
+    assert "də" not in {"".join(p.phonemes) for p in phonetics.pronunciations("the")}
+
+    def consonants(phonemes):  # an r-coloured vowel keeps the r ("your" as /jɚ/)
+        return [ph for p in phonemes for ph in (["r"] if p in ("ɚ", "ɝ") else [p]) if ph not in phonetics.VOWELS]
+
+    for word, variants in phonetics.WEAK_FORMS.items():
+        citation = consonants(phonetics.primary_pronunciation(word).phonemes)
+        for weak in variants:
+            assert consonants(phonetics._from_arpabet(weak.split()).phonemes) == citation or word == "and", (word, weak)  # "and" may drop its d (ən)
