@@ -8,6 +8,7 @@ import { EmptyState, Pill, SectionLabel } from '@/components/common'
 import { PageHeader } from '@/components/layout/AppShell'
 import { SignInActions } from '@/components/auth/SignInGate'
 import { PracticeWriter } from '@/components/coach/PracticeWriter'
+import { ListenDrill } from '@/components/drills/ListenDrill'
 import { SpeakChip } from '@/components/tutor/SpeakButton'
 import { TalkButton } from '@/components/voice/TalkButton'
 import { useSpeaker } from '@/lib/speech'
@@ -16,6 +17,7 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useRecorder, type Recording } from '@/hooks/useRecorder'
 import { api, ApiError } from '@/lib/api'
+import { errorLine } from '@/lib/errors'
 import { keys, useCoachPlan } from '@/lib/queries'
 import type { CoachPlan, EvaluationResult, SessionStep, SoundMastery } from '@/lib/types'
 import { cn } from '@/lib/utils'
@@ -36,12 +38,13 @@ function focusOutcome(result: EvaluationResult, phoneme: string): Outcome {
   const heard = result.transcription.trim()
   const detailed = result.words.flatMap((w) => (w.phonemes ?? []).filter((p) => p.phoneme === phoneme))
   if (detailed.length) {
-    const bad = detailed.find((p) => p.flagged)
+    // Like the saved history, only a "fix" slip counts as a miss; a borderline one does not.
+    const bad = detailed.find((p) => p.flagged && p.tier !== 'check')
     return { ok: !bad, heard, became: bad?.alternative ?? null }
   }
   const ops = result.words.flatMap((w) => w.alignment.filter((op) => op.expected === phoneme && op.op !== 'insert'))
   if (ops.length) {
-    const bad = ops.find((op) => op.op !== 'equal')
+    const bad = ops.find((op) => op.op !== 'equal' && op.tier !== 'check')
     return { ok: !bad, heard, became: bad ? bad.actual || null : null }
   }
   return { ok: null, heard, became: null }
@@ -142,9 +145,7 @@ function Practiser({
             : evaluate.isPending
               ? 'Checking the sound…'
               : evaluate.error
-                ? evaluate.error instanceof ApiError
-                  ? evaluate.error.message
-                  : 'Something went wrong. Try again.'
+                ? errorLine(evaluate.error)
                 : previous
                   ? previous.heard
                     ? `Heard “${previous.heard}”`
@@ -266,6 +267,8 @@ function Session({ plan, username }: { plan: CoachPlan; username: string }) {
               <SpeakChip text={b}>{b}</SpeakChip>
             </div>
           ))}
+
+        {step.kind === 'discriminate' && step.phoneme && <ListenDrill focus={step.phoneme} trials={step.trials ?? 10} />}
 
         {step.kind === 'words' &&
           (step.words ?? []).map((word) => (
