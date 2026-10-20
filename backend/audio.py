@@ -18,7 +18,9 @@ import wave
 from functools import lru_cache
 
 import numpy as np
-from fastapi import HTTPException, UploadFile
+from fastapi import UploadFile
+
+from backend.errors import CodedHTTPException
 
 logger = logging.getLogger("pronunciation_coach.audio")
 
@@ -44,21 +46,24 @@ MAX_GAIN = 16.0
 LIMITER_KNEE = 0.9
 
 
-class AudioError(HTTPException):
+class AudioError(CodedHTTPException):
     """A client-side problem with the uploaded audio."""
+
+    def __init__(self, status_code: int, detail: str, code: str = "audio_unreadable"):
+        super().__init__(status_code, detail, code)
 
 
 def validate_upload(audio: UploadFile) -> str:
     """Check the filename and content type; returns the lower-case extension."""
     if not audio.filename:
-        raise AudioError(status_code=400, detail="No audio file provided.")
+        raise AudioError(status_code=400, detail="No audio file provided.", code="audio_empty")
     suffix = os.path.splitext(audio.filename)[1].lower()
     if suffix not in ALLOWED_AUDIO_EXTENSIONS:
         allowed = ", ".join(sorted(ALLOWED_AUDIO_EXTENSIONS))
-        raise AudioError(status_code=400, detail=f"Unsupported audio file type. Allowed extensions: {allowed}.")
+        raise AudioError(status_code=400, detail=f"Unsupported audio file type. Allowed extensions: {allowed}.", code="unsupported_audio")
     content_type = (audio.content_type or "").split(";")[0].strip().lower()
     if content_type and content_type not in ALLOWED_AUDIO_CONTENT_TYPES and not content_type.startswith("audio/"):
-        raise AudioError(status_code=400, detail="Unsupported audio content type.")
+        raise AudioError(status_code=400, detail="Unsupported audio content type.", code="unsupported_audio")
     return suffix
 
 
@@ -70,17 +75,17 @@ async def read_upload(audio: UploadFile, max_bytes: int) -> bytes:
         while chunk := await audio.read(CHUNK_SIZE):
             total += len(chunk)
             if total > max_bytes:
-                raise AudioError(status_code=413, detail="Audio file is too large.")
+                raise AudioError(status_code=413, detail="Audio file is too large.", code="upload_too_large")
             chunks.append(chunk)
     finally:
         await audio.close()
     if total == 0:
-        raise AudioError(status_code=400, detail="Uploaded audio file is empty.")
+        raise AudioError(status_code=400, detail="Uploaded audio file is empty.", code="audio_empty")
     return b"".join(chunks)
 
 
 def _too_long(max_seconds: float) -> AudioError:
-    return AudioError(status_code=413, detail=f"Recordings can be at most {max_seconds:g} seconds long.")
+    return AudioError(status_code=413, detail=f"Recordings can be at most {max_seconds:g} seconds long.", code="recording_too_long")
 
 
 def _decode_wav(data: bytes, max_seconds: float) -> np.ndarray | None:
