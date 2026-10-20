@@ -1,4 +1,4 @@
-import { TargetIcon, DesktopIcon, EyeSlashIcon, MoonIcon, PaletteIcon, PlayIcon, SpeakerHighIcon, SunIcon, TextTIcon, TranslateIcon, UserIcon, UserSoundIcon } from '@phosphor-icons/react'
+import { GaugeIcon, MicrophoneIcon, TargetIcon, DesktopIcon, EyeSlashIcon, MoonIcon, PaletteIcon, PlayIcon, SpeakerHighIcon, SunIcon, TextTIcon, TranslateIcon, UserIcon, UserSoundIcon } from '@phosphor-icons/react'
 import { useEffect, useState, type ReactNode } from 'react'
 import { toast } from 'sonner'
 import { Segmented } from '@/components/common'
@@ -7,9 +7,10 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Slider } from '@/components/ui/slider'
+import { Switch } from '@/components/ui/switch'
 import { useVoiceCatalog } from '@/lib/queries'
 import { NEURAL_VOICE, rankVoice, useSpeaker, usesNeuralVoice, useVoices } from '@/lib/speech'
-import { useSettings, type Theme } from '@/store/settings'
+import { useSettings, type Accent, type Goal, type Theme, type TipLanguage } from '@/store/settings'
 import { useUI } from '@/store/ui'
 
 const USERNAME_RE = /^[\p{L}\p{N}_ .'-]{0,40}$/u
@@ -42,11 +43,13 @@ function Row({ label, icon, children }: { label: string; icon?: ReactNode; child
   )
 }
 
-const NATIVE_LANGUAGES = [
+export const NATIVE_LANGUAGES = [
   'Arabic', 'Bengali', 'Chinese (Mandarin)', 'French', 'German', 'Gujarati', 'Hindi', 'Indonesian', 'Italian',
   'Japanese', 'Korean', 'Marathi', 'Persian', 'Portuguese', 'Punjabi', 'Russian', 'Spanish', 'Tamil', 'Telugu',
-  'Turkish', 'Urdu', 'Vietnamese',
+  'Turkish', 'Urdu', 'Vietnamese', 'Other',
 ]
+
+export const TIP_LANGUAGES: TipLanguage[] = ['English', 'Hindi', 'Urdu', 'Hinglish']
 
 export function SettingsDialog() {
   const open = useUI((s) => s.settingsOpen)
@@ -80,6 +83,21 @@ export function SettingsDialog() {
           <DialogDescription>Changes are saved automatically.</DialogDescription>
         </DialogHeader>
 
+        <Group icon={<MicrophoneIcon size={14} weight="fill" />} title="Microphone" footer="Three seconds: checks your voice is loud enough, not distorting and clear of background noise.">
+          <div className="p-2">
+            <Button
+              variant="secondary"
+              className="w-full"
+              onClick={() => {
+                useUI.getState().setSettingsOpen(false)
+                useUI.getState().setMicCheckOpen(true)
+              }}
+            >
+              <MicrophoneIcon weight="fill" /> Check my microphone
+            </Button>
+          </div>
+        </Group>
+
         <Group icon={<TargetIcon size={14} weight="fill" />} title="Daily goal" footer="How many attempts to aim for each day. It shows on the practice page and your journey.">
           <div className="p-2">
             <Segmented<string>
@@ -112,7 +130,24 @@ export function SettingsDialog() {
           </div>
         </Group>
 
-        <Group icon={<TranslateIcon size={14} weight="fill" />} title="Your coach" footer="Optional. The coach uses it to say what is usually hard for speakers of your language. It stays in this browser.">
+        <Group
+          icon={<GaugeIcon size={14} weight="fill" />}
+          title="Natural speed"
+          footer="Slow, over-careful reading scores well but isn't how you talk. With this on, attempts under 100 words a minute are still scored and shown, but don't count toward your sounds, streak or daily goal. Word stress marks which syllable of each long word you stressed; it is experimental and often disagrees with expert listeners."
+        >
+          <Row label="Word stress (experimental)" icon={<GaugeIcon size={18} />}>
+            <Switch checked={settings.stressCheck} onCheckedChange={settings.setStressCheck} aria-label="Check word stress (experimental)" />
+          </Row>
+          <Row label="Count only natural-speed attempts" icon={<GaugeIcon size={18} />}>
+            <Switch
+              checked={settings.naturalSpeed}
+              onCheckedChange={settings.setNaturalSpeed}
+              aria-label="Count only natural-speed attempts"
+            />
+          </Row>
+        </Group>
+
+        <Group icon={<TranslateIcon size={14} weight="fill" />} title="Your coach" footer="Your first language puts the sounds usually hard for its speakers first and lets the coach say why a slip happens; it never changes a score. “Be clearly understood” puts slips that change a word first. Saved with your profile.">
           <Row label="First language" icon={<TranslateIcon size={18} />}>
             <Select
               value={settings.nativeLanguage ?? '__none'}
@@ -131,6 +166,44 @@ export function SettingsDialog() {
               </SelectContent>
             </Select>
           </Row>
+          <Row label="Tips in" icon={<TranslateIcon size={18} />}>
+            <Select value={settings.tipLanguage} onValueChange={(value) => settings.setTipLanguage(value as TipLanguage)}>
+              <SelectTrigger className="h-8 max-w-[190px] min-w-0 border-0 bg-transparent text-muted-foreground shadow-none dark:bg-transparent">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent position="popper" align="end">
+                {TIP_LANGUAGES.map((language) => (
+                  <SelectItem key={language} value={language}>
+                    {language}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Row>
+          <div className="p-2">
+            <Segmented<Accent>
+              layoutId="settings-accent"
+              value={settings.accent}
+              onChange={settings.setAccent}
+              className="w-full"
+              options={[
+                { value: 'american', label: 'American English' },
+                { value: 'british', label: 'British English' },
+              ]}
+            />
+          </div>
+          <div className="p-2">
+            <Segmented<Goal>
+              layoutId="settings-goal-kind"
+              value={settings.goal}
+              onChange={settings.setGoal}
+              className="w-full"
+              options={[
+                { value: 'understood', label: 'Be clearly understood' },
+                { value: 'accent', label: 'Reduce my accent' },
+              ]}
+            />
+          </div>
         </Group>
 
         <Group icon={<PaletteIcon size={14} weight="fill" />} title="Appearance">
