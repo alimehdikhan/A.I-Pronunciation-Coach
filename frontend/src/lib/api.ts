@@ -7,7 +7,16 @@ import type {
   CoachPlan,
   CoachReply,
   CoachRequest,
+  ConfirmResult,
   EvaluationResult,
+  BaselineStatus,
+  LearnerOptions,
+  SharedAttempt,
+  SpeakPrompts,
+  SpeakResult,
+  LearnerProfile,
+  ListenResults,
+  ListenSession,
   Health,
   HistoryPage,
   Journey,
@@ -28,13 +37,16 @@ const BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/
 
 export class ApiError extends Error {
   readonly status: number
-  /** Machine-readable reason, e.g. 'profile_locked'. */
+  /** Machine-readable reason, e.g. 'profile_locked' or 'models_loading'. */
   readonly code?: string
+  /** Seconds the server asked us to wait (Retry-After), for 429 and 503. */
+  readonly retryAfter?: number
 
-  constructor(status: number, message: string, code?: string) {
+  constructor(status: number, message: string, code?: string, retryAfter?: number) {
     super(message)
     this.status = status
     this.code = code
+    this.retryAfter = retryAfter
   }
 }
 
@@ -61,7 +73,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     } catch {
       /* non-JSON error body */
     }
-    throw new ApiError(response.status, detail, code)
+    const wait = Number(response.headers.get('Retry-After'))
+    throw new ApiError(response.status, detail, code, Number.isFinite(wait) && wait > 0 ? wait : undefined)
   }
   return response.json() as Promise<T>
 }
@@ -87,6 +100,9 @@ export const api = {
     form.append('target_text', text)
     form.append('difficulty', difficulty)
     if (username) form.append('username', username)
+    if (useSettings.getState().naturalSpeed) form.append('natural_speed', 'true')
+    if (useSettings.getState().stressCheck) form.append('stress', 'true')
+    if (useSettings.getState().accent === 'british') form.append('accent', 'british')
     return request<EvaluationResult>('/api/evaluate', {
       method: 'POST',
       body: form,
@@ -102,8 +118,146 @@ export const api = {
     return { result, audio: prepared.blob }
   },
 
-  // `v` names the response shape: a cached copy from before the plain-letter respelling is never reused.
-  pronounce: (text: string) => request<PronounceResponse>(`/api/pronounce?text=${enc(text)}&v=2`),
+  /** Says one "Worth checking" word alone; with `recordId`, the attempt's uncertain sounds take the verdict. */
+  confirmWord: async (input: {
+    audio: Blob
+    filename: string
+    word: string
+    phonemes: string[]
+    recordId?: number | null
+    username?: string
+  }) => {
+    const prepared = await prepareRecording(input.audio, input.filename)
+    const form = new FormData()
+    form.append('audio', prepared.blob, prepared.filename)
+    form.append('word', input.word)
+    form.append('phonemes', input.phonemes.join(','))
+    if (input.recordId != null) form.append('record_id', String(input.recordId))
+    if (input.username) form.append('username', input.username)
+    return request<ConfirmResult>('/api/evaluate/confirm', {
+      method: 'POST',
+      body: form,
+      headers: input.username ? profileHeaders() : undefined,
+    })
+  },
+
+  baselineStatus: (username: string) => request<BaselineStatus>(`/api/baseline/${enc(username)}`, { headers: profileHeaders() }),
+
+  /** Scores one before-and-after sentence and stores it (the learner has agreed to store it). */
+  baselineRecord: async (username: string, input: { audio: Blob; filename: string; sentenceIndex: number; consent: boolean }) => {
+    const prepared = await prepareRecording(input.audio, input.filename)
+    const form = new FormData()
+    form.append('audio', prepared.blob, prepared.filename)
+    form.append('sentence_index', String(input.sentenceIndex))
+    form.append('consent', input.consent ? 'true' : 'false')
+    return request<{ id: number; round: number; score: number | null; transcription: string; status: BaselineStatus }>(
+      `/api/baseline/${enc(username)}/record`,
+      { method: 'POST', body: form, headers: profileHeaders() },
+    )
+  },
+
+  /** A stored recording, fetched with the profile key (it is never at a public URL). */
+  baselineAudio: async (username: string, id: number): Promise<Blob> => {
+    const response = await fetch(`${BASE}/api/baseline/${enc(username)}/audio/${id}`, { headers: profileHeaders() })
+    if (!response.ok) throw new ApiError(response.status, 'Could not load that recording.')
+    return response.blob()
+  },
+
+  deleteBaselineAudio: (username: string) =>
+    request<{ deleted: number }>(`/api/baseline/${enc(username)}/audio`, { method: 'DELETE', headers: profileHeaders() }),
+
+  /** Stores one attempt's audio (with consent) behind a 7-day link for a teacher. */
+  createShare: (username: string, input: { recordId: number; audio: Blob; analysis: unknown }) => {
+    const form = new FormData()
+    form.append('audio', input.audio, 'attempt.wav')
+    form.append('record_id', String(input.recordId))
+    form.append('analysis', JSON.stringify(input.analysis))
+    form.append('consent', 'true')
+    return request<{ token: string; path: string; expires_at: string; id: number }>(`/api/shares/${enc(username)}`, {
+      method: 'POST',
+      body: form,
+      headers: profileHeaders(),
+    })
+  },
+
+  listShares: (username: string) =>
+    request<{ shares: { id: number; record_id: number; expires_at: string; active: boolean; comments: number }[] }>(
+      `/api/shares/${enc(username)}`,
+      { headers: profileHeaders() },
+    ),
+
+  revokeShare: (username: string, id: number) =>
+    request<{ revoked: boolean }>(`/api/shares/${enc(username)}/${id}`, { method: 'DELETE', headers: profileHeaders() }),
+
+  sharedView: (token: string) => request<SharedAttempt>(`/api/shared/${enc(token)}`),
+
+  sharedAudioUrl: (token: string) => `${BASE}/api/shared/${enc(token)}/audio`,
+
+  sharedComment: (token: string, body: { author: string | null; text: string }) =>
+    request<{ saved: boolean }>(`/api/shared/${enc(token)}/comments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+
+  speakPrompts: () => request<SpeakPrompts>('/api/speak/prompts'),
+
+  /** Scores a free answer (levelled to 16 kHz WAV first). Nothing is saved. */
+  speakEvaluate: async (input: { audio: Blob; filename: string; promptId: string | null }) => {
+    const prepared = await prepareRecording(input.audio, input.filename)
+    const form = new FormData()
+    form.append('audio', prepared.blob, prepared.filename)
+    if (input.promptId) form.append('prompt_id', input.promptId)
+    return request<SpeakResult>('/api/speak/evaluate', { method: 'POST', body: form })
+  },
+
+  learnerOptions: () => request<LearnerOptions>('/api/learner/options'),
+
+  learnerProfile: (username: string) => request<LearnerProfile>(`/api/learner/${enc(username)}`, { headers: profileHeaders() }),
+
+  saveLearnerProfile: (username: string, profile: Partial<LearnerProfile>) =>
+    request<LearnerProfile>(`/api/learner/${enc(username)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...profileHeaders() },
+      body: JSON.stringify(profile),
+    }),
+
+  /** A listening drill: one word of a minimal pair per trial, each in a different voice. */
+  listenSession: (username: string, { focus, trials }: { focus?: string | null; trials?: number } = {}) => {
+    const params = new URLSearchParams()
+    if (focus) params.set('focus', focus)
+    if (trials) params.set('trials', String(trials))
+    return request<ListenSession>(`/api/listen/session/${enc(username || 'guest')}?${params}`, {
+      headers: username ? profileHeaders() : undefined,
+    })
+  },
+
+  listenResults: (username: string, trials: { phoneme: string; other: string; word: string; chosen: string; voice: string }[]) =>
+    request<ListenResults>('/api/listen/results', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(username ? profileHeaders() : {}) },
+      body: JSON.stringify({ username, trials }),
+    }),
+
+  /** "I think this is wrong" about one flagged sound in a saved attempt. No audio is sent. */
+  dispute: (body: {
+    username: string
+    record_id: number
+    word: string
+    expected: string
+    detected: string
+    gop: number | null
+    reason: 'said_correctly' | 'accent_normal' | null
+  }) =>
+    request<{ saved: boolean; id: number }>('/api/disputes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...profileHeaders() },
+      body: JSON.stringify(body),
+    }),
+
+    // `v` names the response shape: a cached copy from before the plain-letter respelling is never reused.
+  pronounce: (text: string, accent: 'american' | 'british' = 'american') =>
+    request<PronounceResponse>(`/api/pronounce?text=${enc(text)}&v=2${accent === 'british' ? '&accent=british' : ''}`),
 
   phonemes: () => request<{ phonemes: PhonemeSummary[] }>('/api/phonemes').then((r) => r.phonemes),
 
@@ -227,6 +381,20 @@ export const api = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...profileHeaders() },
       body: JSON.stringify({ password }),
+    }),
+
+  forgotPassword: (email: string) =>
+    request<{ sent: boolean; detail: string }>('/api/auth/forgot', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    }),
+
+  resetPassword: (token: string, password: string) =>
+    request<{ reset: boolean }>('/api/auth/reset', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, password }),
     }),
 
   resetHistory: (username: string) =>
