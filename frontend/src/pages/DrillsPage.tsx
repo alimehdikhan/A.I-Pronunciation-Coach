@@ -7,6 +7,7 @@ import { Link, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
 import { Panel, Pill, Segmented, SectionLabel } from '@/components/common'
 import { ListenDrill } from '@/components/drills/ListenDrill'
+import { RealListeners } from '@/components/listeners/RealListeners'
 import { PageHeader } from '@/components/layout/AppShell'
 import { LazySiriOrb as SiriOrb } from '@/components/orb/LazySiriOrb'
 import { PhonemeGuide } from '@/components/tutor/PhonemeGuide'
@@ -62,7 +63,7 @@ function MicButton({
       disabled={disabled || busy}
       aria-label={recording ? 'Stop recording' : 'Record this word'}
       className={cn(
-        'relative grid size-10 shrink-0 place-items-center rounded-full transition-all active:scale-95 disabled:opacity-40',
+        'relative grid size-10 shrink-0 place-items-center rounded-full transition-[background-color,color,transform,opacity] duration-150 ease-out active:scale-95 disabled:opacity-40',
         'bg-primary text-white',
       )}
     >
@@ -216,11 +217,11 @@ export default function DrillsPage() {
   const { data: practice, isLoading } = usePracticeDrills(username)
   const drills = practice?.practices ?? []
   const requested = params.get('sound')
-  const mode = params.get('mode') === 'listen' ? 'listen' : 'speak'
-  const setMode = (next: 'speak' | 'listen') => {
+  const mode = params.get('mode') === 'listen' ? 'listen' : params.get('mode') === 'listeners' ? 'listeners' : 'speak'
+  const setMode = (next: 'speak' | 'listen' | 'listeners') => {
     const nextParams = new URLSearchParams(params)
-    if (next === 'listen') nextParams.set('mode', 'listen')
-    else nextParams.delete('mode')
+    if (next === 'speak') nextParams.delete('mode')
+    else nextParams.set('mode', next)
     setParams(nextParams)
   }
   const symbol = requested ?? drills[0]?.target_phoneme ?? null
@@ -246,13 +247,14 @@ export default function DrillsPage() {
         }
         actions={
           <div className="flex flex-wrap items-center gap-3">
-            <Segmented<'speak' | 'listen'>
+            <Segmented<'speak' | 'listen' | 'listeners'>
               layoutId="drill-mode"
               value={mode}
               onChange={setMode}
               options={[
                 { value: 'speak', label: 'Speak' },
                 { value: 'listen', label: 'Listen' },
+                { value: 'listeners', label: 'Real listeners' },
               ]}
             />
             <Button asChild variant="secondary">
@@ -264,7 +266,7 @@ export default function DrillsPage() {
         }
       />
 
-      <div className="-mx-4 mb-8 overflow-x-auto px-4 pb-2 sm:mx-0 sm:px-0">
+      {mode !== 'listeners' && <div className="-mx-4 mb-8 overflow-x-auto px-4 pb-2 sm:mx-0 sm:px-0">
         <div className="flex gap-3">
           {isLoading &&
             Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-[92px] w-44 shrink-0 rounded-[22px]" />)}
@@ -299,9 +301,11 @@ export default function DrillsPage() {
             )
           })}
         </div>
-      </div>
+      </div>}
 
-      {mode === 'listen' ? (
+      {mode === 'listeners' ? (
+        <RealListeners />
+      ) : mode === 'listen' ? (
         <Panel className="drill-item p-6 sm:p-8">
           <p className="mb-5 max-w-2xl text-[15px] leading-relaxed text-muted-foreground">
             You hear one word of a pair, each time in a different voice, and pick which one it was. Training your ear on many
