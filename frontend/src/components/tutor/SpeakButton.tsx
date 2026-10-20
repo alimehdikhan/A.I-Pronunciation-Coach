@@ -49,7 +49,7 @@ export function SpeakChip({
       onPointerEnter={() => void prefetch(text, rate)}
       onFocus={() => void prefetch(text, rate)}
       className={cn(
-        'inline-flex h-9 items-center gap-2 rounded-full px-3.5 text-[14px] font-medium transition-all active:scale-[0.97]',
+        'inline-flex h-9 items-center gap-2 rounded-full px-3.5 text-[14px] font-medium transition-[background-color,color,transform] duration-150 ease-out active:scale-[0.97]',
         tones[tone],
         active && 'ring-2 ring-primary/40',
         className,
@@ -85,7 +85,7 @@ export function ListenButton({
       onPointerEnter={() => void prefetch(text, rate)}
       onFocus={() => void prefetch(text, rate)}
       className={cn(
-        'inline-flex h-9 items-center gap-2 rounded-full bg-fill px-4 text-[13px] font-medium text-foreground transition-all hover:bg-fill-strong active:scale-[0.97] disabled:opacity-40',
+        'inline-flex h-9 items-center gap-2 rounded-full bg-fill px-4 text-[13px] font-medium text-foreground transition-[background-color,transform,opacity] duration-150 ease-out hover:bg-fill-strong active:scale-[0.97] disabled:opacity-40',
         active && 'bg-primary-soft text-primary',
         className,
       )}
