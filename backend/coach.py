@@ -39,6 +39,10 @@ class Slip(BaseModel):
     kind: SlipKind = "substitution"
     expected: str = Field(default="", max_length=8)
     actual: str = Field(default="", max_length=8)
+    # "check" marks a borderline slip (see backend.pronunciation.PHONEME_FIX): it gets no tip.
+    tier: Literal["fix", "check"] | None = None
+    # False when the slip doesn't change what a listener understands (no other word, not misheard).
+    affects: bool | None = None
 
 
 class WeakSound(BaseModel):
@@ -56,6 +60,9 @@ class CoachRequest(BaseModel):
     previous_score: float | None = Field(default=None, ge=0, le=100)
     # The learner's first language (from a fixed list), so advice fits what is hard for them.
     native_language: str | None = Field(default=None, max_length=30)
+    # "understood": slips that change what a listener understands come first; "accent": all of them.
+    goal: Literal["understood", "accent"] = "understood"
+    tip_language: Literal["English", "Hindi", "Urdu", "Hinglish"] = "English"
 
     @field_validator("native_language", mode="before")
     @classmethod
@@ -83,6 +90,13 @@ class CoachReply(BaseModel):
     practice_sentence: str | None = Field(default=None, max_length=160)
     # The one physical change to try on the next attempt (a coach gives one cue, not five).
     one_thing: str | None = Field(default=None, max_length=240)
+    # Words with only borderline slips: no tip, but worth a second listen.
+    worth_checking: list[str] = Field(default_factory=list, max_length=8)
+    # Goal "be clearly understood": words whose slips won't confuse a listener (no tip, shown as minor).
+    minor: list[str] = Field(default_factory=list, max_length=8)
+    # The language the tips are actually in, and a note when it isn't the one asked for.
+    language: str = "English"
+    language_note: str | None = None
 
     @field_validator("summary", "practice_sentence", "one_thing", mode="before")
     @classmethod
@@ -103,6 +117,10 @@ Rules:
 - If "native_language" is given you may add one short clause about what speakers of that language often find hard about a slipped sound, but only when it is true and relevant. Never stereotype beyond pronunciation.
 - "sound_guides" is how the app's library says each relevant sound is made. Base every description of tongue, lips and air on it; do not describe a sound from memory when it is there.
 - If there are no slips, praise what went well and suggest one way to keep improving.
+- "minor" lists words whose slips would not stop a listener understanding (the learner wants to be understood, not to lose their accent). Give no tip for them; you may mention once that they are small differences.
+- If "first_language_notes" is given, use the note for a slipped sound to say in one short clause why that slip is common for speakers of their first language. Never go beyond pronunciation.
+- Write "summary", "one_thing" and every "tip" in "tip_language". For Hindi use Devanagari script, for Urdu the Urdu script, for Hinglish Hindi written in Latin letters mixed with English the way Indian speakers text. Keep the practised English words and the practice_sentence in English.
+- "worth_checking" lists words where a sound was borderline and the acoustic model is not sure. Give no tip for them. If there are no slips but worth_checking is not empty, say the attempt looked mostly clean and that those words are worth a second listen; never call such an attempt perfect or flawless.
 - Use weak_sounds to say which sounds are worth extra time, if relevant.
 - Match the tone of the summary to the score: 85+ praise, 60-84 encouraging with one focus, below 60 supportive and honest. Never call a score below 70 "solid", "great" or "excellent".
 
@@ -128,10 +146,60 @@ Name sounds the way a learner would: by their spelling and an example word ("the
 """
 
 
+def split_slips(slips: Sequence[Slip], goal: str = "accent") -> tuple[list[Slip], list[str], list[str]]:
+    """(slips to coach, words that only had borderline slips, words with only minor slips).
+
+    Only "Fix this" slips get tips; a word whose slips were all "Worth checking" is listed for
+    a second listen instead. With the goal "be clearly understood", a sound slip that changes
+    nothing a listener understands is listed as minor, without a tip.
+    """
+    sure = [slip for slip in slips if slip.tier != "check"]
+    sure_words = {slip.word.lower() for slip in sure}
+    checking: list[str] = []
+    for slip in slips:
+        if slip.tier == "check" and slip.word.lower() not in sure_words and slip.word not in checking:
+            checking.append(slip.word)
+    minor: list[str] = []
+    if goal == "understood":
+        coached = [slip for slip in sure if slip.affects is not False]
+        coached_words = {slip.word.lower() for slip in coached}
+        for slip in sure:
+            if slip.affects is False and slip.word.lower() not in coached_words and slip.word not in minor:
+                minor.append(slip.word)
+        sure = coached
+    return sure, checking, minor
+
+
+def _quoted(words: Sequence[str]) -> str:
+    quoted = [f"“{w}”" for w in words[:3]]
+    return quoted[0] if len(quoted) == 1 else ", ".join(quoted[:-1]) + " and " + quoted[-1]
+
+
 def template_reply(request: CoachRequest) -> CoachReply:
-    """Knowledge-base coaching, used whenever the language model isn't available."""
+    """Knowledge-base coaching, used whenever the language model isn't available.
+
+    Tips are in Hindi or Urdu when asked and a built-in translation exists; anything
+    else is in English, and the reply says so.
+    """
+    from backend import tips_i18n
+    from backend.learners import why_hard
+
+    slips, checking, minor = split_slips(request.slips, request.goal)
+    language = request.tip_language
+    local = language in tips_i18n.SUBSTITUTIONS
+    untranslated = False
+
+    def localised(text: str | None, english: str) -> str:
+        nonlocal untranslated
+        if not local:
+            return english
+        if text is None:
+            untranslated = True
+            return english
+        return text
+
     tips: list[Tip] = []
-    for slip in request.slips:
+    for slip in slips:
         if len(tips) >= MAX_TIPS:
             break
         if slip.kind in ("missing", "extra", "unclear"):
@@ -140,31 +208,54 @@ def template_reply(request: CoachRequest) -> CoachReply:
                 "extra": f"“{slip.word}” wasn't in the sentence. Stick to the words on screen.",
                 "unclear": f"“{slip.word}” was understood but sounded unclear. Say it a little slower and more deliberately.",
             }[slip.kind]
-            tips.append(Tip(word=slip.word, tip=text))
+            tips.append(Tip(word=slip.word, tip=localised(tips_i18n.word_tip(language, slip.kind, slip.word), text)))
         elif slip.expected:
             actual = "" if slip.kind == "deletion" else slip.actual
-            tips.append(Tip(word=slip.word, phoneme=slip.expected, tip=explain_mistake(slip.expected, actual)))
+            english = explain_mistake(slip.expected, actual)
+            if not local and (reason := why_hard(request.native_language, slip.expected)):
+                english = f"{english} {reason}"
+            text = localised(tips_i18n.substitution_tip(language, slip.expected, actual), english)
+            tips.append(Tip(word=slip.word, phoneme=slip.expected, tip=text))
 
-    if not request.slips:
-        summary = "Clean delivery. Every word came through clearly."
+    if not slips and checking:
+        key, english = "mostly_clean", f"This looked mostly clean. A sound in {_quoted(checking)} was borderline, so give it a second listen."
+    elif not slips and minor:
+        key, english = "understood", f"You would be understood. {_quoted(minor)} had small differences from the standard sound that won't confuse a listener."
+    elif not slips:
+        key, english = "clean", "Clean delivery. Every word came through clearly."
     elif request.score >= 85:
-        summary = "Very good. A couple of sounds to polish."
+        key, english = "great", "Very good. A couple of sounds to polish."
     elif request.score >= 60:
-        summary = "Good effort. Focus on the highlighted sounds."
+        key, english = "good", "Good effort. Focus on the highlighted sounds."
     else:
-        summary = "Keep going. Slow down and work through the words one at a time."
+        key, english = "low", "Keep going. Slow down and work through the words one at a time."
+    words = _quoted(checking or minor) if (checking or minor) else ""
+    summary = localised(tips_i18n.summary(language, key, words=words), english)
 
-    focus = next((s.expected for s in request.slips if s.expected), None) or (
+    focus = next((s.expected for s in slips if s.expected), None) or (
         request.weak_sounds[0].phoneme if request.weak_sounds else None
     )
     entry = get_phoneme(focus) if focus else None
     steps = entry.get("steps", []) if entry else []
+    one_thing = steps[0] if (steps and slips) else None
+    if local and one_thing and tips:
+        one_thing = tips[0].tip  # the knowledge base's cue is English; the first tip is the same advice
+    used = language if local else "English"
+    note = None
+    if language != "English" and not local:
+        note = f"Built-in tips aren't available in {language} yet, so these are in English."
+    elif untranslated:
+        note = f"Some tips are in English: a built-in {language} version isn't available for every sound yet."
     return CoachReply(
         source="template",
         summary=summary,
         tips=tips,
         practice_sentence=entry["practice_sentence"] if entry else None,
-        one_thing=steps[0] if (steps and request.slips) else None,
+        one_thing=one_thing,
+        worth_checking=checking,
+        minor=minor,
+        language=used,
+        language_note=note,
     )
 
 
@@ -370,21 +461,58 @@ class CoachService:
 
     async def _ask(self, request: CoachRequest) -> CoachReply:
         from backend.coach_tools import guides_for  # imported here: coach_tools does not depend on this module
+        from backend.learners import why_hard
 
-        facts = request.model_dump()
-        symbols = [slip.expected for slip in request.slips if slip.expected and slip.kind == "substitution"]
-        symbols += [slip.expected for slip in request.slips if slip.expected and slip.kind != "substitution"]
+        slips, checking, minor = split_slips(request.slips, request.goal)
+        facts = request.model_dump(exclude={"slips"})
+        facts["slips"] = [slip.model_dump(exclude={"tier", "affects"}) for slip in slips]
+        facts["worth_checking"] = checking
+        facts["minor"] = minor
+        notes = {s.expected: why_hard(request.native_language, s.expected) for s in slips if s.expected}
+        facts["first_language_notes"] = {k: v for k, v in notes.items() if v}
+        symbols = [slip.expected for slip in slips if slip.expected and slip.kind == "substitution"]
+        symbols += [slip.expected for slip in slips if slip.expected and slip.kind != "substitution"]
         symbols += [sound.phoneme for sound in request.weak_sounds]
         facts["sound_guides"] = guides_for(symbols)[:5]
         data = await self._complete(SYSTEM_PROMPT, facts)
         tips = data.get("tips") if isinstance(data.get("tips"), list) else []
+        unsure = {w.lower() for w in [*checking, *minor]}
         try:
-            return CoachReply(
+            reply = CoachReply(
                 source="groq",
                 summary=data.get("summary", ""),
-                tips=[Tip(**t) for t in tips[:MAX_TIPS] if isinstance(t, dict) and t.get("tip")],
+                # A tip about a borderline word is dropped, whatever the model wrote.
+                tips=[
+                    Tip(**t) for t in tips[:MAX_TIPS]
+                    if isinstance(t, dict) and t.get("tip") and str(t.get("word", "")).strip().lower() not in unsure
+                ],
                 practice_sentence=data.get("practice_sentence") or None,
-                one_thing=(data.get("one_thing") or None),
+                one_thing=(data.get("one_thing") or None) if slips else None,
+                worth_checking=checking,
+                minor=minor,
+                language=request.tip_language,
             )
         except (ValidationError, TypeError) as exc:
             raise ValueError("malformed coaching reply") from exc
+        if not _in_script(" ".join([reply.summary, *(t.tip for t in reply.tips)]), request.tip_language):
+            raise ValueError(f"reply is not in {request.tip_language}")
+        if not slips and checking and _claims_perfect(reply.summary):
+            reply.summary = template_reply(request).summary
+        return reply
+
+
+_SCRIPTS = {"Hindi": ("\u0900", "\u097f"), "Urdu": ("\u0600", "\u06ff")}
+
+
+def _in_script(text: str, language: str) -> bool:
+    """Hindi and Urdu replies must actually be written in Devanagari / Urdu script."""
+    if language not in _SCRIPTS:
+        return True
+    low, high = _SCRIPTS[language]
+    letters = [ch for ch in text if ch.isalpha()]
+    return bool(letters) and sum(low <= ch <= high for ch in letters) / len(letters) >= 0.4
+
+
+def _claims_perfect(summary: str) -> bool:
+    text = summary.lower()
+    return any(word in text for word in ("perfect", "flawless", "every word", "every sound", "no mistakes", "no errors"))
