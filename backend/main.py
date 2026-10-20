@@ -32,6 +32,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 
 from backend.api import routers
+from backend.api.listeners import purge_on_startup as purge_listener_clips
 from backend.api.sharing import purge_on_startup
 from backend.config import PROJECT_ROOT, settings
 from backend.database import init_db
@@ -56,6 +57,7 @@ async def lifespan(app: FastAPI):
     if runtime.db_ready:
         try:
             await run_in_threadpool(purge_on_startup)
+            await run_in_threadpool(purge_listener_clips)
         except Exception:
             logger.warning("Could not purge expired share links", exc_info=True)
     loader: asyncio.Task | None = None
