@@ -1,4 +1,4 @@
-import { ArrowDownRightIcon, ArrowUpRightIcon, CheckCircleIcon, GaugeIcon, type Icon, MinusIcon, SparkleIcon, WaveformIcon } from '@phosphor-icons/react'
+import { ArrowDownRightIcon, ArrowUpRightIcon, CheckCircleIcon, EarIcon, GaugeIcon, type Icon, MinusIcon, SparkleIcon, WaveformIcon } from '@phosphor-icons/react'
 import { Pill, Tip } from '@/components/common'
 import { ActivityRings, CountUp } from '@/components/ui/score-ring'
 import type { EvaluationResult, MetricKey } from '@/lib/types'
@@ -28,6 +28,37 @@ function MetricRow({ label, hint, value, color, Icon: IconComp }: { label: strin
         <span className="text-[17px] font-semibold tabular-nums">
           {value == null ? <span className="text-subtle">—</span> : <CountUp value={value} />}
         </span>
+      </div>
+    </Tip>
+  )
+}
+
+/** The headline "would a listener understand you?" estimate, shown apart from the score. */
+function Understood({ value }: { value: NonNullable<EvaluationResult['intelligibility']> }) {
+  const pct = Math.round(value.score)
+  const tone = pct >= 90 ? 'good' : pct >= 70 ? 'warn' : 'bad'
+  return (
+    <Tip
+      content="A speech recogniser that was not told the sentence heard these words. It stands in for a listener hearing you cold; it is not part of your score and has not been checked against real listeners."
+      side="bottom"
+    >
+      <div className="mt-4 flex flex-wrap items-center gap-3 rounded-2xl bg-fill px-4 py-3">
+        <EarIcon size={22} weight="fill" className="shrink-0 text-primary" />
+        <div className="min-w-0 flex-1">
+          <div className="text-[13px] font-semibold text-muted-foreground">Would a listener understand you?</div>
+          <div className="text-[15px]">
+            <span className={cn('font-semibold', toneText[tone])}>
+              {pct >= 90 ? 'Very likely' : pct >= 70 ? 'Mostly' : 'Often not'}
+            </span>
+            <span className="text-muted-foreground">
+              {' '}
+              · {value.recovered} of {value.words} words came through ({pct}%)
+            </span>
+          </div>
+        </div>
+        <Pill tone="neutral" className="h-6 text-[11px]">
+          machine estimate
+        </Pill>
       </div>
     </Tip>
   )
@@ -69,6 +100,8 @@ export function ScoreSummary({ result, previous }: { result: EvaluationResult; p
           <span className="text-xl font-medium text-subtle">/100</span>
         </div>
         <p className="mt-2 max-w-md text-[15px] leading-relaxed text-muted-foreground">{result.feedback}</p>
+
+        {result.intelligibility && result.intelligibility.words > 0 && <Understood value={result.intelligibility} />}
 
         <div className="mt-5 divide-y divide-border border-t border-border">
           {RINGS.map((r) => (
