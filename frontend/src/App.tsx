@@ -15,6 +15,11 @@ const CheckupPage = lazy(() => import('@/pages/CheckupPage'))
 const DrillsPage = lazy(() => import('@/pages/DrillsPage'))
 const SoundsPage = lazy(() => import('@/pages/SoundsPage'))
 const ProgressPage = lazy(() => import('@/pages/ProgressPage'))
+const SpeakPage = lazy(() => import('@/pages/SpeakPage'))
+const BaselinePage = lazy(() => import('@/pages/BaselinePage'))
+const SharedPage = lazy(() => import('@/pages/SharedPage'))
+const ForgotPage = lazy(() => import('@/pages/ResetPage').then((m) => ({ default: m.ForgotPage })))
+const ResetPage = lazy(() => import('@/pages/ResetPage').then((m) => ({ default: m.ResetPage })))
 
 function RouteError() {
   const error = useRouteError() as Error | undefined
@@ -56,6 +61,10 @@ export const router = createBrowserRouter([
     children: [
       { path: 'login', element: <Suspense fallback={null}><AuthPage mode="login" /></Suspense> },
       { path: 'signup', element: <Suspense fallback={null}><AuthPage mode="signup" /></Suspense> },
+      // A teacher opens a shared attempt without an account, so it sits outside the app too.
+      { path: 'shared/:token', element: <Suspense fallback={null}><SharedPage /></Suspense> },
+      { path: 'forgot', element: <Suspense fallback={null}><ForgotPage /></Suspense> },
+      { path: 'reset', element: <Suspense fallback={null}><ResetPage /></Suspense> },
     ],
   },
   {
@@ -63,6 +72,8 @@ export const router = createBrowserRouter([
     errorElement: <RouteError />,
     children: [
       { index: true, element: <PracticePage /> },
+      { path: 'speak', element: <SpeakPage /> },
+      { path: 'before-after', element: <BaselinePage /> },
       { path: 'journey', element: <JourneyPage /> },
       { path: 'checkup', element: <CheckupPage /> },
       { path: 'coach', element: <CoachPage /> },
