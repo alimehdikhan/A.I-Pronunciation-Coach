@@ -71,9 +71,9 @@ class WordAcoustics:
         return 100.0 * (WORD_MIN_WEIGHT * weakest + (1.0 - WORD_MIN_WEIGHT) * mean)
 
 
-def _candidates(word: str, inventory: gop.Inventory) -> list[tuple[phonetics.Pronunciation, list[int]]]:
+def _candidates(word: str, inventory: gop.Inventory, accent: str = "american") -> list[tuple[phonetics.Pronunciation, list[int]]]:
     out = []
-    for pron in phonetics.pronunciations(word):
+    for pron in phonetics.accent_pronunciations(word, accent):
         if pron.source == "spelling" or not pron.phonemes:
             continue
         labels = [inventory.index.get(ph) for ph in pron.phonemes]
@@ -82,12 +82,14 @@ def _candidates(word: str, inventory: gop.Inventory) -> list[tuple[phonetics.Pro
     return out
 
 
-def analyse(words: Sequence[str], log_probs: np.ndarray, inventory: gop.Inventory) -> list[WordAcoustics | None] | None:
+def analyse(
+    words: Sequence[str], log_probs: np.ndarray, inventory: gop.Inventory, accent: str = "american"
+) -> list[WordAcoustics | None] | None:
     """Acoustic evidence for each target word (None for words without phonemes).
 
     Returns None when the audio can't be explained at all (e.g. far too short).
     """
-    options = [_candidates(word, inventory) for word in words]
+    options = [_candidates(word, inventory, accent) for word in words]
     choice = [0 if opts else None for opts in options]
     scores, blank = inventory.emissions(log_probs)
 
