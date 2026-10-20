@@ -1,8 +1,23 @@
-import { ArrowsClockwiseIcon, ClockIcon, GaugeIcon, InfoIcon, MicrophoneIcon, SparkleIcon, SpinnerGapIcon, StopIcon, TimerIcon, WaveformIcon } from '@phosphor-icons/react'
+import {
+  ArrowRightIcon,
+  ArrowsClockwiseIcon,
+  BriefcaseIcon,
+  ClockIcon,
+  GaugeIcon,
+  InfoIcon,
+  MicrophoneIcon,
+  SparkleIcon,
+  SpinnerGapIcon,
+  StopIcon,
+  TimerIcon,
+  WaveformIcon,
+} from '@phosphor-icons/react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router'
 import { LockedResults } from '@/components/auth/SignInGate'
 import { Panel, Pill, Segmented, SectionLabel } from '@/components/common'
+import { ListenLong } from '@/components/interview/ListenLong'
 import { PageHeader } from '@/components/layout/AppShell'
 import { Button } from '@/components/ui/button'
 import { Kbd } from '@/components/ui/kbd'
@@ -174,6 +189,27 @@ export default function SpeakPage() {
         }
       />
 
+      {kind === 'interview' && (
+        <Link
+          to="/interview"
+          className="group mb-5 flex items-center gap-4 rounded-[24px] border border-primary/25 bg-primary-soft px-5 py-4 transition-[background-color,transform] duration-150 ease-out hover:bg-primary-soft/80 active:scale-[0.99] focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
+        >
+          <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-primary text-white">
+            <BriefcaseIcon size={22} weight="fill" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-[15px] font-semibold">Take a full mock interview</span>
+            <span className="block text-[13px] text-muted-foreground">
+              A voice interviewer asks every question aloud, follows up, and gives you a full report.
+            </span>
+          </span>
+          <ArrowRightIcon
+            weight="bold"
+            className="shrink-0 text-primary transition-transform duration-200 ease-out [@media(hover:hover)_and_(pointer:fine)]:group-hover:translate-x-0.5"
+          />
+        </Link>
+      )}
+
       <Panel className="p-6 sm:p-8">
         {isLoading || !prompt ? (
           <Skeleton className="h-40 w-full rounded-2xl" />
@@ -193,9 +229,12 @@ export default function SpeakPage() {
                   </ul>
                 )}
               </div>
-              <Button variant="secondary" size="sm" onClick={next} disabled={recording}>
-                <ArrowsClockwiseIcon weight="bold" /> Another <Kbd className="ml-1 hidden sm:inline-flex">N</Kbd>
-              </Button>
+              <div className="flex items-center gap-2">
+                <ListenLong text={[prompt.title, ...(prompt.points ?? [])].join(' ')} speakKey={`prompt:${prompt.id}`} className="bg-fill shadow-none" />
+                <Button variant="secondary" size="sm" onClick={next} disabled={recording}>
+                  <ArrowsClockwiseIcon weight="bold" /> Another <Kbd className="ml-1 hidden sm:inline-flex">N</Kbd>
+                </Button>
+              </div>
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
