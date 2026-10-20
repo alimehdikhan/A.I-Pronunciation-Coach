@@ -1,4 +1,12 @@
-import { ArrowDownRightIcon, ArrowUpRightIcon, CheckCircleIcon, type Icon, SparkleIcon, TargetIcon, TrendUpIcon } from '@phosphor-icons/react'
+import {
+  ArrowDownRightIcon,
+  ArrowUpRightIcon,
+  CheckCircleIcon,
+  type Icon,
+  SparkleIcon,
+  TargetIcon,
+  TrendUpIcon,
+} from '@phosphor-icons/react'
 import { motion, useReducedMotion } from 'motion/react'
 import { describeSound } from '@/lib/plain'
 import type { SoundMastery } from '@/lib/types'
@@ -61,19 +69,22 @@ export function SoundMasteryGrid({ sounds }: { sounds: SoundMastery[] }) {
                 </div>
                 <div className="h-1.5 overflow-hidden rounded-full bg-background/60" aria-hidden>
                   <motion.div
-                    className={cn('h-full rounded-full', s.status === 'solid' ? 'bg-good' : s.status === 'needs_work' ? 'bg-bad' : 'bg-warn')}
-                    initial={reduce ? false : { width: 0 }}
-                    animate={{ width: `${percent}%` }}
+                    className={cn(
+                      'h-full w-full origin-left rounded-full',
+                      s.status === 'solid' ? 'bg-good' : s.status === 'needs_work' ? 'bg-bad' : 'bg-warn',
+                    )}
+                    initial={reduce ? false : { scaleX: 0 }}
+                    animate={{ scaleX: percent / 100 }}
                     transition={{ delay: Math.min(0.5, index * 0.04) + 0.15, duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
                   />
                 </div>
-                <div className="flex items-center justify-between gap-2 text-[12px]">
+                <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-[12px]">
                   <span className={cn('inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 font-medium', status.tone)}>
                     <status.Icon size={12} weight="fill" />
                     {status.label}
                   </span>
-                  <span className="truncate text-subtle">
-                    Right {percent}% of the time · {s.attempts} {s.attempts === 1 ? 'try' : 'tries'}
+                  <span className="text-subtle tabular-nums">
+                    {percent}% right · {s.attempts} {s.attempts === 1 ? 'try' : 'tries'}
                   </span>
                 </div>
               </motion.button>
@@ -82,8 +93,8 @@ export function SoundMasteryGrid({ sounds }: { sounds: SoundMastery[] }) {
         })}
       </ul>
       <p className="mt-3 text-xs text-subtle">
-        The bar shows how often you say each sound correctly. The sounds that need the most practice are at the top. Tap one to
-        see how to make it.
+        The bar shows how often you say each sound correctly. The sounds that need the most practice are at the top. Tap one to see how to
+        make it.
       </p>
     </>
   )
