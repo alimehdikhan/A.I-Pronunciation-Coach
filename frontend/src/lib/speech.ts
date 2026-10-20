@@ -69,11 +69,44 @@ export const SLOW_RATE = 0.7
 
 const clampRate = (rate: number) => Math.min(1.6, Math.max(0.5, rate))
 
-/** Browser speechSynthesis (fallback). Its audio can't be analysed. */
-function speakWithBrowser(text: string, key: string, rate: number, voiceURI: string | null) {
+/** The neural voice reads at most this many characters per request (the server allows 300). */
+const MAX_SPOKEN = 280
+
+function packWords(sentence: string, max: number): string[] {
+  const out: string[] = []
+  let current = ''
+  for (const word of sentence.split(/\s+/)) {
+    if (current && current.length + 1 + word.length > max) {
+      out.push(current)
+      current = word
+    } else current = current ? `${current} ${word}` : word
+  }
+  if (current) out.push(current)
+  return out
+}
+
+/** Text in sentence-sized pieces, each short enough for one request to the voice. */
+export function splitForSpeech(text: string, max = MAX_SPOKEN): string[] {
+  const sentences = (text.match(/[^.!?]+[.!?]+["”’)\]]*|[^.!?]+$/g) ?? [text]).map((s) => s.trim()).filter(Boolean)
+  const chunks: string[] = []
+  let current = ''
+  for (const sentence of sentences) {
+    for (const piece of sentence.length > max ? packWords(sentence, max) : [sentence]) {
+      if (current && current.length + 1 + piece.length > max) {
+        chunks.push(current)
+        current = piece
+      } else current = current ? `${current} ${piece}` : piece
+    }
+  }
+  if (current) chunks.push(current)
+  return chunks
+}
+
+/** Browser speechSynthesis (fallback). Its audio can't be analysed. Resolves true when it was all said. */
+function speakWithBrowser(text: string, key: string, rate: number, voiceURI: string | null): Promise<boolean> {
   if (!supported) {
     useVoiceStore.setState({ speakingKey: null, active: false, preparing: false })
-    return
+    return Promise.resolve(false)
   }
   window.speechSynthesis.cancel()
   const utterance = new SpeechSynthesisUtterance(text)
@@ -85,13 +118,18 @@ function speakWithBrowser(text: string, key: string, rate: number, voiceURI: str
     utterance.lang = 'en-US'
   }
   utterance.rate = Math.min(1.5, Math.max(0.4, rate))
-  utterance.onend = utterance.onerror = () => {
-    if (useVoiceStore.getState().speakingKey === key) {
-      useVoiceStore.setState({ speakingKey: null, active: false, preparing: false })
+  return new Promise((resolve) => {
+    const settle = (completed: boolean) => () => {
+      if (useVoiceStore.getState().speakingKey === key) {
+        useVoiceStore.setState({ speakingKey: null, active: false, preparing: false })
+      }
+      resolve(completed)
     }
-  }
-  useVoiceStore.setState({ speakingKey: key, active: false, preparing: false })
-  window.speechSynthesis.speak(utterance)
+    utterance.onend = settle(true)
+    utterance.onerror = settle(false)
+    useVoiceStore.setState({ speakingKey: key, active: false, preparing: false })
+    window.speechSynthesis.speak(utterance)
+  })
 }
 
 /**
@@ -118,22 +156,58 @@ export function useSpeaker() {
       if (usesNeuralVoice(voiceURI)) {
         audioEngine.speak(clean, { key, rate, voice: coachVoice }).catch(() => {
           // Server voice unavailable: still speak, just without the analyser.
-          if (lastKey.current === key) speakWithBrowser(clean, key, rate, voiceURI)
+          if (lastKey.current === key) void speakWithBrowser(clean, key, rate, voiceURI)
         })
       } else {
         audioEngine.stop()
-        speakWithBrowser(clean, key, rate, voiceURI)
+        void speakWithBrowser(clean, key, rate, voiceURI)
       }
     },
     [voiceURI, settingsRate, coachVoice],
   )
 
-  /** Start fetching a clip before it is asked for, so the click that follows plays at once. */
+  /**
+   * Speak and wait. Text of any length (long text is read in sentence-sized pieces).
+   * Resolves true when everything was said, false when it was cut off: stopped, or
+   * another control started speaking.
+   */
+  const say = useCallback(
+    async (text: string, opts: { key?: string; rate?: number; voice?: string } = {}): Promise<boolean> => {
+      const clean = text.trim()
+      if (!clean) return true
+      const key = opts.key ?? clean
+      const rate = clampRate((opts.rate ?? 1) * settingsRate)
+      // Another person in the room (a group discussion) speaks with their own neural voice.
+      const voice = opts.voice ?? coachVoice
+      lastKey.current = key
+      if (usesNeuralVoice(voiceURI)) {
+        const chunks = splitForSpeech(clean)
+        chunks.slice(1).forEach((chunk) => void audioEngine.prefetch(chunk, rate, voice))
+        try {
+          for (const chunk of chunks) {
+            if (!(await audioEngine.speak(chunk, { key, rate, voice }))) return false
+          }
+          return true
+        } catch {
+          // Server voice unavailable: the browser's voice says it instead.
+          if (lastKey.current !== key) return false
+        }
+      } else {
+        audioEngine.stop()
+      }
+      return speakWithBrowser(clean, key, rate, voiceURI)
+    },
+    [voiceURI, settingsRate, coachVoice],
+  )
+
+  /** Start fetching a clip before it is asked for, so the click that follows plays at once. `voice` overrides the coach voice. */
   const prefetch = useCallback(
-    (text: string, rate = 1): Promise<void> => {
+    (text: string, rate = 1, voice?: string): Promise<void> => {
       const clean = text.trim()
       if (!clean || !usesNeuralVoice(voiceURI)) return Promise.resolve()
-      return audioEngine.prefetch(clean, clampRate(rate * settingsRate), coachVoice)
+      return Promise.all(
+        splitForSpeech(clean).map((chunk) => audioEngine.prefetch(chunk, clampRate(rate * settingsRate), voice ?? coachVoice)),
+      ).then(() => undefined)
     },
     [voiceURI, settingsRate, coachVoice],
   )
@@ -146,5 +220,5 @@ export function useSpeaker() {
     [],
   )
 
-  return { speak, stop, prefetch, speakingKey, supported: true }
+  return { speak, say, stop, prefetch, speakingKey, supported: true }
 }
