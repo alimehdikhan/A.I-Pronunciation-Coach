@@ -1,5 +1,5 @@
-import { CalendarBlankIcon, DatabaseIcon, DevicesIcon, FireIcon, KeyIcon, LockKeyIcon, SignInIcon, SignOutIcon, TargetIcon, TrashIcon, TrophyIcon, UserCirclePlusIcon, UserIcon } from '@phosphor-icons/react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { CalendarBlankIcon, DatabaseIcon, ShareNetworkIcon, DevicesIcon, FireIcon, KeyIcon, LockKeyIcon, SignInIcon, SignOutIcon, TargetIcon, TrashIcon, TrophyIcon, UserCirclePlusIcon, UserIcon } from '@phosphor-icons/react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { toast } from 'sonner'
@@ -339,6 +339,32 @@ export default function ProfilePage() {
     },
   })
 
+  const { data: baseline } = useQuery({
+    queryKey: ['baseline', username],
+    queryFn: () => api.baselineStatus(username),
+    enabled: !!username,
+  })
+  const removeRecordings = useMutation({
+    mutationFn: () => api.deleteBaselineAudio(username),
+    onSuccess: (r) => {
+      void queryClient.invalidateQueries({ queryKey: ['baseline', username] })
+      toast.success(r.deleted ? `Deleted ${r.deleted} recordings. Your scores stay.` : 'There was no stored audio.')
+    },
+  })
+
+  const { data: shares } = useQuery({
+    queryKey: ['shares', username],
+    queryFn: () => api.listShares(username),
+    enabled: !!username,
+  })
+  const stopShare = useMutation({
+    mutationFn: (id: number) => api.revokeShare(username, id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['shares', username] })
+      toast.success('The link was stopped and its recording deleted.')
+    },
+  })
+
   const removeAccount = useMutation({
     mutationFn: (password: string) => api.deleteAccount(password),
     meta: { silent: true },
@@ -409,6 +435,26 @@ export default function ProfilePage() {
           </>
         )}
 
+        {!!shares?.shares.some((s) => s.active) && (
+          <Card icon={<ShareNetworkIcon weight="fill" />} title="Shared with teachers" description="Links you created for a teacher. Each stops after 7 days; stopping one early deletes its recording. Comments stay on your attempt.">
+            <ul className="divide-y divide-border">
+              {shares.shares
+                .filter((s) => s.active)
+                .map((s) => (
+                  <li key={s.id} className="flex flex-wrap items-center justify-between gap-3 py-3 text-[14px]">
+                    <span>
+                      Attempt #{s.record_id} · until {new Date(s.expires_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })} ·{' '}
+                      {s.comments} {s.comments === 1 ? 'comment' : 'comments'}
+                    </span>
+                    <Button variant="secondary" size="sm" onClick={() => stopShare.mutate(s.id)} disabled={stopShare.isPending}>
+                      Stop sharing
+                    </Button>
+                  </li>
+                ))}
+            </ul>
+          </Card>
+        )}
+
         {username && (
           <Card icon={<DatabaseIcon weight="fill" />} title="Your data">
             <div className="divide-y divide-border">
@@ -419,6 +465,17 @@ export default function ProfilePage() {
                 </div>
                 <Button variant="secondary" className="rounded-xl" onClick={() => setConfirm('history')}>
                   <TrashIcon weight="bold" /> Delete history
+                </Button>
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-4 py-5">
+                <div>
+                  <div className="text-[15px] font-medium">Stored recordings</div>
+                  <div className="text-[13px] text-muted-foreground">
+                    Your before-and-after recordings{baseline?.stored_audio ? ` (${baseline.stored_audio})` : ''}. Deleting removes the audio and keeps the scores.
+                  </div>
+                </div>
+                <Button variant="secondary" className="rounded-xl" disabled={!baseline?.stored_audio || removeRecordings.isPending} onClick={() => removeRecordings.mutate()}>
+                  <TrashIcon weight="bold" /> Delete recordings
                 </Button>
               </div>
               {signedIn && (
@@ -450,7 +507,7 @@ export default function ProfilePage() {
         open={confirm === 'account'}
         onOpenChange={(open) => !open && setConfirm(null)}
         title="Delete your account?"
-        description="Your account, practice history and every signed-in device are removed for good. Enter your password to confirm."
+        description="Your account, practice history, stored recordings and every signed-in device are removed for good. Enter your password to confirm."
         confirmLabel="Delete account"
         needsPassword
         onConfirm={(password) => removeAccount.mutate(password)}
