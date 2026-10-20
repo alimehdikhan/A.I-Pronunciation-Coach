@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from fastapi import Header, HTTPException
+from fastapi import Header
 
+from backend.errors import CodedHTTPException
 from backend.runtime import runtime
 from backend.security import PROFILE_KEY_HEADER, normalize_profile_key
 
@@ -22,9 +23,7 @@ def profile_key(x_profile_key: str | None = Header(None, alias=PROFILE_KEY_HEADE
 def require_models() -> tuple[WhisperASR, PronunciationScorer]:
     """Return the loaded models or a clear 503 while they warm up."""
     if runtime.asr is None or runtime.scorer is None:
-        raise HTTPException(
-            status_code=503,
-            detail="Speech models are still loading. Please try again shortly.",
-            headers={"Retry-After": "5"},
+        raise CodedHTTPException(
+            503, "Speech models are still loading. Please try again shortly.", "models_loading", {"Retry-After": "5"}
         )
     return runtime.asr, runtime.scorer
