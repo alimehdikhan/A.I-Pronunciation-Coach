@@ -24,6 +24,9 @@ LEGACY_FILES = {
 }
 
 
+PRIVATE_ROUTES = ("shared/", "reset", "forgot")
+
+
 def _legacy_response(path: str) -> Response:
     media_type, body = LEGACY_FILES[path]
     return Response(body, media_type=media_type, headers={"Cache-Control": "no-store", "Clear-Site-Data": '"cache"'})
@@ -60,6 +63,10 @@ class SPAStaticFiles(StaticFiles):
                 raise StarletteHTTPException(status_code=404)
             response = await super().get_response("index.html", scope)
             self._shell_headers(response)
+            if path.startswith(PRIVATE_ROUTES):
+                # Share and reset links carry a secret token: keep them out of search engines and referrers.
+                response.headers["X-Robots-Tag"] = "noindex, nofollow, noarchive"
+                response.headers["Referrer-Policy"] = "no-referrer"
         elif path.startswith("assets/"):
             # Vite fingerprints asset filenames, so they can be cached forever.
             response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
