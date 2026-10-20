@@ -20,6 +20,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     String,
     Text,
     create_engine,
@@ -124,6 +125,11 @@ class User(Base):
     display_name = Column(String(60), nullable=True)
     # "scrypt$<n>$<salt hex>$<hash hex>"; see backend.security.hash_password.
     password_hash = Column(String(200), nullable=True)
+    # The learner profile (backend.learners): first language from a fixed list, goal
+    # ("understood" or "accent") and the language tips are written in.
+    first_language = Column(String(30), nullable=True)
+    goal = Column(String(12), nullable=True)
+    tip_language = Column(String(12), nullable=True)
 
     records = relationship("PronunciationRecord", back_populates="user", cascade="all, delete-orphan")
     keys = relationship("UserKey", back_populates="user", cascade="all, delete-orphan")
@@ -162,11 +168,16 @@ class PronunciationRecord(Base):
     fluency = Column(Float, nullable=True)
     completeness = Column(Float, nullable=True)
     clarity = Column(Float, nullable=True)
+    # Speaking rate, and whether the attempt counts toward mastery, streaks and goals. With
+    # "natural speed" on, careful (slow) speech is saved with counted=False. NULL = counted.
+    wpm = Column(Float, nullable=True)
+    counted = Column(Boolean, nullable=True)
     created_at = Column(DateTime, default=utcnow)
 
     user = relationship("User", back_populates="records")
     mistakes = relationship("PhonemeMistake", back_populates="record", cascade="all, delete-orphan")
     observations = relationship("PhonemeObservation", back_populates="record", cascade="all, delete-orphan")
+    comments = relationship("ShareComment", back_populates="record", cascade="all, delete-orphan", order_by="ShareComment.id")
 
 
 class PhonemeMistake(Base):
@@ -199,15 +210,136 @@ class PhonemeObservation(Base):
     ok = Column(Boolean, nullable=False)
     # Probability (0-100) the sound would be rated clean; NULL without acoustic scoring.
     score = Column(Float, nullable=True)
+    # "fix" or "check" for a flagged sound (see backend.pronunciation.PHONEME_FIX), NULL when
+    # clean or saved before tiers. A "check" sound is stored with ok=True: borderline slips
+    # don't count against mastery.
+    tier = Column(String(8), nullable=True)
 
     record = relationship("PronunciationRecord", back_populates="observations")
+
+
+class PerceptionTrial(Base):
+    """One listening-drill answer: which word of a minimal pair was played, and what the learner picked."""
+
+    __tablename__ = "perception_trials"
+    __table_args__ = (Index("ix_perception_trials_user_created", "user_id", "created_at"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    phoneme = Column(String(8), nullable=False)  # the sound being trained
+    other = Column(String(8), nullable=False)  # the sound it is confused with
+    word = Column(String(40), nullable=False)  # the word that was played
+    chosen = Column(String(40), nullable=False)  # the word the learner picked
+    correct = Column(Boolean, nullable=False)
+    voice = Column(String(24), nullable=True)
+    created_at = Column(DateTime, default=utcnow)
+
+
+class BaselineRecording(Base):
+    """One "before and after" sentence: its score and, only with the learner's consent, the audio.
+
+    Round 0 is the baseline; later rounds are the re-recordings. Deleting stored audio clears
+    `audio` and keeps the score.
+    """
+
+    __tablename__ = "baseline_recordings"
+    __table_args__ = (Index("ix_baseline_user_round", "user_id", "round", "sentence_index", unique=True),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    round = Column(Integer, nullable=False)
+    sentence_index = Column(Integer, nullable=False)
+    score = Column(Float, nullable=True)
+    pronunciation = Column(Float, nullable=True)
+    audio = Column(LargeBinary, nullable=True)
+    audio_type = Column(String(40), nullable=True)
+    # When the learner agreed to store this audio (required to store it at all).
+    consent_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=utcnow)
+
+
+class Share(Base):
+    """A read-only link to one attempt for a teacher: the audio (stored with consent) and the analysis.
+
+    Only the SHA-256 of the link's token is kept. The link stops working after `expires_at`,
+    when the audio is deleted; the teacher's comments stay on the attempt.
+    """
+
+    __tablename__ = "shares"
+
+    id = Column(Integer, primary_key=True, index=True)
+    token_hash = Column(String(64), nullable=False, unique=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    record_id = Column(Integer, ForeignKey("pronunciation_records.id"), nullable=False)
+    audio = Column(LargeBinary, nullable=True)
+    audio_type = Column(String(40), nullable=True)
+    snapshot = Column(Text, nullable=False)  # JSON: transcript and analysis, no name
+    consent_at = Column(DateTime, nullable=False)
+    created_at = Column(DateTime, default=utcnow)
+    expires_at = Column(DateTime, nullable=False)
+    revoked = Column(Boolean, nullable=False, default=False)
+
+
+class ShareComment(Base):
+    """A teacher's text comment, left through a share link; it belongs to the attempt."""
+
+    __tablename__ = "share_comments"
+    __table_args__ = (Index("ix_share_comments_record", "record_id"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    share_id = Column(Integer, ForeignKey("shares.id"), nullable=True)
+    record_id = Column(Integer, ForeignKey("pronunciation_records.id"), nullable=False)
+    author = Column(String(40), nullable=True)
+    text = Column(String(1000), nullable=False)
+    created_at = Column(DateTime, default=utcnow)
+
+    record = relationship("PronunciationRecord", back_populates="comments")
+
+
+class PasswordReset(Base):
+    """A single-use password reset link: only the SHA-256 of its token is kept."""
+
+    __tablename__ = "password_resets"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    token_hash = Column(String(64), nullable=False, unique=True, index=True)
+    created_at = Column(DateTime, default=utcnow)
+    expires_at = Column(DateTime, nullable=False)
+    used_at = Column(DateTime, nullable=True)
+
+
+class Dispute(Base):
+    """A learner's "I think this is wrong" on one flagged sound, kept for recalibration.
+
+    Only what the scorer reported is stored, never audio.
+    """
+
+    __tablename__ = "disputes"
+    __table_args__ = (Index("ix_disputes_record_sound", "record_id", "word", "expected_phoneme", unique=True),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    record_id = Column(Integer, ForeignKey("pronunciation_records.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    word = Column(String(40), nullable=False)
+    expected_phoneme = Column(String(8), nullable=False)
+    # What the scorer said it sounded like: a sound, "?" (no English sound) or "" (dropped).
+    detected_phoneme = Column(String(8), nullable=False, default="")
+    gop = Column(Float, nullable=True)
+    # Probability (0-100) the sound would be rated clean, as saved with the attempt.
+    score = Column(Float, nullable=True)
+    tier = Column(String(8), nullable=True)
+    # "said_correctly", "accent_normal" or NULL.
+    reason = Column(String(20), nullable=True)
+    created_at = Column(DateTime, default=utcnow)
 
 
 # Columns added after the first release. create_all() never alters existing
 # tables, so add any that are missing with a plain ALTER TABLE.
 ADDED_COLUMNS = {
-    "pronunciation_records": ["pronunciation", "fluency", "completeness", "clarity"],
-    "users": ["key_hash", "email", "password_hash", "display_name"],
+    "pronunciation_records": ["pronunciation", "fluency", "completeness", "clarity", "wpm", "counted"],
+    "users": ["key_hash", "email", "password_hash", "display_name", "first_language", "goal", "tip_language"],
+    "phoneme_observations": ["tier"],
 }
 
 
@@ -286,6 +418,18 @@ class PhonemeMistakeSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class ShareCommentSchema(BaseModel):
+    author: Optional[str] = None
+    text: str
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_serializer("created_at")
+    def serialize_created_at(self, value: datetime) -> str:
+        return as_utc(value).isoformat()
+
+
 class PronunciationRecordSchema(BaseModel):
     id: int
     target_text: str
@@ -297,8 +441,12 @@ class PronunciationRecordSchema(BaseModel):
     fluency: Optional[float] = None
     completeness: Optional[float] = None
     clarity: Optional[float] = None
+    wpm: Optional[float] = None
+    counted: Optional[bool] = None
     created_at: datetime
     mistakes: List[PhonemeMistakeSchema] = []
+    # Teachers' comments left through a share link.
+    comments: List[ShareCommentSchema] = []
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -346,3 +494,5 @@ class AnalyticsResponse(BaseModel):
     daily_activity: List[dict] = []
     sound_mastery: List[dict] = []
     tricky_words: List[dict] = []
+    # Listening drills: share heard right per contrast (separate from how the sounds are said).
+    perception: List[dict] = []
