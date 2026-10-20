@@ -5,11 +5,11 @@ import { MotionConfig } from 'motion/react'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { RouterProvider } from 'react-router'
-import { toast } from 'sonner'
 import { Toaster } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { router } from './App'
 import { ApiError } from './lib/api'
+import { showError } from './lib/errors'
 
 // After a deploy, lazily loaded chunks from the previous build no longer exist;
 // reload once to pick up the new build instead of showing a broken page.
@@ -32,7 +32,7 @@ const queryClient = new QueryClient({
   mutationCache: new MutationCache({
     onError: (error, _vars, _ctx, mutation) => {
       if (mutation.meta?.silent) return
-      toast.error(error instanceof Error ? error.message : 'Something went wrong')
+      showError(error)
     },
   }),
 })
