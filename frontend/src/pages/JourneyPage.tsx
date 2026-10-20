@@ -237,7 +237,7 @@ function ReviewCard({ journey }: { journey: Journey }) {
               size="sm"
               onClick={() => {
                 setTarget({ text: item.word, source: 'custom' })
-                navigate('/')
+                navigate('/practice')
               }}
             >
               Practise
