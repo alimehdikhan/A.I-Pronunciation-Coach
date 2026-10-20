@@ -84,7 +84,7 @@ export function PhonemeGuide({
   const practiceSentence = () => {
     setTarget({ text: phoneme.practice_sentence, source: 'drill' })
     onNavigate?.()
-    navigate('/')
+    navigate('/practice')
   }
 
   return (
