@@ -8,8 +8,10 @@ Model outputs are cached, so trying a scoring change only re-runs the scorer.
     python scripts/eval_speechocean.py prepare --split test --limit 500
     python scripts/eval_speechocean.py report  --split test --limit 500
     python scripts/eval_speechocean.py calibrate --split train --limit 700   # after prepare --no-asr
+    python scripts/eval_speechocean.py tiers --split train --limit 2500      # choose the "Fix this" cut-off
+    python scripts/eval_speechocean.py tiers --split test --fix-below 0.7    # then check it on held-out data
 
-Needs pyarrow and scipy (pip install pyarrow scipy), and the phoneme model
+Needs scipy and pyarrow (pip install pyarrow scipy; polars is used when pyarrow can't load), and the phoneme model
 (scripts/export_phoneme_model.py) for the acoustic scores.
 """
 
@@ -36,19 +38,29 @@ DATASET = "mispeech/speechocean762"
 # --- data ------------------------------------------------------------------------
 
 
+def _read_parquet(path: str) -> list[dict]:
+    """All rows as dicts, with pyarrow, or polars where pyarrow can't load (some Windows policies block it)."""
+    try:
+        import pyarrow.parquet as pq
+    except ImportError:
+        import polars as pl
+
+        return pl.read_parquet(path).to_dicts()
+    return pq.read_table(path).to_pylist()
+
+
 def load_split(split: str, limit: int | None) -> list[dict]:
-    import pyarrow.parquet as pq
     from huggingface_hub import hf_hub_download
 
     path = hf_hub_download(DATASET, f"data/{split}-00000-of-00001.parquet", repo_type="dataset", cache_dir=str(CACHE))
-    table = pq.read_table(path)
-    indices = list(range(table.num_rows))
+    table = _read_parquet(path)
+    indices = list(range(len(table)))
     if limit and limit < len(indices):
         step = len(indices) / limit
         indices = [int(i * step) for i in range(limit)]  # spread over all speakers
     rows = []
     for index in indices:
-        row = table.slice(index, 1).to_pylist()[0]
+        row = table[index]
         row["id"] = f"{split}-{index:05d}"
         rows.append(row)
     return rows
@@ -130,7 +142,7 @@ def canonical_phones(word: dict) -> list[str]:
 # --- report ----------------------------------------------------------------------------
 
 
-def report(rows: list[dict], split: str, whisper_size: str) -> dict:
+def report(rows: list[dict], split: str, whisper_size: str, accent: str = "american") -> dict:
     from backend import gop
     from backend.pronunciation import PronunciationScorer
 
@@ -138,7 +150,8 @@ def report(rows: list[dict], split: str, whisper_size: str) -> dict:
     vocab = Path(settings.phoneme_model_dir) / "vocab.json"
     inventory = gop.load_inventory(vocab) if vocab.is_file() else None
     scorer = PronunciationScorer(inventory=inventory)
-    sentence = {"human_accuracy": [], "human_total": [], "human_fluency": [], "pronunciation": [], "score": [], "fluency": []}
+    sentence = {"human_accuracy": [], "human_total": [], "human_fluency": [], "pronunciation": [], "score": [], "fluency": [],
+                "intelligibility": []}
     word_human, word_ours = [], []
     phone_human, phone_ours = [], []
     used = 0
@@ -152,7 +165,7 @@ def report(rows: list[dict], split: str, whisper_size: str) -> dict:
         if phon_path.exists():
             log_probs = np.load(phon_path).astype(np.float32)
         result = scorer.score_pronunciation(
-            row["text"], asr["text"], "intermediate", asr["words"], asr["duration"], phoneme_log_probs=log_probs
+            row["text"], asr["text"], "intermediate", asr["words"], asr["duration"], phoneme_log_probs=log_probs, accent=accent
         )
         used += 1
         sentence["human_accuracy"].append(row["accuracy"])
@@ -161,6 +174,7 @@ def report(rows: list[dict], split: str, whisper_size: str) -> dict:
         sentence["pronunciation"].append(result["metrics"]["pronunciation"])
         sentence["score"].append(result["score"])
         sentence["fluency"].append(result["metrics"]["fluency"] if result["metrics"]["fluency"] is not None else np.nan)
+        sentence["intelligibility"].append(result["intelligibility"]["score"])
 
         ours = [w for w in result["words"] if w["reference"]]
         if len(ours) != len(row["words"]):
@@ -184,6 +198,10 @@ def report(rows: list[dict], split: str, whisper_size: str) -> dict:
         "phone_accuracy_pcc": pcc(phone_ours, phone_human),
         "phone_mispronounced_auc": auc(phone_ours, np.asarray(phone_human) < 0.5),
         "phones": len(phone_human),
+        # Not a score the app blends in: how far the intelligibility estimate tracks expert ratings.
+        "intelligibility_vs_total_pcc": pcc(sentence["intelligibility"], sentence["human_total"]),
+        "intelligibility_vs_accuracy_pcc": pcc(sentence["intelligibility"], sentence["human_accuracy"]),
+        "intelligibility_mean": float(np.mean(sentence["intelligibility"])) if sentence["intelligibility"] else float("nan"),
     }
     for key, value in metrics.items():
         print(f"{key:>26}: {value:.3f}" if isinstance(value, float) else f"{key:>26}: {value}")
@@ -296,6 +314,76 @@ def calibrate(rows: list[dict], split: str) -> dict:
     return result
 
 
+# --- tiers: split flagged sounds into "Fix this" and "Worth checking" -------------------
+
+
+def sound_ratings(rows: list[dict], split: str) -> tuple[np.ndarray, np.ndarray]:
+    """(probability rated clean, expert rating 0-2) for every sound the app would score.
+
+    Runs the same acoustic analysis the app does on the target words (no Whisper
+    needed), keeping words whose chosen pronunciation matches the dataset's phones.
+    """
+    from backend import acoustic, gop
+
+    out = run_dir(split)
+    inventory = gop.load_inventory(Path(settings.phoneme_model_dir) / "vocab.json")
+    prob, human = [], []
+    for row in rows:
+        path = out / f"{row['id']}.phonemes.npy"
+        tokens = phonetics.tokenize(row["text"])
+        if not path.exists() or len(tokens) != len(row["words"]):
+            continue
+        heard = acoustic.analyse(tokens, np.load(path).astype(np.float32), inventory)
+        for mine, theirs in zip(heard or [], row["words"], strict=False):
+            if mine is None or [p.phoneme for p in mine.phonemes] != canonical_phones(theirs):
+                continue
+            prob.extend(p.probability for p in mine.phonemes)
+            human.extend(theirs["phones-accuracy"])
+    return np.asarray(prob), np.asarray(human, float)
+
+
+def tiers(rows: list[dict], split: str, fix_below: float | None, target: float) -> dict:
+    """Precision and recall of each tier for a range of "Fix this" cut-offs.
+
+    A real slip is a sound the experts rated below 0.5 of 2, as in `report`.
+    Without --fix-below, picks the loosest cut-off whose "Fix this" precision
+    reaches --target (do this on the train split only).
+    """
+    from backend.pronunciation import PHONEME_ERROR
+
+    prob, human = sound_ratings(rows, split)
+    wrong = human < 0.5
+    flagged = prob < PHONEME_ERROR
+
+    def row_for(cut: float) -> dict:
+        fix = prob < cut
+        check = flagged & ~fix
+        return {
+            "cut": round(cut, 3),
+            "fix": int(fix.sum()),
+            "fix_precision": float(wrong[fix].mean()) if fix.any() else float("nan"),
+            "fix_recall": float((fix & wrong).sum() / max(1, wrong.sum())),
+            "check": int(check.sum()),
+            "check_precision": float(wrong[check].mean()) if check.any() else float("nan"),
+        }
+
+    print(f"{split}: {len(prob)} sounds, {int(wrong.sum())} real slips ({wrong.mean():.1%})")
+    print(f"all flagged (< {PHONEME_ERROR}): {int(flagged.sum())}, precision {wrong[flagged].mean():.3f}, "
+          f"recall {(flagged & wrong).sum() / max(1, wrong.sum()):.3f}")
+    cuts = [fix_below] if fix_below is not None else list(np.arange(0.40, PHONEME_ERROR, 0.025))
+    table = [row_for(float(c)) for c in cuts]
+    print(f"{'cut':>6} {'fix':>5} {'P(fix)':>7} {'R(fix)':>7} {'check':>6} {'P(check)':>9}")
+    for r in table:
+        print(f"{r['cut']:>6.3f} {r['fix']:>5} {r['fix_precision']:>7.3f} {r['fix_recall']:>7.3f} "
+              f"{r['check']:>6} {r['check_precision']:>9.3f}")
+    result: dict = {"sounds": len(prob), "real_slips": int(wrong.sum()), "table": table}
+    if fix_below is None:
+        reached = [r for r in table if r["fix"] and r["fix_precision"] >= target]
+        result["chosen"] = max(reached, key=lambda r: r["cut"]) if reached else None
+        print(f"loosest cut-off with P(fix) >= {target}: {result['chosen']}")
+    return result
+
+
 # --- fit: least-squares blend of the text and acoustic word scores ---------------------
 
 
@@ -351,22 +439,27 @@ def fit_blend(rows: list[dict], split: str, whisper_size: str) -> dict:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0].strip())
-    parser.add_argument("command", choices=["prepare", "report", "calibrate", "fit"])
+    parser.add_argument("command", choices=["prepare", "report", "calibrate", "fit", "tiers"])
     parser.add_argument("--split", default="test", choices=["test", "train"])
     parser.add_argument("--limit", type=int, default=500)
     parser.add_argument("--whisper", default="base")
     parser.add_argument("--no-phonemes", action="store_true")
     parser.add_argument("--no-asr", action="store_true", help="prepare: skip Whisper (calibrating sounds only)")
+    parser.add_argument("--fix-below", type=float, default=None, help="tiers: report this cut-off instead of choosing one")
+    parser.add_argument("--accent", default="american", choices=["american", "british"], help="report: target accent")
+    parser.add_argument("--target", type=float, default=0.6, help="tiers: precision the \"Fix this\" tier must reach")
     args = parser.parse_args()
     rows = load_split(args.split, args.limit)
     if args.command == "calibrate":
         calibrate(rows, args.split)
+    elif args.command == "tiers":
+        tiers(rows, args.split, args.fix_below, args.target)
     elif args.command == "fit":
         fit_blend(rows, args.split, args.whisper)
     elif args.command == "prepare":
         prepare(rows, args.split, args.whisper, phonemes=not args.no_phonemes, use_asr=not args.no_asr)
     else:
-        report(rows, args.split, args.whisper)
+        report(rows, args.split, args.whisper, args.accent)
 
 
 if __name__ == "__main__":
