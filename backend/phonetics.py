@@ -18,6 +18,7 @@ import re
 import unicodedata
 from dataclasses import dataclass
 from functools import lru_cache
+from pathlib import Path
 from typing import Callable, Sequence, TypeVar
 
 logger = logging.getLogger("pronunciation_coach.phonetics")
@@ -175,6 +176,7 @@ def warm_up(language: str = "eng-Latn") -> None:
     """Load dictionaries eagerly so the first request is fast."""
     _epitran_state["language"] = language
     _cmudict()
+    word_with_sounds(())
 
 
 def dictionary_available() -> bool:
@@ -304,12 +306,38 @@ def spelling_pronunciation(word: str) -> Pronunciation:
     return Pronunciation(letters, tuple(None for _ in letters), "spelling")
 
 
+# Natural reduced ("weak") forms of common function words. In connected speech "and" is
+# usually /ən/, "you" /jə/ and "at" /ət/, so marking them wrong punishes fluent speech.
+# CMUDict already has the reduced vowel of a, an, the, to, for, of, can, was, were, has,
+# them and that; these fill in the rest of the twenty most common ones. They are added
+# after the dictionary's own forms and the scorer picks whichever matches the audio.
+# Only the vowel is reduced: a changed or dropped consonant is never accepted ("the" as
+# "də", or "and" as plain "n", which lowered agreement with expert ratings on
+# speechocean762), and r-less forms are left to a British target.
+WEAK_FORMS: dict[str, tuple[str, ...]] = {
+    "to": ("T UH0",),
+    "and": ("AH0 N", "AE1 N"),
+    "have": ("HH AH0 V",),
+    "from": ("F R AH0 M",),
+    "you": ("Y AH0",),
+    "your": ("Y ER0",),
+    "at": ("AH0 T",),
+    "as": ("AH0 Z",),
+    "but": ("B AH0 T",),
+}
+
+
 @lru_cache(maxsize=8192)
 def pronunciations(word: str) -> tuple[Pronunciation, ...]:
-    """Return up to three candidate pronunciations, best source first."""
+    """Candidate pronunciations, best source first: up to three dictionary forms, then weak forms."""
     entries = _cmudict().get(word)
     if entries:
-        return tuple(_from_arpabet(entry) for entry in entries[:3])
+        found = [_from_arpabet(entry) for entry in entries[:3]]
+        for weak in WEAK_FORMS.get(word, ()):
+            pron = _from_arpabet(weak.split())
+            if all(pron.phonemes != known.phonemes for known in found):
+                found.append(pron)
+        return tuple(found)
     epi = _epitran_pronunciation(word)
     if epi is not None:
         return (epi,)
@@ -317,6 +345,79 @@ def pronunciations(word: str) -> tuple[Pronunciation, ...]:
     if rules is not None:
         return (rules,)
     return (spelling_pronunciation(word),)
+
+
+_word_index: dict[tuple[str, ...], str] | None = None
+COMMON_WORDS_FILE = Path(__file__).resolve().parent / "data" / "common_words.txt"
+
+
+def word_with_sounds(phonemes: Sequence[str]) -> str | None:
+    """A common English word pronounced exactly like this ("s ɪ ŋ k" -> "sink"), if there is one.
+
+    Used to tell whether a slip turned the target into a different real word. Only the ~15,000
+    words in data/common_words.txt count (so "sink", not the rare "cinq"); among several
+    spellings with the same sounds the more frequent wins. Stress is ignored.
+    """
+    global _word_index
+    if _word_index is None:
+        index: dict[tuple[str, ...], str] = {}
+        try:
+            lines = COMMON_WORDS_FILE.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            logger.warning("Common word list missing; slips will not be checked for changed words.")
+            lines = []
+        cmu = _cmudict()
+        for word in (line.strip() for line in lines):  # most frequent first: the first claim wins
+            if not word or word.startswith("#"):
+                continue
+            for entry in cmu.get(word, ()):
+                index.setdefault(_from_arpabet(entry).phonemes, word)
+        _word_index = index
+    return _word_index.get(tuple(phonemes))
+
+
+ACCENTS = ("american", "british")
+
+
+def non_rhotic(pron: Pronunciation) -> Pronunciation:
+    """The British (non-rhotic) form: no /r/ unless a vowel follows, and unstressed "-er" as /ə/.
+
+    "car" /kɑr/ -> /kɑ/, "better" /bɛtɚ/ -> /bɛtə/; "red" and "very" keep their /r/. Long
+    vowels such as /ɝ/ in "bird" stay, since the sound model already accepts the British /ɜː/.
+    """
+    phonemes, stresses = [], []
+    for i, (ph, stress) in enumerate(zip(pron.phonemes, pron.stresses, strict=True)):
+        following = pron.phonemes[i + 1] if i + 1 < len(pron.phonemes) else None
+        if ph == "r" and (following is None or following not in VOWELS):
+            continue
+        phonemes.append("ə" if ph == "ɚ" else ph)
+        stresses.append(stress)
+    return Pronunciation(tuple(phonemes), tuple(stresses), pron.source)
+
+
+def accent_pronunciations(word: str, accent: str = "american") -> tuple[Pronunciation, ...]:
+    """Candidates for scoring: the usual ones, plus the non-rhotic forms for a British target."""
+    found = pronunciations(word)
+    if accent != "british":
+        return found
+    extra = []
+    for pron in found:
+        if pron.source == "spelling":
+            continue
+        british = non_rhotic(pron)
+        if british.phonemes and all(british.phonemes != p.phonemes for p in (*found, *extra)):
+            extra.append(british)
+    return (*found, *extra)
+
+
+# Approximate RP display: the GOAT vowel as /əʊ/ and the NURSE vowel as /ɜː/ (lexical sets such
+# as BATH and LOT are not modelled; see the README).
+_BRITISH_DISPLAY = {"oʊ": "əʊ", "ɝ": "ɜː"}
+
+
+def british_display(pron: Pronunciation) -> Pronunciation:
+    plain = non_rhotic(pron)
+    return Pronunciation(tuple(_BRITISH_DISPLAY.get(p, p) for p in plain.phonemes), plain.stresses, plain.source)
 
 
 def primary_pronunciation(word: str) -> Pronunciation:
@@ -369,9 +470,11 @@ def ipa_string(pron: Pronunciation) -> str:
     return "".join(parts)
 
 
-def describe_word(word: str) -> dict[str, object]:
+def describe_word(word: str, accent: str = "american") -> dict[str, object]:
     """Pronunciation summary used by the tutor and the practice preview."""
     pron = primary_pronunciation(word)
+    if accent == "british" and pron.source != "spelling":
+        pron = british_display(pron)
     syllables = syllabify(pron)
     stress_index = next((i + 1 for i, s in enumerate(syllables) if s["stress"] == 1), 0)
     return {
