@@ -45,43 +45,31 @@ def speaking_prompts() -> dict[str, Any]:
     return {"kinds": speaking.KINDS, "prompts": speaking.PROMPTS, "max_seconds": settings.free_speech_seconds}
 
 
-@router.post("/api/speak/evaluate")
-async def evaluate_free_speech(
-    request: Request,
-    response: Response,
-    audio: UploadFile = File(...),
-    prompt_id: str | None = Form(None, max_length=40),
-) -> dict[str, Any]:
-    """Score a free answer: delivery, the sound slips the scorer is sure of, and (with the model) feedback on structure.
+async def analyse_free_answer(audio: UploadFile, timer: StageTimer, *, max_seconds: float, endpoint: str) -> dict[str, Any]:
+    """Transcribe an answer given in the learner's own words and measure it.
 
-    The transcript is the target. Nothing is saved: free answers are practice, not history.
+    Returns the transcript, the transcript without fillers (`target`, what is scored), delivery
+    (pace, pauses, fillers), every word, the sound slips the scorer is sure about, and the sound
+    score when the acoustic model ran. Silence comes back with `delivery` None. `upload` holds the
+    uploaded bytes and their type, for the one feature that keeps them with consent (Day 1 vs Day 30);
+    nothing else stores them. Shared by Speak freely, mock interviews and group discussions; the caller
+    checks the rate limit first.
     """
-    prompt = speaking.prompt_by_id(prompt_id)
-    audio_rate_limiter.check(client_key(request))
     asr, scorer = require_models()
-    timer = StageTimer()
     try:
-        heard = await transcribe_upload(
-            audio, asr, timer, phonemes=True, max_seconds=settings.free_speech_seconds, prompt=speaking.FILLER_PROMPT
-        )
+        heard = await transcribe_upload(audio, asr, timer, phonemes=True, max_seconds=max_seconds, prompt=speaking.FILLER_PROMPT)
     except HTTPException:
         raise
     except Exception as exc:
-        logger.exception("Error processing audio in /api/speak/evaluate")
+        logger.exception("Error processing audio in %s", endpoint)
         raise HTTPException(status_code=500, detail="Error processing audio. See server logs for details.") from exc
 
+    upload = heard.pop("_upload", None)
+    heard.pop("_samples", None)
     text = str(heard.get("text", "")).strip()
     words = heard.get("words") or []
-    body: dict[str, Any] = {
-        "prompt": prompt,
-        "transcription": text,
-        "no_speech": not text,
-        "note": NOTE,
-        "max_seconds": settings.free_speech_seconds,
-    }
     if not text:
-        response.headers["Server-Timing"] = timer.header()
-        return {**body, "delivery": None, "words": [], "slips": [], "pronunciation": None, "feedback": None}
+        return {"text": "", "target": "", "delivery": None, "words": [], "slips": [], "pronunciation": None, "upload": upload}
 
     delivery = speaking.delivery(words, text)
     delivery["fillers"]["approximate"] = True
@@ -103,14 +91,52 @@ async def evaluate_free_speech(
         for op in e["alignment"]
         if op["op"] in ("replace", "delete") and op.get("tier") == "fix"
     ][:12]
+    acoustic = any(e.get("acoustic") for e in entries)
+    return {
+        "text": text,
+        "target": target,
+        "delivery": delivery,
+        "words": entries,
+        "slips": slips,
+        "pronunciation": scored["metrics"]["pronunciation"] if acoustic else None,
+        "upload": upload,
+    }
 
+
+@router.post("/api/speak/evaluate")
+async def evaluate_free_speech(
+    request: Request,
+    response: Response,
+    audio: UploadFile = File(...),
+    prompt_id: str | None = Form(None, max_length=40),
+) -> dict[str, Any]:
+    """Score a free answer: delivery, the sound slips the scorer is sure of, and (with the model) feedback on structure.
+
+    The transcript is the target. Nothing is saved: free answers are practice, not history.
+    """
+    prompt = speaking.prompt_by_id(prompt_id)
+    audio_rate_limiter.check(client_key(request))
+    timer = StageTimer()
+    answer = await analyse_free_answer(audio, timer, max_seconds=settings.free_speech_seconds, endpoint="/api/speak/evaluate")
+    body: dict[str, Any] = {
+        "prompt": prompt,
+        "transcription": answer["text"],
+        "no_speech": not answer["text"],
+        "note": NOTE,
+        "max_seconds": settings.free_speech_seconds,
+    }
+    if not answer["text"]:
+        response.headers["Server-Timing"] = timer.header()
+        return {**body, "delivery": None, "words": [], "slips": [], "pronunciation": None, "feedback": None}
+
+    delivery = answer["delivery"]
     feedback = None
     coach = get_coach()
     if coach.enabled:
         facts = {
             "task": prompt["title"] if prompt else "Speak freely",
             "task_points": prompt.get("points", []) if prompt else [],
-            "answer_transcript": target[:2500],
+            "answer_transcript": answer["target"][:2500],
             "words_per_minute": delivery["wpm"],
             "long_pauses": delivery["long_pauses"],
         }
@@ -119,12 +145,11 @@ async def evaluate_free_speech(
             feedback = {"text": text_feedback, "source": source}
 
     response.headers["Server-Timing"] = timer.header()
-    acoustic = any(e.get("acoustic") for e in entries)
     return {
         **body,
         "delivery": delivery,
-        "words": entries,
-        "slips": slips,
-        "pronunciation": scored["metrics"]["pronunciation"] if acoustic else None,
+        "words": answer["words"],
+        "slips": answer["slips"],
+        "pronunciation": answer["pronunciation"],
         "feedback": feedback,
     }
