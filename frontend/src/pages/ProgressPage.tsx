@@ -1,4 +1,4 @@
-import { ArrowRightIcon, CalendarBlankIcon, ChartLineUpIcon, GaugeIcon, LockKeyIcon, SparkleIcon, TrashIcon, UserCirclePlusIcon, WarningCircleIcon, WaveformIcon } from '@phosphor-icons/react'
+import { ArrowRightIcon, CalendarBlankIcon, ChartLineUpIcon, GaugeIcon, LockKeyIcon, SparkleIcon, TrashIcon, UserCirclePlusIcon, WarningCircleIcon, WaveformIcon, EarIcon } from '@phosphor-icons/react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router'
@@ -10,6 +10,7 @@ import { ActivityCalendar } from '@/components/progress/ActivityCalendar'
 import { HistoryPanel } from '@/components/progress/HistoryPanel'
 import { FocusSounds } from '@/components/progress/FocusSounds'
 import { ProgressHero } from '@/components/progress/ProgressHero'
+import { HearingVsSaying } from '@/components/progress/HearingVsSaying'
 import { SoundMasteryGrid } from '@/components/progress/SoundMasteryGrid'
 import { TrendChart } from '@/components/progress/TrendChart'
 import { TrickyWords } from '@/components/progress/TrickyWords'
@@ -260,6 +261,13 @@ export default function ProgressPage() {
             <Panel className="progress-item p-6 sm:p-8">
               <SectionLabel icon={<WaveformIcon weight="fill" />}>Sound mastery</SectionLabel>
               <SoundMasteryGrid sounds={analytics.sound_mastery} />
+            </Panel>
+          )}
+
+          {!!analytics.perception?.length && (
+            <Panel className="progress-item p-6 sm:p-8">
+              <SectionLabel icon={<EarIcon weight="fill" />}>Hearing vs saying</SectionLabel>
+              <HearingVsSaying perception={analytics.perception} mastery={analytics.sound_mastery ?? []} />
             </Panel>
           )}
 
