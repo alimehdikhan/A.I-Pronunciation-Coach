@@ -100,7 +100,8 @@ function speakWithBrowser(text: string, key: string, rate: number, voiceURI: str
  */
 export function useSpeaker() {
   const voiceURI = useSettings((s) => s.voiceURI)
-  const coachVoice = useSettings((s) => s.coachVoice) ?? ''
+  // A British target speaks with the British voice unless the learner picked one themselves.
+  const coachVoice = useSettings((s) => s.coachVoice ?? (s.accent === 'british' ? 'bf_emma' : null)) ?? ''
   const settingsRate = useSettings((s) => s.rate)
   const speakingKey = useVoiceStore((s) => s.speakingKey)
   const lastKey = useRef<string | null>(null)
