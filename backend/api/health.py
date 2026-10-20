@@ -53,6 +53,8 @@ async def health_check(request: Request) -> dict[str, Any]:
         "voice_agent": bool(settings.gemini_api_key),
         "free_speech_seconds": settings.free_speech_seconds,
         "password_reset": mailer.enabled(),
+        "operator": settings.operator_name,
+        "contact_email": settings.contact_email or None,
         "coach": runtime.coach.describe() if runtime.coach is not None else None,
         "version": request.app.version,
     }
