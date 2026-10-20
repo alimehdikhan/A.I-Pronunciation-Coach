@@ -47,7 +47,8 @@ def test_phoneme_substitution_is_reported(scorer):
     very = result["words"][1]
     assert very["status"] == "mispronounced"
     assert very["expected_ipa"] == "ˈvɛri"
-    assert {"op": "replace", "expected": "v", "actual": "w"} in very["alignment"]
+    assert {"op": "replace", "expected": "v", "actual": "w", "tier": "fix"} in very["alignment"]
+    assert very["tier"] == "fix"  # without the audio model, a different word heard is a "fix" slip
     assert set(result["weak_phonemes"]) == {"v", "w"}
     assert very["score"] < 80
 
@@ -120,3 +121,25 @@ def test_unrelated_sentence_scores_low(scorer):
 
     assert result["metrics"]["completeness"] <= 40
     assert result["score"] < 40
+
+
+def test_intelligibility_is_the_share_of_target_words_a_listener_caught(scorer):
+    result = scorer.score_pronunciation("The very best wine.", "The wery best vine")
+    assert result["intelligibility"] == {"score": 50.0, "recovered": 2, "words": 4, "estimate": True}
+    very = result["words"][1]
+    assert very["misheard"] is True and very["heard_as"] == "wery"
+    assert result["words"][0]["misheard"] is False
+
+    # Numbers and homophones are caught; a skipped word is not.
+    assert scorer.score_pronunciation("I can count to 10.", "I can count two ten")["intelligibility"]["score"] == 100.0
+    skipped = scorer.score_pronunciation("I like green tea", "I like tea")
+    assert skipped["intelligibility"]["recovered"] == 3
+    assert [w["heard_as"] for w in skipped["words"] if w["misheard"]] == [None]
+
+
+def test_intelligibility_is_not_part_of_the_score(scorer):
+    from backend import pronunciation
+
+    result = scorer.score_pronunciation("The very best wine.", "The wery best vine")
+    weights = pronunciation.METRIC_WEIGHTS
+    assert "intelligibility" not in weights and "intelligibility" not in result["metrics"]
