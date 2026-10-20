@@ -15,7 +15,7 @@ from backend.config import settings
 from backend.database import get_db
 from backend.moderation import RESPECT_REPLY, RESPECT_TRY, is_abusive
 from backend.phoneme_kb import get_phoneme
-from backend.repositories import analytics, authorize, find_user, history, observations
+from backend.repositories import analytics, authorize, find_user, history, observations, perception_stats
 from backend.runtime import get_coach
 from backend.security import RateLimiter, clean_username, client_key
 
@@ -53,10 +53,12 @@ async def coaching_plan(
     name = clean_username(username) or ""
     user = find_user(db, name)
     rows: list = []
+    perception: list = []
     if user is not None:
         authorize(db, user, key)
         rows = observations(db, user)
-    plan = teaching.build_plan(rows, focus)
+        perception = perception_stats(db, user)
+    plan = teaching.build_plan(rows, focus, perception, settings.perception_threshold, user.first_language if user else None)
 
     focus_info = plan["focus"]
     facts = {
