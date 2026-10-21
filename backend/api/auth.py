@@ -8,14 +8,20 @@ Signing out unbinds the device; passwords are scrypt-hashed.
 
 from __future__ import annotations
 
+import logging
+import re
+import secrets
 from typing import Any
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import delete as sql_delete
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from backend import oauth
 from backend.api.deps import profile_key
 from backend.config import settings
 from backend.database import PronunciationRecord, User, UserKey, as_utc, get_db
@@ -42,6 +48,7 @@ from backend.security import (
 )
 
 router = APIRouter(prefix="/api/auth", tags=["accounts"])
+logger = logging.getLogger("pronunciation_coach.auth")
 
 # Password guessing is the thing to slow down, so this is stricter than the audio limit.
 _limit = 0 if settings.rate_limit_per_minute <= 0 else max(5, settings.rate_limit_per_minute // 3)
@@ -97,6 +104,9 @@ def _profile(db: Session, user: User) -> dict[str, Any]:
         "member_since": as_utc(user.created_at).isoformat() if user.created_at else None,
         "attempts": int(attempts or 0),
         "devices": int(devices),
+        # Made with Google and no password set: there is no current password to ask for.
+        "google_only": user.password_hash == oauth.GOOGLE_ONLY,
+        "google": user.google_sub is not None,
     }
 
 
@@ -180,6 +190,8 @@ def login(
             "There is no account with that email or username. Check the spelling, or create an account.",
             "no_account",
         )
+    if user.password_hash == oauth.GOOGLE_ONLY:
+        raise AuthError(401, "This account signs in with Google. Use “Continue with Google”.", "use_google")
     if not valid:
         raise AuthError(401, "That password is not right for this account.", "wrong_password")
     _release_key(db, key, except_user_id=user.id)
@@ -250,7 +262,8 @@ def change_password(
 ) -> dict[str, Any]:
     auth_rate_limiter.check(client_key(request))
     user = _require_account(db, key)
-    if not verify_password(body.current_password, user.password_hash):
+    # A Google account with no password yet can add one: this signed-in device is the proof.
+    if user.password_hash != oauth.GOOGLE_ONLY and not verify_password(body.current_password, user.password_hash):
         raise AuthError(401, "Your current password is incorrect.", "invalid_credentials")
     user.password_hash = hash_password(check_password_strength(body.new_password))
     drop_other_devices(db, user, _need_key(key))  # other devices must sign in again
@@ -264,10 +277,103 @@ def delete(
 ) -> dict[str, bool]:
     auth_rate_limiter.check(client_key(request))
     user = _require_account(db, key)
-    if not verify_password(body.password, user.password_hash):
+    if user.password_hash != oauth.GOOGLE_ONLY and not verify_password(body.password, user.password_hash):
         raise AuthError(401, "Your password is incorrect.", "invalid_credentials")
     delete_account(db, user)
     return {"deleted": True}
+
+
+# --- Continue with Google (only when a Google OAuth client is configured) ----------------------
+
+
+class GoogleStartBody(BaseModel):
+    next: str | None = Field(default=None, max_length=300)
+
+
+def _safe_next(path: str | None) -> str:
+    """Where to go after signing in: only a path inside this app, never another site."""
+    if path and path.startswith("/") and not path.startswith(("//", "/api/")) and "\\" not in path:
+        return path
+    return "/practice"
+
+
+def _to_login(**params: str) -> RedirectResponse:
+    return RedirectResponse(f"/login?{urlencode(params)}", status_code=303)
+
+
+def _free_username(db: Session, name: str, email: str) -> str:
+    """A unique username from the Google name or the email: "Sam Lee" -> "sam.lee", then "sam.lee2"."""
+    base = re.sub(r"[^a-z0-9]+", ".", (name or email.split("@")[0]).lower()).strip(".")[:30] or "learner"
+    for candidate in [base, *(f"{base}{n}" for n in range(2, 50))]:
+        if find_user(db, candidate) is None:
+            return candidate
+    return f"{base}{secrets.randbelow(900_000) + 100_000}"
+
+
+def _google_account(db: Session, who: dict[str, Any]) -> User | None:
+    """The account for this Google identity: linked before, matched by a verified email, or new."""
+    user = db.scalar(select(User).where(User.google_sub == who["sub"]))
+    if user is not None:
+        return user
+    if not who["email_verified"]:
+        return None  # an address Google has not checked could belong to someone else's account
+    user = find_user_by_email(db, who["email"])
+    if user is not None:
+        user.google_sub = who["sub"]  # Google has checked this person owns the address
+        return user
+    username = _free_username(db, who["name"], who["email"])
+    try:
+        display = clean_username(who["name"]) or username
+    except HTTPException:
+        display = username
+    user = User(
+        username=username,
+        display_name=display[:40],
+        email=who["email"],
+        password_hash=oauth.GOOGLE_ONLY,
+        google_sub=who["sub"],
+        key_hash=None,
+    )
+    db.add(user)
+    db.flush()
+    return user
+
+
+@router.post("/google/start")
+def google_start(request: Request, body: GoogleStartBody, key: str | None = Depends(profile_key)) -> dict[str, str]:
+    auth_rate_limiter.check(client_key(request))
+    if not oauth.enabled():
+        raise AuthError(404, "Google sign-in is not switched on for this app.", "google_unavailable")
+    url = oauth.start(_need_key(key), _safe_next(body.next), oauth.redirect_uri(str(request.base_url)))
+    return {"url": url}
+
+
+@router.get("/google/callback", include_in_schema=False)
+def google_callback(
+    code: str = Query("", max_length=2000),
+    state: str = Query("", max_length=200),
+    error: str = Query("", max_length=200),
+    db: Session = Depends(get_db),
+) -> RedirectResponse:
+    """Google sends the browser here. Back on the sign-in page, the app picks up the account."""
+    pending = oauth.take(state) if state else None
+    if pending is None:
+        return _to_login(error="google_expired")
+    if error or not code:
+        return _to_login(error="google_cancelled", next=pending.next)
+    try:
+        who = oauth.identity(code, pending)
+    except oauth.GoogleError as failure:
+        logger.warning("Google sign-in failed: %s", failure)
+        return _to_login(error="google_failed", next=pending.next)
+    user = _google_account(db, who)
+    if user is None:
+        db.rollback()
+        return _to_login(error="google_unverified", next=pending.next)
+    _release_key(db, pending.key, except_user_id=user.id)
+    add_device(db, user, pending.key)
+    db.commit()
+    return _to_login(signed_in="google", next=pending.next)
 
 
 # --- Password reset by email (only when an email provider is configured) ----------------------
