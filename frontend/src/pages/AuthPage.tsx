@@ -7,7 +7,7 @@ import {
   WarningCircleIcon,
 } from '@phosphor-icons/react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useMemo, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react'
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
 import { StorageNotice } from '@/components/auth/StorageNotice'
@@ -30,6 +30,18 @@ function safeNext(path: string | null): string | null {
   if (!path || !path.startsWith('/') || path.startsWith('//') || path.includes('\\')) return null
   if (path.startsWith('/api/') || /^\/(login|signup|forgot|reset)\b/.test(path)) return null
   return path
+}
+
+/**
+ * Shown inside another page's frame (the Hugging Face Space page embeds the app). Google refuses to
+ * show its sign-in page in a frame, so Google sign-in then finishes in a tab of its own.
+ */
+function inFrame(): boolean {
+  try {
+    return window.self !== window.top
+  } catch {
+    return true // a cross-origin parent can't even be compared
+  }
 }
 
 /** What went wrong on the way back from Google (the server puts a code in `?error=`). */
@@ -124,6 +136,7 @@ export default function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
   const [availability, setAvailability] = useState<'idle' | 'checking' | 'free' | 'taken'>('idle')
   const [googleBusy, setGoogleBusy] = useState(false)
   const [googleError, setGoogleError] = useState<string | null>(googleProblem)
+  const [googleElsewhere, setGoogleElsewhere] = useState(false)
 
   useEffect(() => {
     document.title = signup ? 'Create your account · Vocaly AI' : 'Sign in · Vocaly AI'
@@ -224,8 +237,15 @@ export default function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
   })
 
   const continueWithGoogle = () => {
-    setGoogleBusy(true)
     setGoogleError(null)
+    if (inFrame()) {
+      // In its own tab the whole sign-in happens at the app's own address, and the learner carries on there.
+      const query = new URLSearchParams({ google: 'start', ...(next ? { next } : {}) })
+      window.open(`${window.location.origin}/login?${query}`, '_blank', 'noopener')
+      setGoogleElsewhere(true)
+      return
+    }
+    setGoogleBusy(true)
     api
       .googleStart(next ?? '/practice')
       .then(({ url }) => window.location.assign(url))
@@ -234,6 +254,16 @@ export default function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
         setGoogleError(error instanceof ApiError ? error.message : 'Google sign-in isn’t available right now.')
       })
   }
+
+  // Opened from a framed copy of the app (above): go straight on to Google.
+  const autoStarted = useRef(false)
+  useEffect(() => {
+    if (params.get('google') !== 'start' || !health?.google_sign_in || autoStarted.current || inFrame()) return
+    autoStarted.current = true
+    continueWithGoogle()
+    // Once, as soon as the server says Google sign-in is on.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [health?.google_sign_in])
 
   // Put the server's answer next to the field it is about.
   const code = submit.error instanceof ApiError ? submit.error.code : undefined
@@ -305,6 +335,11 @@ export default function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
                 {googleBusy ? <SpinnerGapIcon className="motion-safe:animate-spin" /> : <GoogleMark />}
                 Continue with Google
               </Button>
+              {googleElsewhere && (
+                <p role="status" className="mt-2.5 text-center text-[13px] text-muted-foreground">
+                  Google sign-in opened in a new tab. Carry on there.
+                </p>
+              )}
               <div className="my-5 flex items-center gap-3 text-xs text-subtle" aria-hidden>
                 <span className="h-px flex-1 bg-border" />
                 or with your email
