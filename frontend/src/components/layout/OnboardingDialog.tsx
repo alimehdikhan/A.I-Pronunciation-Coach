@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { useTunedLanguages } from '@/lib/queries'
 import { useSettings, type Goal, type TipLanguage } from '@/store/settings'
 import { NATIVE_LANGUAGES, TIP_LANGUAGES } from './SettingsDialog'
 import { LogoMark } from './Logo'
@@ -25,6 +26,7 @@ const GOALS: { id: Goal; title: string; text: string }[] = [
 /** Step two: first language, goal and the language for tips. Every choice can be changed in Settings. */
 function AboutYou({ onDone }: { onDone: () => void }) {
   const settings = useSettings()
+  const tuned = useTunedLanguages()
   return (
     <div className="mt-6 space-y-5">
       <div>
@@ -44,7 +46,10 @@ function AboutYou({ onDone }: { onDone: () => void }) {
             ))}
           </SelectContent>
         </Select>
-        <p className="mt-1 text-[12px] text-subtle">Puts the sounds usually hard for its speakers first. It never changes a score.</p>
+        <p className="mt-1 text-[12px] text-subtle">
+          Puts the sounds usually hard for its speakers first.{' '}
+          {tuned.length ? 'For some languages it also picks a sound model tuned for their speakers.' : 'It never changes a score.'}
+        </p>
       </div>
 
       <div role="radiogroup" aria-label="Your goal" className="grid gap-2">
@@ -105,7 +110,7 @@ export function OnboardingDialog() {
         <div className="flex flex-col items-center text-center">
           <LogoMark className="size-16 rounded-[18px] shadow-[0_12px_40px_-10px_rgb(201_89_221/0.6)]" />
           <DialogTitle className="headline mt-6 text-[28px]">
-            Welcome to <span className="text-ai">Coach</span>
+            Welcome to <span className="text-ai">Vocaly AI</span>
           </DialogTitle>
           <DialogDescription className="mt-2 text-[15px]">
             Speak a phrase. Your AI coach pinpoints every sound that needs work.
