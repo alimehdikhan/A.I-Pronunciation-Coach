@@ -253,11 +253,11 @@ export default function HomePage() {
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-3 px-4">
           <Link
             to="/"
-            aria-label="AI Pronunciation Coach, home"
+            aria-label="Vocaly AI, home"
             className="flex items-center gap-2.5 rounded-sm text-[15px] font-semibold focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
           >
             <LogoMark className="size-8 rounded-[10px]" />
-            <span className="hidden sm:inline">AI Pronunciation Coach</span>
+            <span className="hidden sm:inline">Vocaly AI</span>
           </Link>
           <nav aria-label="Page" className="hidden items-center gap-7 text-[13px] text-muted-foreground md:flex">
             <a href="#features" onClick={scrollToSection} className={LINK}>
