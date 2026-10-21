@@ -16,6 +16,7 @@ import {
 import { useMemo, useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import { DocLayout, DocSection } from '@/components/site/DocLayout'
+import { useTunedLanguages } from '@/lib/queries'
 import { scrollToHash } from '@/components/site/SiteFooter'
 import { Kbd } from '@/components/ui/kbd'
 
@@ -209,8 +210,9 @@ function plain(node: ReactNode): string {
   return ''
 }
 
-/** How to use the Coach: getting started, a guide to each feature, shortcuts, questions and fixes. */
+/** How to use Vocaly AI: getting started, a guide to each feature, shortcuts, questions and fixes. */
 export function HelpPage() {
+  const tuned = useTunedLanguages()
   const [query, setQuery] = useState('')
   const q = query.trim().toLowerCase()
   const faq = useMemo(() => FAQ.filter((f) => !q || `${f.q} ${plain(f.a)}`.toLowerCase().includes(q)), [q])
@@ -218,7 +220,7 @@ export function HelpPage() {
 
   return (
     <DocLayout
-      title="How to use AI Pronunciation Coach"
+      title="How to use Vocaly AI"
       tabTitle="Help centre"
       toc={TOC}
       wide
@@ -380,7 +382,14 @@ export function HelpPage() {
       <DocSection id="settings" title="Settings that help">
         <ul className="max-w-[70ch]">
           <li>
-            <b>Your first language</b> puts the sounds that are hard for its speakers first. It never changes a score.
+            <b>Your first language</b> puts the sounds that are hard for its speakers first.{' '}
+            {tuned.length
+              ? `For ${tuned.join(', ')} it also picks a sound model tuned for South Asian speakers of English, so slips like “the” said as “de” are caught; no language gets a bonus or penalty.`
+              : 'It never changes a score.'}
+          </li>
+          <li>
+            <b>Help improve Vocaly AI</b>, when you are signed in, gives clean recordings of the app’s practice sentences to train the
+            scoring. It is off until you turn it on, and Delete removes what you gave. See the <Link to="/privacy#recordings">Privacy Policy</Link>.
           </li>
           <li>
             <b>Tips in Hindi, Urdu or Hinglish</b> explain how to make each sound in your language.
