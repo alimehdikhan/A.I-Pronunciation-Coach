@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse, Response
 
-from backend import mailer, phonetics
+from backend import mailer, oauth, phonetics
 from backend.config import settings
 from backend.database import check_db
 from backend.observability import metrics_response
@@ -53,6 +53,7 @@ async def health_check(request: Request) -> dict[str, Any]:
         "voice_agent": bool(settings.gemini_api_key),
         "free_speech_seconds": settings.free_speech_seconds,
         "password_reset": mailer.enabled(),
+        "google_sign_in": oauth.enabled(),
         "operator": settings.operator_name,
         "contact_email": settings.contact_email or None,
         "coach": runtime.coach.describe() if runtime.coach is not None else None,
