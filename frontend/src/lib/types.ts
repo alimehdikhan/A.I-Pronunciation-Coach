@@ -98,6 +98,8 @@ export interface EvaluationResult {
   reference_text: string
   record_id: number | null
   saved: boolean
+  /** The recording was kept to help improve the scorer (the learner turned this on). */
+  contributed?: boolean
   /** "Would a listener understand you?": share of target words a recogniser recovered without being told the target. */
   intelligibility?: { score: number; recovered: number; words: number; estimate: true }
   /** Nothing was heard (silence, muted or wrong microphone). */
@@ -542,6 +544,21 @@ export interface LearnerOptions {
   goals: { id: 'understood' | 'accent'; label: string; default: boolean }[]
   tip_languages: string[]
   common_sounds: Record<string, string[]>
+  /** First languages whose speakers are scored by a sound model trained on speakers like them. */
+  tuned_languages?: string[]
+}
+
+/** "Help improve Vocaly AI": whether this learner gives practice recordings to train the scorer. */
+export interface ContributeStatus {
+  /** The server has a private dataset to keep them in. */
+  available: boolean
+  on: boolean
+  /** ISO timestamp of when the learner turned it on. */
+  since: string | null
+  /** Saved attempts whose recording was kept. */
+  given: number
+  /** After a delete: how many were removed. */
+  deleted?: number
 }
 
 /** The signed-in account for this browser, or `{ account: false }` for a guest. */
