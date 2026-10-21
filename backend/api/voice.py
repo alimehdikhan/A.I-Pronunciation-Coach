@@ -14,7 +14,7 @@ from starlette.websockets import WebSocketDisconnect
 from backend import coach_tools, teaching
 from backend.config import settings
 from backend.database import get_db
-from backend.repositories import ProfileLocked, authorize, find_user, observations
+from backend.repositories import ProfileLocked, account_for_key, authorize, find_user, observations
 from backend.security import RateLimiter, clean_username
 from backend.voice_agent import VoiceSession, loads
 
@@ -94,6 +94,16 @@ def _facts(hello: dict[str, Any], database: Any = None) -> dict[str, Any]:
     return facts
 
 
+def _signed_in(hello: dict[str, Any], database: Any = None) -> bool:
+    """Whether the profile key in the first message belongs to a signed-in account."""
+    generator = (database or get_db)()
+    db = next(generator)
+    try:
+        return account_for_key(db, str(hello.get("profile_key") or "") or None) is not None
+    finally:
+        generator.close()
+
+
 @router.websocket("/ws/voice")
 async def voice(ws: WebSocket) -> None:
     """A spoken conversation. The first message is JSON; after that audio goes up and audio comes back."""
@@ -140,8 +150,11 @@ async def voice(ws: WebSocket) -> None:
             return
         if not hello or hello.get("type") != "start":
             return await refuse("bad_request", "Expected a start message.")
+        database = ws.app.dependency_overrides.get(get_db)
+        if settings.require_account and not await asyncio.to_thread(_signed_in, hello, database):
+            return await refuse("sign_in_required", "Sign in or create an account to talk to your coach.")
         try:
-            facts = await asyncio.to_thread(_facts, hello, ws.app.dependency_overrides.get(get_db))
+            facts = await asyncio.to_thread(_facts, hello, database)
         except ProfileLocked:
             return await refuse("locked", "This name belongs to another device. Sign in to talk to your coach.")
 
