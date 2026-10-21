@@ -335,13 +335,13 @@ class CoachService:
                 self._cache.popitem(last=False)
         return reply
 
-    async def _complete(self, system: str, user: dict[str, Any]) -> dict[str, Any]:
+    async def _complete(self, system: str, user: dict[str, Any], effort: str = "medium") -> dict[str, Any]:
         """One JSON chat completion, trying each configured model in turn; returns the parsed object."""
         failure: Exception | None = None
         for model in self.models:
             started = time.perf_counter()
             try:
-                data = await self._complete_with(model, system, user)
+                data = await self._complete_with(model, system, user, effort)
             except httpx.HTTPStatusError as exc:
                 failure = exc
                 LLM_CALLS.labels(model, f"http_{exc.response.status_code}").inc()
@@ -360,18 +360,20 @@ class CoachService:
             return data
         raise failure or RuntimeError("no model configured")
 
-    async def _complete_with(self, model: str, system: str, user: dict[str, Any]) -> dict[str, Any]:
+    async def _complete_with(self, model: str, system: str, user: dict[str, Any], effort: str = "medium") -> dict[str, Any]:
         """One completion from one model. JSON mode the provider rejects is retried as plain text."""
         try:
-            return await self._request(model, system, user, json_mode=True)
+            return await self._request(model, system, user, json_mode=True, effort=effort)
         except httpx.HTTPStatusError as exc:
             # Reasoning models occasionally emit JSON the provider's validator refuses (HTTP 400,
             # "json_validate_failed"). The same request as plain text and parsed here works.
             if exc.response.status_code != 400 or "json_validate_failed" not in exc.response.text:
                 raise
-            return await self._request(model, system, user, json_mode=False)
+            return await self._request(model, system, user, json_mode=False, effort=effort)
 
-    async def _request(self, model: str, system: str, user: dict[str, Any], *, json_mode: bool) -> dict[str, Any]:
+    async def _request(
+        self, model: str, system: str, user: dict[str, Any], *, json_mode: bool, effort: str = "medium"
+    ) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "model": model,
             "temperature": 0.4,
@@ -386,8 +388,9 @@ class CoachService:
             payload["response_format"] = {"type": "json_object"}
         if model.startswith("openai/gpt-oss"):
             # Measured on Groq: "low" is vague about articulation, "high" takes ~18 s
-            # for no visible gain, "medium" answers in about 2 s with correct detail.
-            payload["reasoning_effort"] = "medium"
+            # for no visible gain, "medium" answers in about 2 s with correct detail. The live
+            # interviewer asks for "low": a turn has to come back while the candidate waits.
+            payload["reasoning_effort"] = effort
         response = await self._client.post(self.url, headers={"Authorization": f"Bearer {self.api_key}"}, json=payload)
         response.raise_for_status()
         data = _json_object(response.json()["choices"][0]["message"]["content"])
@@ -404,6 +407,7 @@ class CoachService:
         fallback: Callable[[], Any],
         *,
         cache: bool = True,
+        effort: str = "medium",
     ) -> tuple[Any, str]:
         """Ask the model for something, check it with `parse`, and fall back to `fallback()`.
 
@@ -421,7 +425,7 @@ class CoachService:
                     LLM_RESULTS.labels(kind, "cached").inc()
                     return self._generated[key], "groq"
         try:
-            result = parse(await self._complete(system, facts))
+            result = parse(await self._complete(system, facts, effort))
         except Exception as exc:
             logger.warning("Coach %s unavailable (%s); using the template.", kind, type(exc).__name__)
             LLM_RESULTS.labels(kind, "template").inc()
