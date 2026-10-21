@@ -8,6 +8,7 @@ import type {
   CoachReply,
   CoachRequest,
   ConfirmResult,
+  ContributeStatus,
   Day30Status,
   EvaluationResult,
   BaselineStatus,
@@ -391,6 +392,20 @@ export const api = {
     request<{ deleted: number }>(`/api/day30/${enc(username)}`, { method: 'DELETE', headers: profileHeaders() }),
 
   learnerOptions: () => request<LearnerOptions>('/api/learner/options'),
+
+  /** "Help improve Vocaly AI": whether it is offered, and whether this learner gives recordings. */
+  contributeStatus: (username: string) => request<ContributeStatus>(`/api/contribute/${enc(username)}`, { headers: profileHeaders() }),
+
+  setContribute: (username: string, on: boolean) =>
+    request<ContributeStatus>(`/api/contribute/${enc(username)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...profileHeaders() },
+      body: JSON.stringify({ on }),
+    }),
+
+  /** Stop giving recordings and delete every one already given. */
+  deleteContributions: (username: string) =>
+    request<ContributeStatus>(`/api/contribute/${enc(username)}`, { method: 'DELETE', headers: profileHeaders() }),
 
   learnerProfile: (username: string) => request<LearnerProfile>(`/api/learner/${enc(username)}`, { headers: profileHeaders() }),
 
