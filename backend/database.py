@@ -112,7 +112,10 @@ def utcnow() -> datetime:
 class User(Base):
     __tablename__ = "users"
     # Accounts have an email and password; guest profiles leave both NULL.
-    __table_args__ = (Index("ix_users_email", "email", unique=True),)
+    __table_args__ = (
+        Index("ix_users_email", "email", unique=True),
+        Index("ix_users_google_sub", "google_sub", unique=True),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String, unique=True, index=True, nullable=False)
@@ -123,8 +126,11 @@ class User(Base):
     # What people see. Unlike `username` (the unique handle history is stored
     # under) it may repeat; NULL means "same as username".
     display_name = Column(String(60), nullable=True)
-    # "scrypt$<n>$<salt hex>$<hash hex>"; see backend.security.hash_password.
+    # "scrypt$<n>$<salt hex>$<hash hex>"; see backend.security.hash_password. An account made with
+    # Google and no password holds backend.oauth.GOOGLE_ONLY, which no password matches.
     password_hash = Column(String(200), nullable=True)
+    # The Google account id ("sub") for "Continue with Google"; NULL when it was never used.
+    google_sub = Column(String(255), nullable=True)
     # The learner profile (backend.learners): first language from a fixed list, goal
     # ("understood" or "accent") and the language tips are written in.
     first_language = Column(String(30), nullable=True)
@@ -445,7 +451,7 @@ ADDED_COLUMNS = {
     "pronunciation_records": ["pronunciation", "fluency", "completeness", "clarity", "wpm", "counted", "clip_id"],
     "users": [
         "key_hash", "email", "password_hash", "display_name", "first_language", "goal", "tip_language",
-        "contribute_at", "contributor_id",
+        "contribute_at", "contributor_id", "google_sub",
     ],
     "phoneme_observations": ["tier"],
     "interview_sessions": ["interview_type"],
