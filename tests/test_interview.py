@@ -338,7 +338,8 @@ def test_a_follow_up_is_asked_answered_and_kept_with_its_question(client, fake_a
     reply = speak(client, behavioural, session=session["id"], follow_up="result").json()
     assert reply["question"]["kind"] == "follow_up" and reply["checks"][0]["ok"] and reply["follow_up"] is None
     stored = client.get(f"/api/interview/sessions/maya/{session['id']}", headers=HEADERS).json()["answers"]["1"]
-    assert stored["follow_up"]["id"] == "result" and stored["follow_up"]["transcript"].startswith("In the end")
+    assert stored["follow_ups"][0]["id"] == "result" and stored["follow_ups"][0]["transcript"].startswith("In the end")
+    assert "follow_up" not in stored  # kept as a list now, so a question can have several
     assert speak(client, behavioural, follow_up="nonsense").status_code == 400
 
 
@@ -363,7 +364,7 @@ def test_the_models_follow_up_refers_to_the_answer_and_is_spoken_as_asked(client
     answer = client.post("/api/interview/answer", data=data, files={"audio": ("a.wav", wav_bytes(), "audio/wav")}, headers=HEADERS)
     assert answer.json()["question"]["text"] == asked
     stored = client.get(f"/api/interview/sessions/maya/{session['id']}", headers=HEADERS).json()["answers"]["1"]
-    assert stored["follow_up"]["text"] == asked
+    assert stored["follow_ups"][0]["text"] == asked
 
 
 @pytest.mark.parametrize("bad", ["", "Tell me more.", "Why? And how?", "x" * 170 + "?"])
