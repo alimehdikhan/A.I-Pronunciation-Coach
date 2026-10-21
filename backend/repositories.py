@@ -448,7 +448,12 @@ def find_interview(db: Session, user: User, session_id: int) -> InterviewSession
 
 
 def save_interview_answer(db: Session, row: InterviewSession, index: int, answer: dict[str, Any]) -> None:
-    """Store (or replace) the answer to question `index`."""
+    """Store (or replace) the answer to question `index`.
+
+    `row` was read before the answer was scored, which takes a while; another answer to the same
+    interview may have been saved since. Re-read it first so that answer isn't overwritten.
+    """
+    db.refresh(row)
     answers = json.loads(row.answers or "{}")
     answers[str(index)] = answer
     row.answers = json.dumps(answers, ensure_ascii=False)
