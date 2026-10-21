@@ -36,6 +36,21 @@ export const recordingSupported =
  * Microphone recorder with a live AnalyserNode for visualisation.
  * Stops automatically after `maxSeconds`.
  */
+/**
+ * iPhone and Mac Safari: once a page has used the microphone, its sound can stay on the quiet earpiece,
+ * like a phone call. Saying what the page is doing puts playback back on the loudspeaker when the
+ * microphone closes. Other browsers have no `audioSession`, and need nothing.
+ */
+function setAudioSession(type: 'play-and-record' | 'playback') {
+  const session = (navigator as Navigator & { audioSession?: { type: string } }).audioSession
+  if (!session) return
+  try {
+    session.type = type
+  } catch {
+    /* not allowed at this moment: the browser keeps its own choice */
+  }
+}
+
 export function useRecorder({ maxSeconds = 30, minSeconds = 0.5, onRecorded, onError }: Options) {
   const [state, setRenderedState] = useState<RecorderState>('idle')
   // The same state, readable at once: a caller holding an older render's `start` still sees the truth.
@@ -64,6 +79,7 @@ export function useRecorder({ maxSeconds = 30, minSeconds = 0.5, onRecorded, onE
     timerRef.current = null
     streamRef.current?.getTracks().forEach((track) => track.stop())
     streamRef.current = null
+    setAudioSession('playback')
     contextRef.current?.close().catch(() => undefined)
     contextRef.current = null
     analyserRef.current = null
@@ -92,6 +108,7 @@ export function useRecorder({ maxSeconds = 30, minSeconds = 0.5, onRecorded, onE
     // permission prompt can start suspended and the analyser would read silence.
     const context = new AudioContext()
     contextRef.current = context
+    setAudioSession('play-and-record')
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
