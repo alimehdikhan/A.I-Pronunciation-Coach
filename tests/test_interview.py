@@ -207,6 +207,21 @@ def test_a_named_interview_is_saved_resumable_and_reported(client, fake_asr):
     assert "audio" not in json.dumps(detail)
 
 
+def test_answers_saved_close_together_are_both_kept(client, fake_asr, session_factory):
+    """Hands-free interviews send the next answer while the last is still being scored."""
+    from backend.database import InterviewSession
+    from backend.repositories import save_interview_answer
+
+    session = start(client, username="maya").json()
+    db_a, db_b = session_factory(), session_factory()
+    row_a = db_a.get(InterviewSession, session["id"])
+    row_b = db_b.get(InterviewSession, session["id"])  # both read before either answer was saved
+    save_interview_answer(db_a, row_a, 0, {"transcript": "first", "attempt": 1})
+    save_interview_answer(db_b, row_b, 1, {"transcript": "second", "attempt": 1})
+    detail = client.get(f"/api/interview/sessions/maya/{session['id']}", headers=HEADERS).json()
+    assert sorted(detail["answers"]) == ["0", "1"]
+
+
 def test_a_saved_interview_belongs_to_its_owner(client, fake_asr):
     session = start(client, username="maya").json()
     other = {"X-Profile-Key": OTHER_KEY}
