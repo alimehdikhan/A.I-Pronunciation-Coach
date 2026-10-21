@@ -1,23 +1,15 @@
 import { cn } from '@/lib/utils'
 
-/** App icon: waveform on the Apple Intelligence gradient. */
+/** App icon: the Vocaly mark, a V that runs into a sound wave (transparent PNG, works on both themes). */
 export function LogoMark({ className }: { className?: string }) {
   return (
-    <div
-      className={cn(
-        'relative grid size-8 shrink-0 place-items-center overflow-hidden rounded-[9px] bg-ai shadow-[0_2px_8px_-2px_rgb(201_89_221/0.5)]',
-        className,
-      )}
-    >
-      <svg viewBox="0 0 24 24" className="size-[62%] text-white" fill="currentColor" aria-hidden>
-        <rect x="3" y="10" width="2.4" height="4" rx="1.2" />
-        <rect x="7.2" y="6.5" width="2.4" height="11" rx="1.2" />
-        <rect x="11.4" y="3.5" width="2.4" height="17" rx="1.2" />
-        <rect x="15.6" y="7.5" width="2.4" height="9" rx="1.2" />
-        <rect x="19.8" y="10.5" width="2.4" height="3" rx="1.2" />
-      </svg>
-      <div className="absolute inset-0 rounded-[inherit] bg-gradient-to-b from-white/25 to-transparent" />
-    </div>
+    <img
+      src="/logo-mark.png"
+      alt=""
+      aria-hidden
+      draggable={false}
+      className={cn('size-8 shrink-0 select-none object-contain', className)}
+    />
   )
 }
 
