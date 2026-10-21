@@ -28,3 +28,6 @@ labels.json
 frontend/node_modules/
 frontend/dist/
 *.tsbuildinfo
+
+# Google OAuth client files downloaded from Google Cloud: they hold the client secret.
+client_secret*.json
