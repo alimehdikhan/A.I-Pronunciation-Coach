@@ -47,10 +47,10 @@ export interface AnswerView {
   checks: InterviewCheck[]
   rubric: InterviewRubric | null
   slips: Slip[]
-  followUp: { text: string; transcript: string; checks: InterviewCheck[]; delivery: Delivery } | null
+  followUps: { text: string; transcript: string; checks: InterviewCheck[]; delivery: Delivery }[]
 }
 
-export function viewFromResult(result: InterviewAnswerResult, followUp?: InterviewAnswerResult | null): AnswerView {
+export function viewFromResult(result: InterviewAnswerResult, followUps: InterviewAnswerResult[] = []): AnswerView {
   return {
     question: result.question,
     transcript: result.words.length ? result.words.map((w) => w.display).join(' ') : result.transcription,
@@ -58,15 +58,14 @@ export function viewFromResult(result: InterviewAnswerResult, followUp?: Intervi
     checks: result.checks,
     rubric: result.rubric,
     slips: result.slips,
-    followUp:
-      followUp?.delivery
-        ? { text: followUp.question.text, transcript: followUp.transcription, checks: followUp.checks, delivery: followUp.delivery }
-        : null,
+    followUps: followUps
+      .filter((f) => f.delivery)
+      .map((f) => ({ text: f.question.text, transcript: f.transcription, checks: f.checks, delivery: f.delivery! })),
   }
 }
 
 export function viewFromStored(question: InterviewQuestion, stored: StoredInterviewAnswer): AnswerView {
-  const follow = stored.follow_up
+  const follows = stored.follow_ups ?? (stored.follow_up ? [stored.follow_up] : [])
   return {
     question,
     transcript: stored.transcript,
@@ -74,7 +73,7 @@ export function viewFromStored(question: InterviewQuestion, stored: StoredInterv
     checks: stored.checks,
     rubric: stored.rubric,
     slips: stored.slips,
-    followUp: follow ? { text: follow.text, transcript: follow.transcript, checks: follow.checks, delivery: follow.delivery } : null,
+    followUps: follows.map((f) => ({ text: f.text, transcript: f.transcript, checks: f.checks, delivery: f.delivery })),
   }
 }
 
@@ -235,19 +234,19 @@ export function AnswerFeedback({ view, compact = false }: { view: AnswerView; co
         </div>
       )}
 
-      {view.followUp && (
-        <div className="rounded-2xl bg-fill p-4">
+      {view.followUps.map((follow, i) => (
+        <div key={i} className="rounded-2xl bg-fill p-4">
           <div className="flex items-start gap-2 text-[14px] font-semibold">
-            <ArrowBendDownRightIcon size={18} className="mt-px shrink-0 text-primary" /> Follow-up: “{view.followUp.text}”
+            <ArrowBendDownRightIcon size={18} className="mt-px shrink-0 text-primary" /> Follow-up: “{follow.text}”
           </div>
-          <p className="mt-2 text-[15px] leading-relaxed text-muted-foreground">{view.followUp.transcript}</p>
-          {view.followUp.checks.map((c) => (
+          <p className="mt-2 text-[15px] leading-relaxed text-muted-foreground">{follow.transcript}</p>
+          {follow.checks.map((c) => (
             <p key={c.id} className={cn('mt-2 flex items-center gap-1.5 text-[13px] font-medium', c.ok ? 'text-good' : 'text-warn')}>
               {c.ok ? <CheckCircleIcon weight="fill" /> : <ArrowCircleUpRightIcon weight="fill" />} {c.ok ? c.label : c.fix}
             </p>
           ))}
         </div>
-      )}
+      ))}
 
       {rubric?.stronger_answer && <ClearerAnswer text={rubric.stronger_answer} id={question.id} />}
 
