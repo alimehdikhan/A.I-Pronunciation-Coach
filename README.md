@@ -1,5 +1,5 @@
 ---
-title: AI Pronunciation Coach
+title: Vocaly AI
 emoji: 🎤
 colorFrom: blue
 colorTo: purple
@@ -8,7 +8,7 @@ app_port: 7860
 pinned: false
 ---
 
-# AI Pronunciation Coach
+# Vocaly AI
 
 ![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)
 ![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=flat&logo=fastapi)
@@ -21,13 +21,13 @@ You say a sentence. The coach tells you which sounds were off, not just a score,
 
 ![Practice page: a target sentence with a plain-letter respelling under every word, Listen and Slowly, and the microphone orb](assets/practice.jpg)
 
-![Results: the overall score and its rings, the metrics, and the word-by-word transcript with "third" marked mispronounced](assets/results.jpg)
+![Results: the overall score and its rings, whether a listener would understand you, the metrics, and the word-by-word transcript with "third" marked Worth checking](assets/results.jpg)
 
-![Word inspector: "third" sound by sound, with /θ/ heard as /f/ at 73%, the coach note, and the fix for the th sound](assets/inspector.jpg)
+![Word inspector: "third" sound by sound, with /θ/ heard as /f/ at 77% (Worth checking), the coach note, "Say just this word" and "I think this is wrong"](assets/inspector.jpg)
 
-![Coach card: a short summary, the one thing to change on your next try, and a sentence to try next](assets/coach.jpg)
+![Coach card: a short summary, the borderline word to say on its own, and a sentence to try next](assets/coach.jpg)
 
-The screenshots are from the running app on a desktop browser (1600 × 900, dark theme), taken in October 2026. The learner is a synthetic voice (Kokoro) saying "I think this is the furd time" against the target "I think this is the third time", so the slip is deliberate; every score, flag and tip is what the app returned for that recording.
+The screenshots are from the running app in Chrome (1600 × 900, dark theme), taken in October 2026. The learner is a synthetic voice (Kokoro) saying "I think this is the furd time" against the target "I think this is the third time", so the slip is deliberate; every score, flag and tip is what the app returned for that recording.
 
 ## What you get
 
@@ -37,9 +37,9 @@ After you speak, you get four scores (pronunciation, fluency, clarity, completen
 
 Four more pages: drills built from the sounds you miss most often (you record each minimal pair and the coach checks which word it heard), a library of all 41 American English sounds with articulation steps and minimal pairs, a progress page with streaks, trends and history, and a profile page where you manage your account.
 
-![Coach page: today's focus sound with the reason in numbers, and your clean rate for every sound you have practised](assets/coach-page.jpg)
+![Coach page: today's focus sound and why, and your clean rate for every sound you have practised](assets/coach-page.jpg)
 
-![Journey: your level, today's goal, the learning path through all 41 sounds, and badges](assets/journey.jpg)
+![Journey: your level, today's goal, talking to your coach, and the learning path through all 41 sounds](assets/journey.jpg)
 
 ![Drills: the minimal-pair challenge for th, with "think" heard correctly, next to the guide for the sound](assets/drills.jpg)
 
@@ -94,6 +94,32 @@ The fluency rule changed because human raters in this data score *faster* reader
 The recordings are scripted reading by one first-language group, so they say little about spontaneous speech or other accents. Only about 4% of sounds in the data are rated less than clean, which makes "was this sound wrong" a rare-event problem. At the threshold the app uses, about two flagged sounds in five are real slips (0.41 precision on the test split), and many slips go unflagged.
 
 The phoneme model also leans toward the sound you were supposed to make. In a separate check I had the Piper voice say twelve deliberate substitutions inside full sentences (θ→s, ð→d, v→b, r→l, ʃ→s and similar). The sound model flagged four of them, and Whisper hearing a different word caught two more, so half were reported as less than clean. When the same sounds are spoken alone the model separates them (it hears `think` and `sink` differently), but inside a familiar phrase it often hears the intended sound: `berry` read as `very` came back clean both times. Synthetic speech is not learner speech, so this is not a recall figure for real users, but it is the main weakness to know about. A model fine-tuned on non-native speech would be the next step.
+
+#### Speakers of South Asian languages
+
+The numbers above are for Mandarin speakers, and the curve that turns each sound's evidence into "chance it is clean" was fitted on them. For Indian speakers it misses almost everything. On [L2-ARCTIC](https://psi.engr.tamu.edu/l2-arctic-corpus/) (24 speakers of six first languages reading English, every sound marked by trained annotators as right, distorted, replaced or dropped; CC BY-NC 4.0, used through the 16 kHz mirror `chikingsley/l2-arctic-manual-v5.0-16k`), the default curve flagged under 1% of a Hindi speaker's sounds and caught 4% of the ones the annotators marked wrong.
+
+So learners whose first language is Hindi, Urdu, Bengali, Gujarati, Marathi, Punjabi, Tamil or Telugu are scored by a trained **sound model** instead (`backend/sound_model.py`, `backend/data/sound_models/south_asian.json`). Besides the evidence for the sound itself, it looks at how long the sound lasted, the strongest competing sound and whether the sound was dropped, how clean the neighbouring sounds and the whole recording were, and which sound it is. `scripts/train_sound_model.py` compared the curve refitted, logistic regression and gradient-boosted trees, each with three sets of features (all; without which sound it is; without any sound identity), on two training sets (L2-ARCTIC's training speakers, with and without speechocean762), and calibrated each on the validation speakers.
+
+**False alarms on correct speech come first.** A first version chose its cut-offs only to catch the most slips. It caught half of them, but it also flagged 10% of the sounds in correct native speech, and it flagged /ð/ in "this" said by a native voice: it had learned that this group often gets /ð/ wrong and judged the sound by its name. So every candidate is now also run on a **native check set**: all 82 practice sentences read by four native voices (Kokoro: two American, two British, scored against their own accent). Each candidate's cut-offs are the ones that catch the most slips on the validation speakers (F1) while flagging at most 2% of the sounds in two of those voices, and at most 10% of any one sound; "Fix this" at most 0.5%. Nothing is chosen by sound identity alone: a model that can't stay under those limits at any cut-off is dropped. The candidate that caught the most at its cut-off was **logistic regression on all features, trained on L2-ARCTIC (Hindi speakers weighted three times) and speechocean762**. Its cut-offs are mapped onto 0.80 and 0.70, so the tiers mean the same for everyone. Confident-learning label cleaning was tried in the first version and didn't help, so it is off.
+
+On speakers held out from all of that (L2-ARCTIC's fixed test speakers; the Hindi one is TNI) and the two native voices the cut-offs never saw:
+
+| Held out | | "Was this sound wrong?" (AUC) | Agreement (r) | Flags that are real | Real slips flagged | *Fix this* that are real | Real slips in *Fix this* |
+|---|---|---:|---:|---:|---:|---:|---:|
+| Hindi speaker (4,897 sounds) | default curve | 0.602 | 0.143 | 0.39 | 0.04 | 0.44 | 0.03 |
+| | **sound model** | **0.776** | **0.329** | **0.45** | **0.13** | **0.64** | **0.04** |
+| All six test speakers | default curve | 0.695 | 0.253 | 0.61 | 0.07 | 0.68 | 0.04 |
+| | **sound model** | **0.836** | **0.416** | 0.59 | **0.18** | **0.74** | **0.07** |
+
+| Correct native speech (2 unseen voices) | Sounds flagged | *Fix this* | Most-flagged sound |
+|---|---:|---:|---|
+| default curve | 0.1% | 0.0% | /ɔ/, 2% of the time |
+| sound model | 1.0% | 0.0% | /ɝ/, 12% of the time |
+
+For the Hindi speaker it catches three times as many of the slips the annotators heard, and its flags are right more often (0.45 against 0.39; *Fix this* 0.64 against 0.44). Scored the way the app scores (dictionary pronunciations, Whisper not involved), it flags 2.4% of that speaker's sounds instead of 0.9%, and the average sentence score goes from 98.8 to 93.6. The slips it reports most are the ones the annotators heard most: a dropped /r/, /z/ said as /s/, /ð/ as /d/ ("the" as "de") and /θ/ as /t/. It adds no noticeable time: the model is 16 KB of weights the app runs with numpy.
+
+Limits: it still misses most slips. The annotators marked about 10% of this speaker's sounds wrong, and the model flags a quarter as many sounds, because flagging more would mean flagging correct speech too. Four Hindi speakers are in the data (two for training, one for validation, one for testing), all reading scripted sentences, and there are no Urdu, Bengali, Tamil or Telugu speakers, so the numbers say how it does on careful reading by speakers like them, not on everyone the profile covers. The native check set is synthetic speech, which is cleaner than any real voice. L2-ARCTIC's annotators judged against General American English and mark Indian-English features (dental t and d for th, v and w, a dropped r) as wrong, so the model is closer to *Reduce my accent* than to *Be clearly understood*; the goal setting still decides which slips get tips. On speechocean762's Mandarin speakers it does worse than the default curve (AUC 0.857 against 0.924), which is why it is used only for the languages above. L2-ARCTIC is licensed for non-commercial use only: a paid copy of the app should retrain this model on its own reviewed recordings (see [Help improve Vocaly AI](#help-improve-vocaly-ai)) before charging. The sound model judges practice, drills, the coach session, the check-up and interview answers. *Say just this word* and the before-and-after recordings keep the default curve, so their cut-offs and comparisons over time stay as they were, and so do Speak freely and group discussions, which don't send who is speaking.
 
 #### British English target
 
@@ -262,7 +288,7 @@ mic --16 kHz PCM--> this server --> Gemini Live --24 kHz PCM--> this server --> 
 - **The key stays on the server.** The browser only ever talks to our own WebSocket; `GEMINI_API_KEY` is read on the server.
 - **It hears how you said it, not only what.** After each turn the audio is scored with the same Whisper and phoneme models used for practice. If a word was clearly mispronounced, the coach is told, at most once every 25 seconds, so it can say the word and invite another try. A generic voice assistant cannot do this.
 - **Grounded.** The coach is told the learner's level, first language and weak and strong sounds, and is instructed to speak plainly, in one to three short sentences, about everyday topics.
-- **Safe.** Abusive speech is caught by `backend/moderation.py` and answered calmly, and the model is told to stay on speaking practice. Asked who made it, the coach says it was developed by Ali Mehdi Khan (the text chat answers that question itself, without calling the model).
+- **Safe.** Abusive speech is caught by `backend/moderation.py` and answered calmly, and the model is told to stay on speaking practice. Asked who made it, the coach says Vocaly AI was developed by Ali Mehdi Khan (the text chat answers that question itself, without calling the model).
 - **Limits.** Gemini Live is paid by the second, so every call has a budget:
 
   | Limit | Default | What the learner sees |
@@ -285,7 +311,7 @@ Set `GEMINI_API_KEY` to switch it on (`/health` then reports `voice_agent: true`
 
 Onboarding (and Settings) asks three optional things, saved with the profile (`GET`/`PUT /api/learner/{username}`, three new columns on `users`):
 
-- **First language** (Hindi, Urdu, Bengali, Tamil, Telugu, Marathi, Mandarin, Arabic, Spanish, the other languages the coach already knew, or Other). It **never changes a score**. It puts the sounds usually hard for speakers of that language first: a *Usually hard for Hindi speakers* row at the top of the Sounds library, the first drills and the first coach sound for a new learner. It also lets the coach say why a slip happens ("Hindi has one sound (व) between English v and w"), in the language-model tips and in the built-in English ones. The notes in `backend/learners.py` are the commonly described transfer patterns for each language, tendencies rather than rules about anyone.
+- **First language** (Hindi, Urdu, Bengali, Tamil, Telugu, Marathi, Mandarin, Arabic, Spanish, the other languages the coach already knew, or Other). For Hindi, Urdu, Bengali, Gujarati, Marathi, Punjabi, Tamil and Telugu it also chooses the sound model tuned for South Asian speakers ([below](#speakers-of-south-asian-languages)); for every other language it never changes a score. It puts the sounds usually hard for speakers of that language first: a *Usually hard for Hindi speakers* row at the top of the Sounds library, the first drills and the first coach sound for a new learner. It also lets the coach say why a slip happens ("Hindi has one sound (व) between English v and w"), in the language-model tips and in the built-in English ones. The notes in `backend/learners.py` are the commonly described transfer patterns for each language, tendencies rather than rules about anyone.
 - **Goal.** *Be clearly understood* (the default) or *Reduce my accent*. Each slip now says whether it changes what a listener understands: either the sounds make a different real word ("think" said as "sink", looked up in 14,770 common words) or a listener would likely mishear the word (the intelligibility estimate). With *be clearly understood*, those slips get the tips, and the rest are listed as "won't confuse a listener", shown quietly in the transcript and given no tip. With *reduce my accent*, every "Fix this" slip is coached, as before.
 - **Tip language.** English, Hindi, Urdu or Hinglish. The language model is asked to write in it, and a Hindi or Urdu reply that isn't in Devanagari or Urdu script is rejected like any other bad reply. Without the model, built-in Hindi and Urdu tips cover the 16 most common substitutions (θ/t, θ/s, θ/f, ð/d, ð/z, v/w, w/v, v/b, z/dʒ, z/s, ʃ/s, s/ʃ, r/l, i/ɪ, æ/ɛ, f/p), plus the word tips and summaries. Anything else, and Hinglish, falls back to English, and the card says so.
 
@@ -420,6 +446,45 @@ The scorer is a machine; what matters in the end is whether a person understands
 
 Limits: results depend on who is listening, and other learners are not native speakers. Spelling matters: "dont" is not "don't". With few learners online there may be nothing to listen to yet.
 
+## Help improve Vocaly AI
+
+The scorer gets better only from recordings of real learners with a trusted label for every sound. **Help improve Vocaly AI** (Settings) lets signed-in learners give clean practice recordings for that, and three scripts turn them into a better sound model. Nothing about it is automatic: a person reviews the recordings, and a new model replaces the current one only when it measures better on speakers it has never heard.
+
+**What is kept.** The switch is off until the learner turns it on, and only accounts can (a guest who clears the browser could never take recordings back). Only the app's own practice sentences and words count: the phrase library, the sound guides' examples, minimal pairs and practice sentences, and the before-and-after sentences. Text a learner typed, interviews, group discussions, free speaking and conversations are never kept. Each recording must also pass the quality checks in `backend/quality.py`:
+
+| Check | Kept only if |
+|---|---|
+| Length | 0.6 to 30 seconds |
+| Level | Speech louder than −45 dBFS |
+| Clipping | At most 0.1% of samples at full scale |
+| Background | Speech at least 15 dB above the noise floor |
+| The right sentence | At least 80% of the target words attempted, at most 2 extra words |
+| Sound analysis | The phoneme model could follow the sentence through the audio |
+
+"Clean" means a good recording, not good pronunciation: a recording is never chosen by its score, because the model has to hear slips to learn them. The thresholds were set by hand (the labelled datasets are studio recordings in which nearly everything passes), and they are strict on purpose: a lost recording costs nothing, a bad one teaches the model something false. A learner can give at most 100 recordings a day.
+
+A kept recording is saved as 16 kHz mono FLAC with its sentence, what Whisper heard, the scores and each sound's result, the learner's first language, the quality measures and the date. It is filed under a random contributor id, never the name, username, email or user id. Recordings wait on the server and are uploaded in batches every 10 minutes to a **private** Hugging Face dataset, written with `PRONUNCIATION_COACH_DATASET_TOKEN`; without that token the option isn't shown. On a Hugging Face Space the dataset is `<your name>/vocaly-recordings` unless `PRONUNCIATION_COACH_DATASET_REPO` says otherwise, so turning it on takes three steps: create that dataset as **private**, create a fine-grained token with write access to it only, and add the token as the Space secret `PRONUNCIATION_COACH_DATASET_TOKEN`. The token has its own name rather than `HF_TOKEN`, so a Hugging Face token set for anything else never turns this on. The uploader refuses to write to a public dataset. An "I think this is wrong" report on a given recording is filed next to it, as a hint for reviewers.
+
+**Taking it back.** Turning the switch off stops giving and keeps what was given. *Delete the recordings I gave*, deleting history or deleting the account removes them: queued files at once, and from the dataset on the next upload run, which deletes the learner's folder and then squashes the dataset's history so the old versions are gone too. The deletion request is stored in the database, so it still happens after a restart. A model already trained can't forget a recording; a deleted one is never used again.
+
+**The improvement loop.** Run on your own computer (the training needs `pip install -r backend/requirements-dev.txt`; the app itself needs only numpy to run a model):
+
+```bash
+python scripts/review_clips.py pull                       # after `hf auth login`; deletes local copies of withdrawn recordings
+python scripts/review_clips.py page --count 40            # a review page in the cache: disputed recordings first
+# open the page, play each word, tap each sound: right, accented or wrong; then "Download labels"
+python scripts/review_clips.py upload labels.json         # the labels go back into the dataset
+python scripts/train_sound_model.py prepare --dataset contrib
+python scripts/train_sound_model.py train --profile south_asian
+python scripts/train_sound_model.py promote --profile south_asian   # replaces the model only if it is better
+```
+
+A learner's own "I said it right" is not used as a label: people often can't hear their own slips, so training on it would teach the scorer to be lenient. Disputes only decide which recordings a reviewer hears first. The review page doesn't show what the app decided, so it can't sway the reviewer. Reviewed recordings are split by a hash of the contributor id (80% train, 10% validation, 10% test), so one learner's voice is never in both training and test.
+
+`train` fits every candidate (three kinds of model, three feature sets, two training sets; `--clean` adds confident-learning label cleaning), calibrates each on the validation speakers, picks each one's cut-offs under the native-speech limits, keeps the one that catches the most slips at its cut-off, and writes it with its test results. Build the native check set once with `python scripts/train_sound_model.py prepare --dataset native` (Kokoro must be installed). `promote` copies the candidate into `backend/data/sound_models/` only when all of these hold: on the held-out speakers of its group (and on held-out contributors, once there are some) it separates wrong from right sounds better by at least 0.005 AUC and catches at least as many real slips; it is no worse on the other L2-ARCTIC test speakers; and on the two native voices it never saw, it flags at most 3% of sounds, 1% as *Fix this*, and no sound more than 15% of the time. Otherwise the app keeps what it has. Restart the app to load a new model.
+
+Not done yet: fine-tuning the phoneme recogniser itself on these recordings. That needs a GPU (a free Kaggle or Colab notebook would do) and is the next step once a few thousand recordings are reviewed.
+
 ## Before and after
 
 Scores are numbers; hearing yourself is proof. **Before & after** (`/before-after`, offered right after sign-up) records five fixed sentences that cover the sounds learners find hardest. After 14 days, and then every 30 days, the practice page reminds you to record them again, and the page plays each sentence side by side (*Before* and *Now*) with both scores.
@@ -476,7 +541,7 @@ Visitors who are not signed in land on the home page (`/`); the practice screen 
 - **Help centre** (`/help`). Getting started in four steps, a short guide to every feature, every keyboard shortcut, and searchable questions and troubleshooting (blocked microphone, models warming up, no speech heard, rate limits).
 - **Privacy Policy** (`/privacy`). What is kept, why and for how long (a table that becomes cards on a phone), recordings, the outside services (Groq, Google Gemini, email), cookies and browser storage, security, your rights and how to delete everything.
 - **Terms of Use** (`/terms`). Thirteen short numbered sections, including AI features and sharing with teachers and real listeners.
-- **About** (`/about`). Why the Coach exists, how it works, what it can do, how accurate it is, and who made it.
+- **About** (`/about`). Why Vocaly AI exists, how it works, what it can do, how accurate it is, and who made it.
 
 Each page has a contents list that follows your reading, a link to every section, its own browser-tab title, and the same footer. The operator's name and contact come from `PRONUNCIATION_COACH_OPERATOR` and `PRONUNCIATION_COACH_CONTACT_EMAIL` (via `/health`); without an email, the pages point to the project's GitHub issues. `robots.txt` and `sitemap.xml` list the public pages; share and password-reset links are sent with `noindex` and `no-referrer`.
 
@@ -703,6 +768,12 @@ All settings are environment variables. See [`.env.example`](.env.example).
 | `PRONUNCIATION_COACH_COMPARE_DAYS` | `30` | Days between Day 1 vs Day 30 recordings |
 | `PRONUNCIATION_COACH_OPERATOR` | `Ali Mehdi Khan` | Who runs this copy, named on the Privacy, Terms and About pages |
 | `PRONUNCIATION_COACH_CONTACT_EMAIL` | (none) | Contact shown on those pages; without it they link to GitHub issues |
+| `PRONUNCIATION_COACH_SOUND_MODELS` | `1` | Use the sound models in `backend/data/sound_models` for learners of those first languages (`0`: the default curve for everyone) |
+| `PRONUNCIATION_COACH_DATASET_TOKEN` | (none) | Token that can write to the dataset below; *Help improve Vocaly AI* is hidden without it (keep it in the host's secrets) |
+| `PRONUNCIATION_COACH_DATASET_REPO` | `<Space owner>/vocaly-recordings` on a Space, else none | The private Hugging Face dataset for given recordings |
+| `PRONUNCIATION_COACH_CONTRIB_UPLOAD_MINUTES` | `10` | How often given recordings are uploaded and withdrawals carried out |
+| `PRONUNCIATION_COACH_CONTRIB_DAILY_LIMIT` | `100` | Recordings kept per learner per day |
+| `PRONUNCIATION_COACH_CONTRIB_DIR` | `~/.cache/pronunciation_coach/contributions` | Where recordings wait before upload |
 | `PRONUNCIATION_COACH_RATE_LIMIT` | `30` | Audio requests per client IP per minute (`0` disables) |
 | `PRONUNCIATION_COACH_TTS` | `1` | Neural coach voice at `/api/tts` (`0` falls back to browser speech) |
 | `PRONUNCIATION_COACH_TTS_ENGINE` | `auto` | `auto` uses Kokoro when installed, `kokoro` or `piper` force one |
@@ -738,6 +809,7 @@ All settings are environment variables. See [`.env.example`](.env.example).
 | `POST` | `/api/coach` | Tips for an attempt, from the sentence, score and diagnosed slips (JSON) |
 | `POST` | `/api/evaluate/confirm` | Say one *Worth checking* word alone (`audio`, `word`, `phonemes`, optional `record_id`, `username`); returns `slip`, `fine` or `unheard` and updates that attempt's sounds |
 | `POST` | `/api/disputes` | "I think this is wrong" about one flagged sound in your saved attempt (`username`, `record_id`, `word`, `expected`, `detected`, `gop`, optional `reason`) |
+| `GET`/`PUT`/`DELETE` | `/api/contribute/{username}` | *Help improve Vocaly AI*: whether it is offered and on, how many recordings were given / turn it on or off (`{"on": bool}`) / stop and delete every recording given (accounts only) |
 | `GET` | `/api/speak/prompts` | Interview questions, IELTS-style cue cards and everyday situations |
 | `POST` | `/api/speak/evaluate` | Score a free answer (`audio`, optional `prompt_id`): delivery, sure sound slips and (with Groq) feedback on structure |
 | `GET` | `/api/interview/options` | Kinds of interview, roles, levels, lengths and the longest answer |
@@ -839,6 +911,9 @@ backend/
   gop.py              Alignment-free goodness of pronunciation from CTC posteriors
   acoustic.py         Per-word acoustic evidence and the score blend
   pronunciation.py    Scoring: word alignment, metrics, insights
+  sound_model.py      Trained sound classifiers per first language (numpy only)
+  quality.py          Is a given recording clean enough to train on?
+  contributions.py    Help improve Vocaly AI: keep, upload and withdraw given recordings
   phonetics.py        Tokenising, CMUDict to IPA, letter-to-sound rules, alignment
   coach.py            Groq tips with validation, cache and template fallback
   teaching.py         Mastery, focus choice and the guided session
@@ -862,6 +937,8 @@ scripts/
   eval_fillers.py           Does prompting Whisper keep "um" and "uh"?
   eval_stress.py            Word-stress check against expert stress ratings
   prerender_voice.py        Fill the Kokoro clip cache for the fixed content
+  train_sound_model.py      Train, compare, calibrate and promote the sound models
+  review_clips.py           Pull, review and label the recordings learners gave
 tests/
 ```
 
