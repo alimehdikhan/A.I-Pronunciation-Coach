@@ -15,6 +15,7 @@ from backend.config import settings
 from backend.observability import StageTimer
 from backend.runtime import get_coach
 from backend.security import client_key
+from backend.sound_model import SoundModel
 
 logger = logging.getLogger("pronunciation_coach.api.speaking")
 router = APIRouter()
@@ -45,7 +46,9 @@ def speaking_prompts() -> dict[str, Any]:
     return {"kinds": speaking.KINDS, "prompts": speaking.PROMPTS, "max_seconds": settings.free_speech_seconds}
 
 
-async def analyse_free_answer(audio: UploadFile, timer: StageTimer, *, max_seconds: float, endpoint: str) -> dict[str, Any]:
+async def analyse_free_answer(
+    audio: UploadFile, timer: StageTimer, *, max_seconds: float, endpoint: str, sound_model: SoundModel | None = None
+) -> dict[str, Any]:
     """Transcribe an answer given in the learner's own words and measure it.
 
     Returns the transcript, the transcript without fillers (`target`, what is scored), delivery
@@ -53,7 +56,7 @@ async def analyse_free_answer(audio: UploadFile, timer: StageTimer, *, max_secon
     score when the acoustic model ran. Silence comes back with `delivery` None. `upload` holds the
     uploaded bytes and their type, for the one feature that keeps them with consent (Day 1 vs Day 30);
     nothing else stores them. Shared by Speak freely, mock interviews and group discussions; the caller
-    checks the rate limit first.
+    checks the rate limit first. `sound_model` is the learner's trained sound model, if any.
     """
     asr, scorer = require_models()
     try:
@@ -78,7 +81,7 @@ async def analyse_free_answer(audio: UploadFile, timer: StageTimer, *, max_secon
     with timer.stage("score"):
         scored = await run_in_threadpool(
             scorer.score_pronunciation, target, target, "intermediate", scored_words, heard.get("duration"),
-            heard.get("phoneme_log_probs"),
+            heard.get("phoneme_log_probs"), sound_model=sound_model,
         )
     # Only the slips the scorer is sure about: without a script, borderline flags would mostly be noise.
     entries = [w for w in scored["words"] if w["reference"]]
