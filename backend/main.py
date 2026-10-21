@@ -1,5 +1,5 @@
 """
-FastAPI application for the AI Pronunciation Coach.
+FastAPI application for Vocaly AI.
 
 The API accepts short browser recordings, transcribes them with Whisper
 (faster-whisper), and compares the result against a target sentence. It also
@@ -31,6 +31,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 
+from backend import contributions
 from backend.api import routers
 from backend.api.listeners import purge_on_startup as purge_listener_clips
 from backend.api.sharing import purge_on_startup
@@ -60,6 +61,9 @@ async def lifespan(app: FastAPI):
             await run_in_threadpool(purge_listener_clips)
         except Exception:
             logger.warning("Could not purge expired share links", exc_info=True)
+    # "Help improve Vocaly AI": upload given recordings in batches and carry out deletions.
+    stop_uploader = asyncio.Event()
+    uploader = asyncio.create_task(contributions.run_uploader(stop_uploader)) if contributions.enabled() else None
     loader: asyncio.Task | None = None
     if settings.load_models_on_startup:
         # Serve the app (and /health) immediately; models warm up in the
@@ -68,6 +72,10 @@ async def lifespan(app: FastAPI):
     else:
         logger.warning("Model startup loading is disabled by environment configuration.")
     yield
+    if uploader is not None:
+        stop_uploader.set()  # one last upload, so recent recordings aren't lost on a restart
+        with contextlib.suppress(Exception):
+            await asyncio.wait_for(uploader, timeout=15)
     if loader and not loader.done():
         loader.cancel()
         with contextlib.suppress(asyncio.CancelledError):
@@ -75,7 +83,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="AI Pronunciation Coach API",
+    title="Vocaly AI API",
     description="Phoneme-level pronunciation feedback using Whisper ASR and CMUDict",
     version="2.1.0",
     lifespan=lifespan,
@@ -159,7 +167,7 @@ else:
     @app.get("/", include_in_schema=False)
     async def frontend_missing() -> dict[str, Any]:
         return {
-            "message": "AI Pronunciation Coach API is running. Build the frontend with `cd frontend && npm ci && npm run build`.",
+            "message": "Vocaly AI API is running. Build the frontend with `cd frontend && npm ci && npm run build`.",
             "docs": "/docs",
         }
 
@@ -170,5 +178,5 @@ __all__ = ["app", "SPAStaticFiles"]
 if __name__ == "__main__":
     import uvicorn
 
-    logger.info("Starting AI Pronunciation Coach API on http://localhost:8000 (docs at /docs)")
+    logger.info("Starting Vocaly AI API on http://localhost:8000 (docs at /docs)")
     uvicorn.run(app, host="0.0.0.0", port=8000)
