@@ -81,11 +81,38 @@ def test_start_sends_the_browser_to_google_with_pkce(client):
 def test_a_new_google_user_gets_an_account_and_this_browser_is_signed_in(client, google_says):
     google_says(SAM)
     back = callback(client, start(client)["state"][0])
-    assert back == {"signed_in": ["google"], "next": ["/interview"]}
+    assert back["signed_in"] == ["google"] and back["next"] == ["/interview"] and back["ticket"][0]
     profile = me(client)
     assert profile["account"] is True and profile["email"] == "sam@example.com"
     assert profile["username"] == "sam.lee" and profile["display_name"] == "Sam Lee"
     assert profile["google"] is True and profile["google_only"] is True
+
+
+def test_the_pass_signs_in_a_browser_whose_key_changed_on_the_way(client, google_says):
+    google_says(SAM)
+    ticket = callback(client, start(client)["state"][0])["ticket"][0]
+    finished = client.post("/api/auth/google/finish", json={"ticket": ticket}, headers=headers(OTHER_KEY))
+    assert finished.status_code == 200 and finished.json()["username"] == "sam.lee"
+    assert me(client, OTHER_KEY)["account"] is True
+
+
+def test_a_pass_works_once(client, google_says):
+    google_says(SAM)
+    ticket = callback(client, start(client)["state"][0])["ticket"][0]
+    assert client.post("/api/auth/google/finish", json={"ticket": ticket}, headers=headers(OTHER_KEY)).status_code == 200
+    again = client.post("/api/auth/google/finish", json={"ticket": ticket}, headers=headers(OTHER_KEY))
+    assert again.status_code == 400 and again.json()["code"] == "google_expired"
+
+
+def test_a_made_up_or_stale_pass_signs_nobody_in(client, google_says):
+    made_up = client.post("/api/auth/google/finish", json={"ticket": "x" * 43}, headers=headers(OTHER_KEY))
+    assert made_up.json()["code"] == "google_expired"
+    google_says(SAM)
+    ticket = callback(client, start(client)["state"][0])["ticket"][0]
+    user_id, _ = oauth._tickets[ticket]
+    oauth._tickets[ticket] = (user_id, 0.0)  # long gone
+    assert client.post("/api/auth/google/finish", json={"ticket": ticket}, headers=headers(OTHER_KEY)).status_code == 400
+    assert me(client, OTHER_KEY) == {"account": False}
 
 
 def test_the_same_google_account_signs_in_again_on_another_device(client, google_says):
