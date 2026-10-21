@@ -72,6 +72,15 @@ def _cors_origins() -> list[str]:
     return origins or list(DEFAULT_CORS_ORIGINS)
 
 
+def _dataset_repo() -> str:
+    """The private dataset for given recordings: set explicitly, or "<owner>/vocaly-recordings" on a Hugging Face Space."""
+    configured = os.getenv("PRONUNCIATION_COACH_DATASET_REPO", "").strip()
+    if configured:
+        return configured
+    owner = os.getenv("SPACE_AUTHOR_NAME", "").strip()  # set by Hugging Face Spaces
+    return f"{owner}/vocaly-recordings" if owner else ""
+
+
 def _cache_dir() -> Path:
     return Path(os.getenv("XDG_CACHE_HOME") or Path.home() / ".cache") / "pronunciation_coach"
 
@@ -154,6 +163,21 @@ class Settings:
         default_factory=lambda: os.getenv("PRONUNCIATION_COACH_PHONEME_DIR", str(_cache_dir() / "phonemes"))
     )
     phoneme_threads: int = field(default_factory=lambda: _int("PRONUNCIATION_COACH_PHONEME_THREADS", 0))
+    # Trained sound models per first language (backend/data/sound_models). 0 uses the default curve for everyone.
+    sound_models: bool = field(default_factory=lambda: _flag("PRONUNCIATION_COACH_SOUND_MODELS", "1"))
+
+    # "Help improve Vocaly AI" (backend.contributions): a private Hugging Face dataset ("user/name";
+    # on a Space it defaults to "<owner>/vocaly-recordings") and a token that can write to it. The
+    # token has its own name, not HF_TOKEN, so setting a Hugging Face token for anything else never
+    # turns this on by accident. Without a token the option isn't offered.
+    dataset_repo: str = field(default_factory=_dataset_repo)
+    hf_token: str = field(default_factory=lambda: os.getenv("PRONUNCIATION_COACH_DATASET_TOKEN", "").strip())
+    contrib_dir: str = field(
+        default_factory=lambda: os.getenv("PRONUNCIATION_COACH_CONTRIB_DIR", str(_cache_dir() / "contributions"))
+    )
+    contrib_upload_minutes: float = field(default_factory=lambda: max(1.0, _float("PRONUNCIATION_COACH_CONTRIB_UPLOAD_MINUTES", 10.0)))
+    # Recordings kept per learner per day, so one person can't fill the dataset.
+    contrib_daily_limit: int = field(default_factory=lambda: max(0, _int("PRONUNCIATION_COACH_CONTRIB_DAILY_LIMIT", 100)))
 
     # Uploads
     max_upload_bytes: int = field(default_factory=lambda: _int("PRONUNCIATION_COACH_MAX_UPLOAD_BYTES", 25 * 1024 * 1024))
