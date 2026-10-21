@@ -235,7 +235,15 @@ export const api = {
   interviewOptions: () => request<InterviewOptions>('/api/interview/options'),
 
   /** Picks the questions; with a name the interview is saved (text only) after every answer. */
-  interviewStart: (body: { type: string; role: string; level: string; count: number; username?: string }) =>
+  interviewStart: (body: {
+    type: string
+    role: string
+    level: string
+    count: number
+    username?: string
+    company?: string
+    job_title?: string
+  }) =>
     request<InterviewStart>('/api/interview/sessions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(body.username ? profileHeaders() : {}) },
@@ -271,6 +279,8 @@ export const api = {
     conversation: { speaker: 'interviewer' | 'candidate'; text: string }[]
     earlier: { question: string; answer: string }[]
     followUpsAsked: number
+    company?: string | null
+    jobTitle?: string | null
   }) => {
     const prepared = await prepareRecording(input.audio, input.filename)
     const form = new FormData()
@@ -286,6 +296,8 @@ export const api = {
     form.append('conversation', JSON.stringify(input.conversation))
     form.append('earlier', JSON.stringify(input.earlier))
     form.append('follow_ups_asked', String(input.followUpsAsked))
+    if (input.company) form.append('company', input.company)
+    if (input.jobTitle) form.append('job_title', input.jobTitle)
     return request<InterviewTurn>('/api/interview/turn', { method: 'POST', body: form })
   },
   interviewAnswer: async (input: {
