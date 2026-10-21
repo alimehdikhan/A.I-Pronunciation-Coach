@@ -117,6 +117,12 @@ class Settings:
     contact_email: str = field(default_factory=lambda: os.getenv("PRONUNCIATION_COACH_CONTACT_EMAIL", "").strip())
     # The address learners open the app at, for links in emails (e.g. https://coach.example.com).
     public_url: str = field(default_factory=lambda: os.getenv("PRONUNCIATION_COACH_PUBLIC_URL", "").strip().rstrip("/"))
+    # Every learner feature needs a signed-in account; sign-in, health checks and teachers' share
+    # links stay open. 0 lets guests practise without one, as older versions did.
+    require_account: bool = field(default_factory=lambda: _flag("PRONUNCIATION_COACH_REQUIRE_ACCOUNT", "1"))
+    # "Continue with Google" (backend.oauth): an OAuth client from Google Cloud. Without both it is off.
+    google_client_id: str = field(default_factory=lambda: os.getenv("GOOGLE_CLIENT_ID", "").strip())
+    google_client_secret: str = field(default_factory=lambda: os.getenv("GOOGLE_CLIENT_SECRET", "").strip())
     gemini_live_model: str = field(
         default_factory=lambda: os.getenv("PRONUNCIATION_COACH_VOICE_MODEL", "gemini-3.1-flash-live-preview").strip()
     )
