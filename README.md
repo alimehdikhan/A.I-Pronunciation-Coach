@@ -524,11 +524,12 @@ Limits: with no script, a sound that Whisper and the sound model both "hear" as 
 
 - **The kind of interview.** Full interview, HR round, behavioural (STAR stories), role-specific, tough questions (career gaps, layoffs, frequent job changes, switching fields, salary pushback), recruiter phone screen, university admission, or student visa.
 - **Your role** (eight fields) and **experience** (fresher, experienced, senior), when the kind of interview uses them. A visa or admission interview ignores the job role.
+- **The job you're preparing for** (optional): a job title and a company. The interviewer introduces themselves as hiring for it, and the questions are asked about it.
 - **Length** (3, 5 or 7 questions) and **style**:
   - *Real interview*: no tips and no feedback until the end; the interviewer listens to every answer and follows up on it, as a real one does.
   - *Practice*: tips, optional thinking time, and feedback after every answer, with "Answer again" and "Take the follow-up".
 
-The questions follow the order a real interview of that kind uses (`backend/interview.py`, `TYPES`).
+The questions follow the order a real interview of that kind uses (`backend/interview.py`, `TYPES`). With Groq, each question is then reworded the way an experienced interviewer for that job, company and level would ask it in the room (`interview.WORDING_PROMPT`): "Why should we hire you?" becomes "What makes you a strong fit for this Backend Developer role at Infosys?". The purpose and kind of each question stay the same, nothing is invented about the company, and a visa or admission interview keeps its plain style. The worded questions are saved with the interview, so a resumed one asks the same. Without Groq, or when the wording doesn't pass the checks, the bank's wording is used. The interviewer's own lines sound like a real interviewer's too: who they are and what the conversation covers, a neutral "Okay, thank you" between questions, "One last question", and "We'll be in touch within the week" at the end, never a question count or "answer as you would in a real interview". A visa officer opens with "Good morning. May I see your passport, please?" and skips the small talk.
 
 **It runs like a real interview.** The room looks like a video call: the interviewer's window, yours in the corner with a live microphone level, the question as a caption, and a control bar (repeat, captions on or off, answer, tips in practice, end). In real interview mode:
 
@@ -1058,7 +1059,7 @@ Interactive docs are at `/docs`. Every response carries an `X-Request-ID` (also 
 | `GET` | `/api/speak/prompts` | Interview questions, IELTS-style cue cards and everyday situations |
 | `POST` | `/api/speak/evaluate` | Score a free answer (`audio`, optional `prompt_id`): delivery, sure sound slips and (with Groq) feedback on structure |
 | `GET` | `/api/interview/options` | Kinds of interview, roles, levels, lengths and the longest answer |
-| `POST` | `/api/interview/sessions` | Start an interview (`type`, `role`, `level`, `count`, optional `username` to save it) |
+| `POST` | `/api/interview/sessions` | Start an interview (`type`, `role`, `level`, `count`, optional `username` to save it, optional `company` and `job_title`); with Groq the questions come back worded for that job |
 | `POST` | `/api/interview/answer` | Score one answer (`audio`, `question_id`, `interview_type`, `role`, `level`; with `session_id`, `question_index`, `username` it is saved; `follow_up`, `follow_up_text` for the follow-up) |
 | `POST` | `/api/interview/turn` | The interviewer's reply to a spoken answer: `action` (follow_up, clarify, redirect, move_on, or repeat when nothing was heard), `reaction`, `question`, the `transcript`, and at the end a `reply` to the candidate's questions |
 | `POST` | `/api/interview/cv` | Questions from a CV (`cv_file` PDF/DOCX/TXT or `cv_text`, optional `job_ad`, `level`, `count`, `username`); the CV is never stored |
