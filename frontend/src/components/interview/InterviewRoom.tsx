@@ -59,8 +59,10 @@ import { cn } from '@/lib/utils'
 import { useInterviewPrefs } from '@/store/interview'
 import { useSettings } from '@/store/settings'
 
-type Phase = 'speaking' | 'thinking' | 'ready' | 'scoring' | 'feedback' | 'closing'
+type Phase = 'speaking' | 'thinking' | 'ready' | 'turn' | 'scoring' | 'feedback' | 'closing'
 type FollowUp = { id: FollowUpId; text: string }
+type Line = { speaker: 'interviewer' | 'candidate'; text: string }
+type LogEntry = { who: 'interviewer' | 'you'; text: string; followUp?: boolean }
 
 /** How long a follow-up answer usually runs (seconds); matches the server. */
 const FOLLOW_UP_SECONDS: [number, number] = [15, 60]
@@ -97,15 +99,15 @@ const KIND_LABEL: Record<string, string> = {
 }
 
 /**
- * A mock interview, one question at a time. The interviewer speaks each question and listens;
- * in a real interview it follows up when an answer misses something and keeps feedback for the
- * end, in practice it gives feedback after every answer.
+ * A mock interview, one question at a time. The interviewer speaks each question and listens.
  *
- * Hands-free (the default): the microphone opens after each question and closes when the learner
- * pauses. In a real interview the next question then comes at once and the answer is scored in the
- * background, one answer after another; only the last answer is waited for, since the interviewer
- * may answer the candidate's own questions before saying goodbye. Live follow-ups are skipped there,
- * because asking one means waiting for the answer to be scored.
+ * In a real interview the interviewer hears every answer and replies the way a real one does
+ * (`/api/interview/turn`, a second or two): a follow-up about something the candidate said, a simpler
+ * way of asking, a nudge back to the question, or a short reaction and the next question. Each answer
+ * is scored in the background meanwhile, one after another, and the report waits for the last one.
+ * Feedback is kept for the end. In practice it comes after every answer, with any follow-up on request.
+ *
+ * Hands-free (the default): the microphone opens after each question and closes when the learner pauses.
  */
 export function InterviewRoom({
   session,
@@ -122,8 +124,6 @@ export function InterviewRoom({
   onExit: () => void
 }) {
   const { mode, readAloud, fastSpeech, showText, autoRecord, thinkSeconds, handsFree, patience } = useInterviewPrefs()
-  // A real interview, hands-free: answers are scored in the background while the interview moves on.
-  const instant = handsFree && mode === 'interview'
   const username = useSettings((s) => s.username)
   const displayName = useSettings((s) => s.displayName)
   const signedIn = useSettings((s) => !!s.accountEmail)
@@ -137,8 +137,10 @@ export function InterviewRoom({
   const total = questions.length
   const [index, setIndex] = useState(startIndex)
   const [followUp, setFollowUp] = useState<FollowUp | null>(null)
+  // Follow-ups asked on the current question.
+  const [probes, setProbes] = useState(0)
   const [phase, setPhase] = useState<Phase>('speaking')
-  const [results, setResults] = useState<Record<number, { main?: InterviewAnswerResult; followUp?: InterviewAnswerResult }>>({})
+  const [results, setResults] = useState<Record<number, { main?: InterviewAnswerResult; followUps?: InterviewAnswerResult[] }>>({})
   const [answered, setAnswered] = useState(() => new Set(initiallyAnswered))
   const [thinkLeft, setThinkLeft] = useState<number | null>(null)
   const [tipsOpen, setTipsOpen] = useState(false)
@@ -153,16 +155,21 @@ export function InterviewRoom({
   const alive = useRef(true)
   // Set when the interviewer cut a long answer short.
   const cutIn = useRef(false)
-  // Hands-free: answers waiting to be scored, sent one after another (the server scores one at a time anyway).
+  // Answers waiting to be scored, sent one after another (the server scores one at a time anyway).
   const queue = useRef<Promise<unknown>>(Promise.resolve())
   const [pending, setPending] = useState(0)
+  // What was said on the current question, and notes of earlier answers: the interviewer's memory.
+  const conversation = useRef<Line[]>([])
+  const earlier = useRef<{ question: string; answer: string }[]>([])
+  // The whole conversation, shown under the call.
+  const [log, setLog] = useState<LogEntry[]>([])
 
   const question = questions[index]
   const target = smallTalk ? SMALL_TALK_SECONDS : followUp ? FOLLOW_UP_SECONDS : question.target_seconds
   const askedText = smallTalk ?? (followUp ? followUp.text : question.text)
   const plan = { type: session.type, role: session.role, count: total, jobTitle: session.read?.job_title }
   const current = results[index]
-  const latest = followUp ? current?.followUp : current?.main
+  const latest = followUp ? current?.followUps?.at(-1) : current?.main
 
   const answer = useMutation({ mutationFn: api.interviewAnswer })
   const recorder = useRecorder({
@@ -196,13 +203,21 @@ export function InterviewRoom({
     await say(text, { key: SPEAK_KEY, rate, voice })
   }
 
-  async function ask(text: string) {
+  /** The interviewer says `text` (one line, or several in turn), then it is the learner's turn. */
+  async function ask(text: string | (string | null | undefined)[], { remember = true, followUp: probing = false } = {}) {
+    const lines = (Array.isArray(text) ? text : [text]).filter((line): line is string => !!line)
     const mine = ++step.current
     setPhase('speaking')
     setTipsOpen(false)
+    if (remember) setLog((l) => [...l, { who: 'interviewer', text: lines.join(' '), followUp: probing }])
     if (readAloud) {
-      await interviewerSays(text)
-      if (step.current !== mine || !alive.current) return
+      const rate = fastSpeech ? 1.25 : 1
+      // A later line renders while the first one plays.
+      for (const line of lines.slice(1)) void prefetch(line, rate)
+      for (const line of lines) {
+        await interviewerSays(line)
+        if (step.current !== mine || !alive.current) return
+      }
     }
     if (mode === 'practice' && thinkSeconds > 0) {
       setThinkLeft(thinkSeconds)
@@ -224,6 +239,7 @@ export function InterviewRoom({
 
   function beginAfterSmallTalk() {
     setSmallTalk(null)
+    conversation.current = [{ speaker: 'interviewer', text: questions[startIndex].text }]
     void ask(`${afterSmallTalkLine(plan)} ${firstQuestionLine(questions[startIndex].text)}`)
   }
 
@@ -231,7 +247,14 @@ export function InterviewRoom({
   async function finish(lead?: string | null) {
     const mine = ++step.current
     setPhase('closing')
-    if (readAloud) await interviewerSays(`${lead ? `${lead} ` : ''}${closingLine(session.type)}`)
+    const goodbye = closingLine(session.type)
+    setLog((l) => [...l, { who: 'interviewer', text: [lead, goodbye].filter(Boolean).join(' ') }])
+    if (readAloud) {
+      if (lead) await interviewerSays(lead)
+      if (step.current === mine && alive.current) await interviewerSays(goodbye)
+    }
+    // The report covers every answer, so it waits for any still being scored.
+    await queue.current
     if (step.current === mine && alive.current) onFinish()
   }
 
@@ -239,6 +262,7 @@ export function InterviewRoom({
   function advance(lead?: string | null) {
     const next = index + 1
     setFollowUp(null)
+    setProbes(0)
     setNoSpeech(false)
     setRevealed(false)
     if (next >= total) {
@@ -246,36 +270,100 @@ export function InterviewRoom({
       return
     }
     setIndex(next)
-    void ask(nextQuestionLine(next, total, questions[next].text, lead))
+    conversation.current = [{ speaker: 'interviewer', text: questions[next].text }]
+    // The question was rendered while the learner answered; the reaction plays first.
+    void ask([lead, nextQuestionLine(next, total, questions[next].text)])
   }
 
+  /** Keep a note of an answer, so a later follow-up can pick up on it (or on a clash with it). */
+  function noteAnswer(at: number, text: string) {
+    const asked = questions[at].text
+    const notes = earlier.current
+    const last = notes[notes.length - 1]
+    earlier.current =
+      last && last.question === asked
+        ? [...notes.slice(0, -1), { question: asked, answer: `${last.answer} ${text}`.slice(0, 600) }]
+        : [...notes, { question: asked, answer: text.slice(0, 600) }]
+  }
+
+  /** Practice: the scored answer, with its feedback. */
   function handleResult(result: InterviewAnswerResult) {
-    const wasCut = cutIn.current
-    cutIn.current = false
     if (result.no_speech) {
       setNoSpeech(true)
-      if (mode === 'interview' && readAloud) void ask(RETRY_LINE)
-      else setPhase('ready')
+      setPhase('ready')
       return
     }
     setNoSpeech(false)
-    // What the interviewer says next: a polite cut-in, an answer to the candidate's questions, or a reaction.
-    const lead = wasCut ? cutInLine(session.type) : (result.reply ?? result.rubric?.reaction ?? null)
+    setLog((l) => [...l, { who: 'you', text: result.transcription }])
     if (followUp) {
-      setResults((r) => ({ ...r, [index]: { ...r[index], followUp: result } }))
-      if (mode === 'practice') setPhase('feedback')
-      else advance(wasCut ? lead : null)
+      setResults((r) => ({ ...r, [index]: { ...r[index], followUps: [...(r[index]?.followUps ?? []), result] } }))
+      setPhase('feedback')
       return
     }
     setResults((r) => ({ ...r, [index]: { main: result } }))
     setAnswered((a) => new Set(a).add(index))
-    if (mode === 'interview' && result.follow_up && !wasCut) {
-      setFollowUp(result.follow_up)
-      void ask(result.follow_up.text)
-    } else if (mode === 'practice') {
-      setPhase('feedback')
-      if (result.reply && readAloud) void say(result.reply, { key: SPEAK_KEY, rate: fastSpeech ? 1.25 : 1 })
-    } else advance(lead)
+    setPhase('feedback')
+    if (result.reply && readAloud) void say(result.reply, { key: SPEAK_KEY, rate: fastSpeech ? 1.25 : 1 })
+  }
+
+  /**
+   * A real interview: the interviewer hears the answer and replies like a real one, within a second or
+   * two, while the same answer is scored in the background for the report.
+   */
+  function takeTurn(clip: Recording) {
+    const at = index
+    const probe = followUp
+    const asked = probes
+    const wasCut = cutIn.current
+    cutIn.current = false
+    const mine = ++step.current
+    setPhase('turn')
+    setFailed(null)
+    const q = questions[at]
+    api
+      .interviewTurn({
+        audio: clip.blob,
+        filename: clip.filename,
+        questionId: q.id,
+        custom: q.id.startsWith('cv-') ? { text: q.text, kind: q.kind } : undefined,
+        type: session.type,
+        role: session.role,
+        level: session.level,
+        conversation: conversation.current,
+        earlier: earlier.current.filter((note) => note.question !== q.text),
+        followUpsAsked: asked,
+      })
+      .then((turn) => {
+        if (step.current !== mine || !alive.current) return
+        if (turn.no_speech) {
+          setNoSpeech(true)
+          if (readAloud) void ask(RETRY_LINE, { remember: false })
+          else setPhase('ready')
+          return
+        }
+        setNoSpeech(false)
+        void scoreInBackground(clip, at, probe)
+        setAnswered((a) => new Set(a).add(at))
+        conversation.current = [...conversation.current, { speaker: 'candidate', text: turn.transcript }]
+        setLog((l) => [...l, { who: 'you', text: turn.transcript }])
+        noteAnswer(at, turn.transcript)
+        if (!wasCut && turn.question && ['follow_up', 'clarify', 'redirect'].includes(turn.action)) {
+          const next: FollowUp = { id: turn.probe ?? 'more', text: turn.question }
+          conversation.current = [...conversation.current, { speaker: 'interviewer', text: next.text }]
+          setFollowUp(next)
+          setProbes(asked + 1)
+          setRevealed(false)
+          void ask([turn.reaction, next.text], { followUp: true })
+          return
+        }
+        advance(wasCut ? cutInLine(session.type) : (turn.reply ?? turn.reaction))
+      })
+      .catch((error) => {
+        if (step.current !== mine || !alive.current) return
+        setFailed({ error, recording: clip })
+        setPhase('ready')
+        showError(error)
+      })
   }
 
   function answerPayload(clip: Recording, q: typeof question, follow: FollowUp | null) {
@@ -295,21 +383,19 @@ export function InterviewRoom({
   }
 
   /** Score an answer in the background, after any still waiting; a failed send is retried twice. */
-  function scoreInBackground(clip: Recording, at: number): Promise<InterviewAnswerResult | null> {
+  function scoreInBackground(clip: Recording, at: number, follow: FollowUp | null): Promise<InterviewAnswerResult | null> {
     const q = questions[at]
     setPending((n) => n + 1)
     const run = async (): Promise<InterviewAnswerResult | null> => {
       for (let attempt = 0; ; attempt++) {
         try {
-          const result = await api.interviewAnswer(answerPayload(clip, q, null))
-          if (alive.current) {
-            if (result.no_speech) {
-              setAnswered((a) => {
-                const next = new Set(a)
-                next.delete(at)
-                return next
-              })
-            } else setResults((r) => ({ ...r, [at]: { main: result } }))
+          const result = await api.interviewAnswer(answerPayload(clip, q, follow))
+          if (alive.current && !result.no_speech) {
+            setResults((r) =>
+              follow
+                ? { ...r, [at]: { ...r[at], followUps: [...(r[at]?.followUps ?? []), result] } }
+                : { ...r, [at]: { ...r[at], main: result } },
+            )
           }
           return result
         } catch (error) {
@@ -326,30 +412,9 @@ export function InterviewRoom({
     return done
   }
 
-  /** Hands-free, real interview: send the answer off and carry straight on. */
-  function sendAndMoveOn(clip: Recording) {
-    const at = index
-    const wasCut = cutIn.current
-    cutIn.current = false
-    setAnswered((a) => new Set(a).add(at))
-    const scored = scoreInBackground(clip, at)
-    if (at + 1 < total) {
-      advance(wasCut ? cutInLine(session.type) : null)
-      return
-    }
-    // The last answer: wait for it (the interviewer may answer the candidate's questions) and for any others.
-    const mine = ++step.current
-    setPhase('scoring')
-    void scored.then(async (result) => {
-      await queue.current
-      if (step.current !== mine || !alive.current) return
-      void finish(wasCut ? cutInLine(session.type) : (result?.reply ?? null))
-    })
-  }
-
   function submit(clip: Recording) {
-    if (instant && !followUp) {
-      sendAndMoveOn(clip)
+    if (mode === 'interview') {
+      takeTurn(clip)
       return
     }
     const mine = step.current
@@ -381,6 +446,7 @@ export function InterviewRoom({
       setSmallTalk(greeting)
       void ask(greeting)
     } else {
+      conversation.current = [{ speaker: 'interviewer', text: first.text }]
       void ask(startIndex === 0 ? `${openingLine({ name, ...plan })} ${firstQuestionLine(first.text)}` : resumeLine(first.text))
     }
     // The voice takes seconds per sentence on a small server, so render everything the interviewer will
@@ -449,13 +515,13 @@ export function InterviewRoom({
   }
 
   function repeat() {
-    if (requesting || phase === 'scoring' || phase === 'closing') return
+    if (requesting || phase === 'turn' || phase === 'scoring' || phase === 'closing') return
     if (recording) {
       // Hands-free keeps the microphone open for the whole turn: hearing the question again starts it over.
       if (!handsFree) return
       recorder.cancel()
     }
-    void ask(askedText)
+    void ask(askedText, { remember: false })
   }
 
   function endInterview() {
@@ -520,40 +586,42 @@ export function InterviewRoom({
     return () => window.clearInterval(timer)
   }, [recording, readLevel])
   const readOutput = useMemo(() => createAnalyserReader(outputAnalyserRef, OUTPUT_GAIN), [])
-  const orbState: OrbState = phase === 'scoring' || voicePreparing ? 'thinking' : recording ? 'listening' : voiceActive ? 'speaking' : 'idle'
+  const orbState: OrbState =
+    phase === 'scoring' || phase === 'turn' || voicePreparing ? 'thinking' : recording ? 'listening' : voiceActive ? 'speaking' : 'idle'
 
   const status =
     phase === 'speaking'
       ? `${INTERVIEWER.name} is asking…`
       : phase === 'thinking'
         ? `Think about your answer · ${thinkLeft ?? 0} s`
-        : phase === 'scoring'
-          ? mode === 'interview'
-            ? `${INTERVIEWER.name} is noting your answer${pending > 1 ? 's' : ''}…`
-            : 'Listening back to your answer…'
-          : phase === 'closing'
-            ? 'Wrapping up…'
-            : requesting
-              ? 'Opening your microphone…'
-              : recording
-                ? handsFree
-                  ? finishing > 0
-                    ? 'Finishing… keep talking to continue'
-                    : 'Listening. Pause when you’re done.'
-                  : 'Listening. Take your time.'
-                : phase === 'feedback'
-                  ? 'Here’s how that went'
-                  : 'Your turn'
+        : phase === 'turn'
+          ? `${INTERVIEWER.name} is thinking…`
+          : phase === 'scoring'
+            ? 'Listening back to your answer…'
+            : phase === 'closing'
+              ? 'Wrapping up…'
+              : requesting
+                ? 'Opening your microphone…'
+                : recording
+                  ? handsFree
+                    ? finishing > 0
+                      ? 'Finishing… keep talking to continue'
+                      : 'Listening. Pause when you’re done.'
+                    : 'Listening. Take your time.'
+                  : phase === 'feedback'
+                    ? 'Here’s how that went'
+                    : 'Your turn'
 
   const showQuestion = showText || revealed || !readAloud
-  const feedbackView = phase === 'feedback' && current?.main?.delivery ? viewFromResult(current.main, current.followUp) : null
+  const feedbackView = phase === 'feedback' && current?.main?.delivery ? viewFromResult(current.main, current.followUps) : null
 
   const label = smallTalk
     ? 'Before we start'
     : followUp
       ? 'Follow-up'
       : `Question ${index + 1} · ${KIND_LABEL[question.kind] ?? 'Question'}${question.about ? ` · ${question.about}` : ''}`
-  const canAct = !(recording || requesting || phase === 'scoring' || phase === 'closing')
+  const busy = phase === 'turn' || phase === 'scoring' || phase === 'closing'
+  const canAct = !(recording || requesting || busy)
 
   return (
     <div className="space-y-5">
@@ -599,7 +667,7 @@ export function InterviewRoom({
             <button
               type="button"
               onClick={primary}
-              disabled={phase === 'scoring' || phase === 'closing' || phase === 'feedback' || requesting}
+              disabled={busy || phase === 'feedback' || requesting}
               aria-label={recording ? 'Stop answering' : 'Start answering'}
               className="rounded-full outline-none focus-visible:ring-4 focus-visible:ring-white/40 disabled:cursor-default"
             >
@@ -612,7 +680,7 @@ export function InterviewRoom({
             aria-live="polite"
             className="absolute top-3 left-3 flex items-center gap-1.5 rounded-full bg-black/50 px-3 py-1.5 text-[12px] font-medium text-white/90 backdrop-blur-md sm:top-4 sm:left-4"
           >
-            {phase === 'scoring' && <SpinnerGapIcon className="motion-safe:animate-spin" />}
+            {(phase === 'scoring' || phase === 'turn') && <SpinnerGapIcon className="motion-safe:animate-spin" />}
             {status}
             {recording && handsFree && finishing > 0 && (
               <span className="ml-1 h-1 w-10 overflow-hidden rounded-full bg-white/20" aria-hidden>
@@ -675,12 +743,12 @@ export function InterviewRoom({
               <Button
                 size="lg"
                 onClick={primary}
-                disabled={phase === 'scoring' || phase === 'closing' || phase === 'feedback' || requesting}
+                disabled={busy || phase === 'feedback' || requesting}
                 className={cn('h-12 rounded-full px-5 text-[15px] sm:h-14 sm:px-7', recording && 'bg-bad hover:bg-bad/90')}
               >
-                {phase === 'scoring' ? (
+                {phase === 'scoring' || phase === 'turn' ? (
                   <>
-                    <SpinnerGapIcon className="motion-safe:animate-spin" /> Scoring…
+                    <SpinnerGapIcon className="motion-safe:animate-spin" /> {phase === 'turn' ? 'One moment…' : 'Scoring…'}
                   </>
                 ) : recording ? (
                   <>
@@ -761,6 +829,8 @@ export function InterviewRoom({
         </div>
       </section>
 
+      {log.length > 0 && <Conversation log={log} you={displayName || username || 'You'} />}
+
       {/* Practice: feedback after every answer. */}
       {phase === 'feedback' && feedbackView && (
         <Panel className="p-5 sm:p-8">
@@ -779,21 +849,21 @@ export function InterviewRoom({
             <Button variant="secondary" size="lg" className="h-12" onClick={startAnswer}>
               <ArrowCounterClockwiseIcon weight="bold" /> Answer again
             </Button>
-            {!followUp && current?.main?.follow_up && !current.followUp && (
+            {!followUp && current?.main?.follow_up && !current.followUps?.length && (
               <Button
                 variant="secondary"
                 size="lg"
                 className="h-12"
                 onClick={() => {
                   setFollowUp(current.main!.follow_up)
-                  void ask(current.main!.follow_up!.text)
+                  void ask(current.main!.follow_up!.text, { followUp: true })
                 }}
               >
                 <ArrowBendDownRightIcon weight="bold" /> Take the follow-up
               </Button>
             )}
           </div>
-          {!followUp && current?.main?.follow_up && !current.followUp && (
+          {!followUp && current?.main?.follow_up && !current.followUps?.length && (
             <p className="mt-3 text-[13px] text-muted-foreground">
               An interviewer would probably ask: “{current.main.follow_up.text}”
             </p>
@@ -823,5 +893,36 @@ export function InterviewRoom({
         </AlertDialogContent>
       </AlertDialog>
     </div>
+  )
+}
+
+/** Everything said so far, newest at the bottom: what the interviewer asked and what it heard you say. */
+function Conversation({ log, you }: { log: LogEntry[]; you: string }) {
+  const end = useRef<HTMLLIElement>(null)
+  useEffect(() => {
+    end.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }, [log.length])
+  return (
+    <Panel className="p-4 sm:p-6">
+      <div className="text-[13px] font-semibold text-muted-foreground">The conversation</div>
+      <ol className="mt-3 max-h-80 space-y-2.5 overflow-y-auto pr-1" aria-live="polite">
+        {log.map((entry, i) => (
+          <li key={i} ref={i === log.length - 1 ? end : undefined} className={cn('flex', entry.who === 'you' && 'justify-end')}>
+            <div
+              className={cn(
+                'max-w-[88%] rounded-2xl px-3.5 py-2.5 text-[14px] leading-relaxed',
+                entry.who === 'you' ? 'bg-primary-soft' : 'bg-fill',
+              )}
+            >
+              <span className="mb-0.5 block text-[11px] font-semibold text-muted-foreground">
+                {entry.who === 'you' ? you : INTERVIEWER.name}
+                {entry.followUp ? ' · follow-up' : ''}
+              </span>
+              {entry.text}
+            </div>
+          </li>
+        ))}
+      </ol>
+    </Panel>
   )
 }
