@@ -50,6 +50,7 @@ const GOOGLE_ERRORS: Record<string, string> = {
   google_cancelled: 'Google sign-in was cancelled.',
   google_failed: 'Google couldn’t confirm your account. Try again, or use your email and password.',
   google_unverified: 'Your Google email address isn’t verified, so it can’t be used here. Use your email and password instead.',
+  google_lost: 'Google signed you in, but this browser lost track of it on the way back. Please try again.',
 }
 
 /** A starting username from a display name: "Sam Lee" -> "sam.lee". */
@@ -122,7 +123,10 @@ export default function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
   const next = safeNext(params.get('next'))
   const keepNext = next ? `?next=${encodeURIComponent(next)}` : ''
   const googleReturn = params.get('signed_in') === 'google'
-  const googleProblem = GOOGLE_ERRORS[params.get('error') ?? ''] ?? null
+  const reason = params.get('reason')
+  const googleProblem = GOOGLE_ERRORS[params.get('error') ?? '']
+    ? `${GOOGLE_ERRORS[params.get('error') ?? '']}${reason ? ` (Google said: ${reason.slice(0, 40)})` : ''}`
+    : null
 
   const [displayName, setDisplayName] = useState(signup ? guestName : '')
   const [username, setUsername] = useState(signup ? guestName : '')
@@ -166,7 +170,7 @@ export default function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
         if (cancelled) return
         if (profile.account) finish(profile, 'google')
         else {
-          setGoogleError(GOOGLE_ERRORS.google_failed)
+          setGoogleError(GOOGLE_ERRORS.google_lost)
           navigate(`/login${keepNext}`, { replace: true })
         }
       })
