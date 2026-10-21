@@ -104,6 +104,11 @@ class Settings:
     # key the knowledge-base templates are used.
     groq_api_key: str = field(default_factory=lambda: os.getenv("GROQ_API_KEY", "").strip())
     groq_model: str = field(default_factory=lambda: os.getenv("PRONUNCIATION_COACH_LLM_MODEL", "openai/gpt-oss-120b"))
+    # The live interviewer transcribes each answer with Groq's hosted Whisper (backend.quick_transcribe),
+    # so it can follow up within a second or two. Empty keeps interview audio on this server (slower turns).
+    turn_asr_model: str = field(
+        default_factory=lambda: os.getenv("PRONUNCIATION_COACH_TURN_ASR_MODEL", "whisper-large-v3-turbo").strip()
+    )
     # The live voice conversation (Gemini Live). The key stays on the server; the browser talks to us.
     gemini_api_key: str = field(default_factory=lambda: os.getenv("GEMINI_API_KEY", "").strip())
     # Password reset by email (optional): any SMTP provider. Without a host and sender it is off.
