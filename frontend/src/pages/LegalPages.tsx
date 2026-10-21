@@ -181,7 +181,9 @@ export function PrivacyPage() {
             <b>Groq</b> (the AI coach: tips, chat, sentences, interview and discussion feedback, when switched on) receives the practice
             sentence, the detected slips, scores, your first language and tip language, your chat messages, and the text of free-speaking,
             interview and group-discussion answers. For an interview from your CV, it receives the text of your CV, including your name, and
-            the job advert, with email addresses, phone numbers and links removed first. It never receives audio or your account email.
+            the job advert, with email addresses, phone numbers and links removed first. In a mock interview it also receives the audio of
+            each answer, so its speech recognition can turn it into text within a second and the interviewer can reply; the Coach keeps none
+            of that audio. It never receives your account email.
           </li>
           <li>
             <b>Google Gemini</b> (only “Talk to your coach” voice conversations) receives your voice and the coach’s replies as they are
