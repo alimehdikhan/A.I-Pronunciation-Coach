@@ -181,6 +181,8 @@ export interface Health {
   free_speech_seconds?: number
   /** Password reset by email is set up on this server. */
   password_reset?: boolean
+  /** "Continue with Google" is set up on this server. */
+  google_sign_in?: boolean
   /** Who runs this deployment and how to reach them (Privacy, Terms, About). */
   operator?: string
   contact_email?: string | null
@@ -576,6 +578,10 @@ export type AccountProfile =
       attempts: number
       /** Browsers currently signed in to this account. */
       devices: number
+      /** Signs in with Google (linked to a Google account). */
+      google?: boolean
+      /** Made with Google and has no password yet: nothing to ask for when deleting or changing it. */
+      google_only?: boolean
     }
 
 
