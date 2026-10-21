@@ -22,15 +22,22 @@ from backend.api import (
     voice,
 )
 
-routers = (
+# Open without an account: health checks, signing in or up, and the share links teachers open.
+# The voice socket checks the account itself, from its first message (a browser WebSocket can't send headers).
+public_routers = (
     health.router,
+    auth.router,
+    sharing.public_router,
+    voice.router,
+)
+
+# Everything a learner uses needs a signed-in account (backend.api.deps.require_account).
+routers = (
     speech.router,
     library.router,
     progress.router,
     coach.router,
     journey.router,
-    voice.router,
-    auth.router,
     disputes.router,
     contribute.router,
     listening.router,
