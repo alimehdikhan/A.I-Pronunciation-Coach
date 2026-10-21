@@ -37,7 +37,7 @@ export default function SharedPage() {
     <div className="min-h-dvh bg-background px-4 py-10">
       <main className="mx-auto max-w-2xl space-y-5">
         <div className="flex items-center gap-3">
-          <LogoMark className="size-10 rounded-[12px]" />
+          <LogoMark className="size-10" />
           <div>
             <div className="text-[13px] font-semibold text-muted-foreground">Vocaly AI</div>
             <h1 className="text-[22px] font-semibold tracking-tight">A practice attempt shared with you</h1>
