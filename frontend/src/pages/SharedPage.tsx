@@ -39,7 +39,7 @@ export default function SharedPage() {
         <div className="flex items-center gap-3">
           <LogoMark className="size-10 rounded-[12px]" />
           <div>
-            <div className="text-[13px] font-semibold text-muted-foreground">AI Pronunciation Coach</div>
+            <div className="text-[13px] font-semibold text-muted-foreground">Vocaly AI</div>
             <h1 className="text-[22px] font-semibold tracking-tight">A practice attempt shared with you</h1>
           </div>
         </div>
