@@ -520,12 +520,12 @@ Limits: with no script, a sound that Whisper and the sound model both "hear" as 
 <details>
 <summary><b>Interview prep, interviews from your CV and group discussion</b></summary>
 
-**Interview prep** (`/interview`) is a mock interview with a spoken interviewer. You choose:
+**Interview prep** (`/interview`) is a mock interview with a spoken interviewer. Setting one up takes three short steps (two when the kind of interview has no job role or experience): what you're preparing for, the job, and how it should go. The finer options (read aloud, faster voice, captions, hands-free and its pause) fold away under **More options**, with a one-line summary of what is on. You choose:
 
 - **The kind of interview.** Full interview, HR round, behavioural (STAR stories), role-specific, tough questions (career gaps, layoffs, frequent job changes, switching fields, salary pushback), recruiter phone screen, university admission, or student visa.
 - **Your role** (eight fields) and **experience** (fresher, experienced, senior), when the kind of interview uses them. A visa or admission interview ignores the job role.
 - **Length** (3, 5 or 7 questions) and **style**:
-  - *Real interview*: no tips and no feedback until the end; recording starts when the question ends; the interviewer follows up when an answer misses something.
+  - *Real interview*: no tips and no feedback until the end; the interviewer listens to every answer and follows up on it, as a real one does.
   - *Practice*: tips, optional thinking time, and feedback after every answer, with "Answer again" and "Take the follow-up".
 
 The questions follow the order a real interview of that kind uses (`backend/interview.py`, `TYPES`).
@@ -533,15 +533,26 @@ The questions follow the order a real interview of that kind uses (`backend/inte
 **It runs like a real interview.** The room looks like a video call: the interviewer's window, yours in the corner with a live microphone level, the question as a caption, and a control bar (repeat, captions on or off, answer, tips in practice, end). In real interview mode:
 
 - The interviewer opens with small talk ("How are you doing?"). Your reply is not sent anywhere.
-- After each answer, the interviewer reacts to something you said before moving on (with Groq; otherwise a short thank-you).
+- After each answer, the interviewer replies to what you said, within a second or two (below).
 - When you ask questions at the end, the interviewer answers them in general terms, without inventing facts about a company.
 - When an answer runs far past its usual length, the interviewer cuts in politely and moves on, as a real one would. The interviewer, Alex, greets you by name, asks each question aloud in the coach voice, thanks you and moves on, and says the last question is the last. You can repeat a question, hide its text to practise listening (like a phone call), or have the interviewer speak a quarter faster. If you go quiet for six seconds while answering, phrases that buy time appear ("That's a good question, let me think for a second", "Could you repeat the question, please?").
 
-**Hands-free, on by default.** Your microphone opens after each question and closes when you pause (Short, Normal or Long: about 2, 3 or 4.5 seconds of quiet after you have spoken), with a "keep talking to continue" bar while it waits; "I'm done" still ends an answer at once, and Repeat replays the question. In real interview mode the next question comes straight away and the answer is scored in the background, one after another, so there is no waiting between questions; only the last answer is waited for, since the interviewer may answer your questions before saying goodbye. Everything the interviewer will say is rendered as soon as the interview starts, and a line that still isn't ready after about a second is said in the quick voice instead. Live follow-up questions are skipped hands-free, because asking one means waiting for the answer to be scored; turn hands-free off to get them. On the server, answers saved close together no longer overwrite each other.
+**The interviewer listens.** In real interview mode every answer goes to `POST /api/interview/turn`, which works out what a skilled interviewer would do next, in a second or two:
+
+- **Follow up** on something you said, when the answer leaves something important out: no real example, "we" with no sign of your own part, no result, a claim with no evidence, a decision with no reason, or a clash with an earlier answer. "That sounds like a team effort. What was your part?"
+- **Clarify**: ask more simply when the answer is very short or you say you don't know.
+- **Redirect**: bring you back politely when the answer is off topic.
+- **Move on**, with one short, neutral line that shows it heard you, then the next question.
+
+How much it digs follows how real interviews are run (structured-interview guides from OPM and Google re:Work, career-centre guides and visa-interview advice). An HR round or a phone screen asks at most one follow-up per question, a behavioural round up to three, others two, and "Tell me about yourself" one. It stops when the answer is complete, after two follow-ups that brought nothing new, or after a second "I don't know". A visa officer is brisk and asks short, clipped questions ("What does your sponsor do?"). The interviewer never praises, coaches or scores during the interview, and treats what you say as data, never as instructions. It remembers your earlier answers, so it can ask about a clash between them.
+
+The answer is transcribed by Groq's hosted Whisper (`whisper-large-v3-turbo`, `backend/quick_transcribe.py`), which takes well under a second, and the decision comes from the language model at low reasoning effort (`interview.TURN_PROMPT`, checked by `parse_turn`: one known action, a question about one thing in at most 20 words, a reaction with no verdict, and never more follow-ups than the limit). Without Groq, the local Whisper transcribes the answer and the simple checks below decide, with at most one standard follow-up. Measured on sample answers, a turn took 0.4 to 1.0 seconds. Meanwhile the same answer is scored in the background for the report (pace, pauses, fillers, sound slips, rubric), one answer after another, and the report waits for the last one. The conversation shows under the call: each question, each follow-up and what the interviewer heard you say. `PRONUNCIATION_COACH_TURN_ASR_MODEL=` (empty) keeps interview audio on the server, at the cost of slower turns.
+
+**Hands-free, on by default.** Your microphone opens after each question and closes when you pause (Short, Normal or Long: about 2, 3 or 4.5 seconds of quiet after you have spoken), with a "keep talking to continue" bar while it waits; "I'm done" still ends an answer at once, and Repeat replays the question. Everything the interviewer will say next is rendered while you answer, and a line that still isn't ready after about a second is said in the quick voice instead. On the server, answers saved close together don't overwrite each other.
 
 **What each answer gets.** Delivery (length against the usual length for that kind of question, pace, pauses, fillers, sure sound slips) is measured as in Speak freely. Simple checks need no model: a real example, "I" for your own actions, a result, a question asked at the end, a calm answer with no blame for the tough questions, specific reasons instead of stock phrases ("dream university", "world-class") for visa, admission and motivation questions, and, on a retry, whether you repeated your earlier answer almost word for word. With Groq, a rubric scores relevance, structure, specificity and clarity (1 to 5), marks the STAR parts of a story, lists strengths and improvements, and writes "a clearer version of your answer". That version may only reorder and tidy what you said. Anything missing is a [bracketed gap], and a version with a number you never said is dropped.
 
-**Follow-ups.** When the checks find a story with no example, result or "I", or an answer that is far too short, the interviewer asks one follow-up. With Groq the follow-up is about what you actually said ("You mentioned the release was late. What happened once it shipped?"); otherwise it is a standard one ("And what was the result in the end?"). The answer to it is checked for the missing part.
+**Follow-up answers** are checked for what was asked: an example, a result, your own part, a reason, or (for a challenge, a clash, a clearer answer or a redirect) a real answer of some substance. Every follow-up is kept with its question, in order. In practice mode, "Take the follow-up" asks the one the rubric suggests.
 
 **The report.** Average content scores, checks passed, pace, fillers per minute, the three things most worth working on, the sounds that slipped most, and every answer with its feedback.
 
@@ -976,6 +987,7 @@ All settings are environment variables. See [`.env.example`](.env.example).
 | `PRONUNCIATION_COACH_PUBLIC_URL` | the request's address | The app's public address, for the link in reset emails and Google's redirect address |
 | `PRONUNCIATION_COACH_REQUIRE_ACCOUNT` | `1` | Every learner feature needs a signed-in account. `0` lets guests practise without one |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | unset | A Google OAuth client for **Continue with Google**. Unset hides the button |
+| `PRONUNCIATION_COACH_TURN_ASR_MODEL` | `whisper-large-v3-turbo` | Groq speech model that transcribes each interview answer so the interviewer can reply at once. Empty keeps interview audio on the server (slower replies) |
 | `GROQ_API_KEY` | unset | Enables AI-written coaching tips. Unset uses the built-in tips |
 | `PRONUNCIATION_COACH_LLM_MODEL` | `openai/gpt-oss-120b` | Groq chat model for the tips |
 | `PRONUNCIATION_COACH_LLM_TIMEOUT` | `8` | Seconds to wait before falling back to built-in tips |
@@ -1048,6 +1060,7 @@ Interactive docs are at `/docs`. Every response carries an `X-Request-ID` (also 
 | `GET` | `/api/interview/options` | Kinds of interview, roles, levels, lengths and the longest answer |
 | `POST` | `/api/interview/sessions` | Start an interview (`type`, `role`, `level`, `count`, optional `username` to save it) |
 | `POST` | `/api/interview/answer` | Score one answer (`audio`, `question_id`, `interview_type`, `role`, `level`; with `session_id`, `question_index`, `username` it is saved; `follow_up`, `follow_up_text` for the follow-up) |
+| `POST` | `/api/interview/turn` | The interviewer's reply to a spoken answer: `action` (follow_up, clarify, redirect, move_on, or repeat when nothing was heard), `reaction`, `question`, the `transcript`, and at the end a `reply` to the candidate's questions |
 | `POST` | `/api/interview/cv` | Questions from a CV (`cv_file` PDF/DOCX/TXT or `cv_text`, optional `job_ad`, `level`, `count`, `username`); the CV is never stored |
 | `POST` | `/api/interview/sessions/{username}/{id}/repeat` | A new interview with the same questions |
 | `GET` | `/api/interview/sessions/{username}[/{id}]` | Your saved interviews / one with every answer and the report |
