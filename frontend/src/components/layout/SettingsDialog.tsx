@@ -1,14 +1,26 @@
-import { GaugeIcon, MicrophoneIcon, TargetIcon, DesktopIcon, EyeSlashIcon, MoonIcon, PaletteIcon, PlayIcon, SpeakerHighIcon, SunIcon, TextTIcon, TranslateIcon, UserIcon, UserSoundIcon } from '@phosphor-icons/react'
+import { GaugeIcon, HandHeartIcon, MicrophoneIcon, TargetIcon, DesktopIcon, EyeSlashIcon, MoonIcon, PaletteIcon, PlayIcon, SpeakerHighIcon, SunIcon, TextTIcon, TranslateIcon, TrashIcon, UserIcon, UserSoundIcon, WaveformIcon } from '@phosphor-icons/react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState, type ReactNode } from 'react'
 import { toast } from 'sonner'
 import { Segmented } from '@/components/common'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Slider } from '@/components/ui/slider'
 import { Switch } from '@/components/ui/switch'
-import { useVoiceCatalog } from '@/lib/queries'
+import { api, ApiError } from '@/lib/api'
+import { useAccount, useTunedLanguages, useVoiceCatalog } from '@/lib/queries'
 import { NEURAL_VOICE, rankVoice, useSpeaker, usesNeuralVoice, useVoices } from '@/lib/speech'
 import { useSettings, type Accent, type Goal, type Theme, type TipLanguage } from '@/store/settings'
 import { useUI } from '@/store/ui'
@@ -51,6 +63,94 @@ export const NATIVE_LANGUAGES = [
 
 export const TIP_LANGUAGES: TipLanguage[] = ['English', 'Hindi', 'Urdu', 'Hinglish']
 
+const IMPROVE_FOOTER =
+  'Keeps clean recordings of the app’s own practice sentences (never text you type, interviews or conversations) to train the scoring. They are stored privately with the sentence, your scores and your first language, under a random number instead of your name or email. Turning this off keeps what you gave; Delete removes it from the dataset too.'
+
+/** "Help improve Vocaly AI": give practice recordings to train the scorer. Hidden when the server can't keep them. */
+function ImproveGroup() {
+  const username = useSettings((s) => s.username)
+  const { data: account } = useAccount()
+  const queryClient = useQueryClient()
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const key = ['contribute', username] as const
+  const { data: status } = useQuery({
+    queryKey: key,
+    queryFn: () => api.contributeStatus(username),
+    enabled: !!username,
+    staleTime: 30_000,
+    retry: false,
+  })
+  const toggle = useMutation({
+    mutationFn: (on: boolean) => api.setContribute(username, on),
+    onSuccess: (data) => {
+      queryClient.setQueryData(key, data)
+      toast.success(data.on ? 'Thank you. Clean recordings of practice sentences will help train the scoring.' : 'Stopped. What you gave is kept until you delete it.')
+    },
+    onError: (error) => toast.error(error instanceof ApiError ? error.message : 'Could not change that. Try again.'),
+  })
+  const remove = useMutation({
+    mutationFn: () => api.deleteContributions(username),
+    onSuccess: (data) => {
+      queryClient.setQueryData(key, data)
+      setConfirmDelete(false)
+      toast.success(`Deleted. The ${data.deleted === 1 ? 'recording is' : 'recordings are'} also removed from the dataset within a few minutes.`)
+    },
+    onError: (error) => toast.error(error instanceof ApiError ? error.message : 'Could not delete them. Try again.'),
+  })
+
+  if (!status?.available) return null
+  const signedIn = account?.account === true
+  return (
+    <>
+      <Group
+        icon={<HandHeartIcon size={14} weight="fill" />}
+        title="Help improve Vocaly AI"
+        footer={signedIn ? IMPROVE_FOOTER : `Sign in to turn this on. ${IMPROVE_FOOTER}`}
+      >
+        <Row label="Give my practice recordings" icon={<WaveformIcon size={18} />}>
+          <Switch
+            checked={status.on}
+            disabled={!signedIn || toggle.isPending}
+            onCheckedChange={(on) => toggle.mutate(on)}
+            aria-label="Give my practice recordings to help improve Vocaly AI"
+          />
+        </Row>
+        {signedIn && status.given > 0 && (
+          <div className="p-2">
+            <Button variant="secondary" className="w-full" onClick={() => setConfirmDelete(true)}>
+              <TrashIcon /> Delete the {status.given} recording{status.given === 1 ? '' : 's'} I gave
+            </Button>
+          </div>
+        )}
+      </Group>
+      <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete the recordings you gave?</AlertDialogTitle>
+            <AlertDialogDescription>
+              They are removed from this server and from the dataset, and giving stops. A scoring model already trained can’t
+              forget them, but they won’t be used again. Your practice history stays.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={remove.isPending}
+              onClick={(e) => {
+                e.preventDefault() // stay open until the request finishes
+                remove.mutate()
+              }}
+            >
+              {remove.isPending ? 'Deleting…' : 'Delete them'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  )
+}
+
 export function SettingsDialog() {
   const open = useUI((s) => s.settingsOpen)
   const setOpen = useUI((s) => s.setSettingsOpen)
@@ -68,6 +168,12 @@ export function SettingsDialog() {
   const voiceValue = usesNeuralVoice(settings.voiceURI) ? NEURAL_VOICE : settings.voiceURI!
   const nameValid = USERNAME_RE.test(name.trim())
   const coachChoice = settings.coachVoice ?? catalog?.default ?? ''
+  const tuned = useTunedLanguages()
+  // A tuned sound model judges the sounds of speakers of some languages; say so only when this learner gets one.
+  const languageNote =
+    settings.nativeLanguage && tuned.includes(settings.nativeLanguage)
+      ? `For ${settings.nativeLanguage} it also picks a sound model tuned for South Asian speakers of English; no language gets a bonus or penalty.`
+      : 'It never changes a score.'
 
   const saveName = () => {
     if (!nameValid || name.trim() === settings.username) return
@@ -147,7 +253,7 @@ export function SettingsDialog() {
           </Row>
         </Group>
 
-        <Group icon={<TranslateIcon size={14} weight="fill" />} title="Your coach" footer="Your first language puts the sounds usually hard for its speakers first and lets the coach say why a slip happens; it never changes a score. “Be clearly understood” puts slips that change a word first. Saved with your profile.">
+        <Group icon={<TranslateIcon size={14} weight="fill" />} title="Your coach" footer={`Your first language puts the sounds usually hard for its speakers first and lets the coach say why a slip happens. ${languageNote} “Be clearly understood” puts slips that change a word first. Saved with your profile.`}>
           <Row label="First language" icon={<TranslateIcon size={18} />}>
             <Select
               value={settings.nativeLanguage ?? '__none'}
@@ -205,6 +311,8 @@ export function SettingsDialog() {
             />
           </div>
         </Group>
+
+        <ImproveGroup />
 
         <Group icon={<PaletteIcon size={14} weight="fill" />} title="Appearance">
           <div className="p-2">
