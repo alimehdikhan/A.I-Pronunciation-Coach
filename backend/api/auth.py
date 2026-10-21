@@ -290,6 +290,10 @@ class GoogleStartBody(BaseModel):
     next: str | None = Field(default=None, max_length=300)
 
 
+class GoogleFinishBody(BaseModel):
+    ticket: str = Field(min_length=20, max_length=100)
+
+
 def _safe_next(path: str | None) -> str:
     """Where to go after signing in: only a path inside this app, never another site."""
     if path and path.startswith("/") and not path.startswith(("//", "/api/")) and "\\" not in path:
@@ -374,7 +378,24 @@ def google_callback(
     _release_key(db, pending.key, except_user_id=user.id)
     add_device(db, user, pending.key)
     db.commit()
-    return _to_login(signed_in="google", next=pending.next)
+    return _to_login(signed_in="google", ticket=oauth.issue_ticket(user.id), next=pending.next)
+
+
+@router.post("/google/finish")
+def google_finish(
+    request: Request, body: GoogleFinishBody, key: str | None = Depends(profile_key), db: Session = Depends(get_db)
+) -> dict[str, Any]:
+    """Back from Google: sign in the browser holding the one-time pass, whatever its key is by now."""
+    auth_rate_limiter.check(client_key(request))
+    key = _need_key(key)
+    user_id = oauth.redeem_ticket(body.ticket)
+    user = db.get(User, user_id) if user_id is not None else None
+    if user is None:
+        raise AuthError(400, "That Google sign-in has expired. Please try again.", "google_expired")
+    _release_key(db, key, except_user_id=user.id)
+    add_device(db, user, key)
+    db.commit()
+    return _profile(db, user)
 
 
 # --- Password reset by email (only when an email provider is configured) ----------------------
