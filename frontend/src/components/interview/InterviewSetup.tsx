@@ -28,6 +28,7 @@ import {
   StepHeader,
 } from '@/components/interview/setupParts'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { api } from '@/lib/api'
 import { showError } from '@/lib/errors'
@@ -88,8 +89,18 @@ export function InterviewSetup({ onStart }: { onStart: (session: InterviewStart)
   const current = steps[at]
   const back = at > 0 ? () => setStep(steps[at - 1]) : undefined
   const roleLabel = options.roles.find((r) => r.id === prefs.role)?.label
+  // A visa or admission interview isn't for a company's job.
+  const forJob = type.id !== 'visa' && type.id !== 'university'
   const begin = () =>
-    start.mutate({ type: type.id, role: prefs.role, level: prefs.level, count: prefs.count, username: username || undefined })
+    start.mutate({
+      type: type.id,
+      role: prefs.role,
+      level: prefs.level,
+      count: prefs.count,
+      username: username || undefined,
+      company: forJob ? prefs.company.trim() || undefined : undefined,
+      job_title: forJob ? prefs.jobTitle.trim() || undefined : undefined,
+    })
 
   // Picking a kind with the pointer moves straight on; keyboard users (arrow keys change the choice) press Continue.
   const pick = (t: TypeOption, moveOn: boolean) => {
@@ -121,7 +132,14 @@ export function InterviewSetup({ onStart }: { onStart: (session: InterviewStart)
             // What was chosen, with a quick way back to change it.
             <span className="flex flex-wrap items-center gap-x-1.5">
               <span className="font-medium text-foreground">{type.label}</span>
-              {type.role && roleLabel && <span>· {roleLabel}</span>}
+              {forJob && prefs.jobTitle.trim() ? (
+                <span>
+                  · {prefs.jobTitle.trim()}
+                  {prefs.company.trim() ? ` at ${prefs.company.trim()}` : ''}
+                </span>
+              ) : (
+                type.role && roleLabel && <span>· {roleLabel}</span>
+              )}
               {type.level && <span>· {LEVEL_SHORT[prefs.level] ?? prefs.level}</span>}
               <button
                 type="button"
@@ -180,6 +198,28 @@ export function InterviewSetup({ onStart }: { onStart: (session: InterviewStart)
               </Field>
             )}
             {type.level && <LevelChoice levels={options.levels} />}
+            {forJob && (
+              <Field title="The job you're preparing for" hint="Optional. The interviewer asks about this job, the way someone hiring for it would.">
+                <div className="grid gap-2.5 sm:grid-cols-2">
+                  <Input
+                    value={prefs.jobTitle}
+                    onChange={(e) => prefs.set({ jobTitle: e.target.value })}
+                    placeholder="Job title, e.g. Backend Developer"
+                    aria-label="Job title"
+                    maxLength={60}
+                    className="h-11 rounded-xl text-[15px]"
+                  />
+                  <Input
+                    value={prefs.company}
+                    onChange={(e) => prefs.set({ company: e.target.value })}
+                    placeholder="Company, e.g. Infosys"
+                    aria-label="Company"
+                    maxLength={60}
+                    className="h-11 rounded-xl text-[15px]"
+                  />
+                </div>
+              </Field>
+            )}
             <ContinueBar onContinue={() => setStep('how')} />
           </div>
         )}
