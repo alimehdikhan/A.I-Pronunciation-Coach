@@ -9,10 +9,11 @@ pinned: false
 ---
 
 <p align="center">
-  <img src="frontend/public/favicon.svg" width="88" height="88" alt="Vocaly AI app icon">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.png">
+    <img src="assets/logo-light.png" width="250" alt="Vocaly AI, AI pronunciation coach">
+  </picture>
 </p>
-
-<h1 align="center">Vocaly AI</h1>
 
 <p align="center"><b>Speak English that people understand.</b></p>
 
