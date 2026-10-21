@@ -165,7 +165,7 @@ export default function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
       <div className="w-full max-w-[420px]">
         <div className="mb-8 flex flex-col items-center text-center">
           <Link to="/" aria-label="Home">
-            <LogoMark className="size-14 rounded-2xl shadow-[0_12px_40px_-10px_rgb(201_89_221/0.6)]" />
+            <LogoMark className="size-14 drop-shadow-[0_10px_24px_rgb(79_70_229/0.45)]" />
           </Link>
           <h1 className="headline mt-6 text-[30px]">{signup ? 'Create your account' : 'Welcome back'}</h1>
           <p className="mt-2 text-[15px] text-muted-foreground">
