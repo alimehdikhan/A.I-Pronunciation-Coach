@@ -5,8 +5,13 @@ Google's sign-in address and goes there. Google sends it back to `GET /api/auth/
 which trades the code for the Google account's id, email and name, finds or creates the Vocaly
 account and binds this browser's profile key to it, exactly like signing in with a password.
 
-Pending sign-ins live in memory for ten minutes: a restart in the middle of one only means trying
-again. Nothing from Google is kept but the account id (`sub`), the email and the name.
+The callback also hands the browser a one-time pass (`?ticket=`, two minutes), which the sign-in
+page trades for a sign-in of whatever profile key it holds by then (`POST /api/auth/google/finish`).
+So the sign-in survives a browser that changes its key on the way (a cleared or blocked storage, an
+in-app browser handing Google to the system browser), not only the usual case where the key is kept.
+
+Pending sign-ins and passes live in memory: a restart in the middle of one only means trying again.
+Nothing from Google is kept but the account id (`sub`), the email and the name.
 """
 
 from __future__ import annotations
@@ -29,6 +34,7 @@ AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
 USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo"
 PENDING_SECONDS = 600
+TICKET_SECONDS = 120
 MAX_PENDING = 5000
 CALLBACK_PATH = "/api/auth/google/callback"
 
@@ -60,6 +66,7 @@ class Pending:
 
 
 _pending: dict[str, Pending] = {}
+_tickets: dict[str, tuple[int, float]] = {}  # pass -> (user id, expiry)
 _lock = threading.Lock()
 
 
@@ -110,6 +117,28 @@ def take(state: str) -> Pending | None:
     if pending is None or pending.expires < time.monotonic():
         return None
     return pending
+
+
+def issue_ticket(user_id: int) -> str:
+    """A one-time pass the sign-in page trades for signing its browser in to this account."""
+    ticket = secrets.token_urlsafe(32)
+    now = time.monotonic()
+    with _lock:
+        for old in [t for t, (_, expires) in _tickets.items() if expires < now]:
+            del _tickets[old]
+        if len(_tickets) >= MAX_PENDING:
+            del _tickets[next(iter(_tickets))]
+        _tickets[ticket] = (user_id, now + TICKET_SECONDS)
+    return ticket
+
+
+def redeem_ticket(ticket: str) -> int | None:
+    """The account a pass is for, once: a pass can't be used twice or after two minutes."""
+    with _lock:
+        entry = _tickets.pop(ticket, None)
+    if entry is None or entry[1] < time.monotonic():
+        return None
+    return entry[0]
 
 
 def identity(code: str, pending: Pending) -> dict[str, Any]:
