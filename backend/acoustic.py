@@ -15,6 +15,7 @@ from typing import Sequence
 import numpy as np
 
 from backend import gop, phonetics
+from backend.sound_model import SoundModel
 
 # Maps GOP (a log-posterior, <= 0) to the probability that a trained listener
 # rates the sound as clean: sigmoid(SLOPE * gop + OFFSET).
@@ -83,10 +84,16 @@ def _candidates(word: str, inventory: gop.Inventory, accent: str = "american") -
 
 
 def analyse(
-    words: Sequence[str], log_probs: np.ndarray, inventory: gop.Inventory, accent: str = "american"
+    words: Sequence[str],
+    log_probs: np.ndarray,
+    inventory: gop.Inventory,
+    accent: str = "american",
+    model: SoundModel | None = None,
 ) -> list[WordAcoustics | None] | None:
     """Acoustic evidence for each target word (None for words without phonemes).
 
+    `model` is a trained sound classifier for the learner's group (backend.sound_model);
+    without one each sound's probability comes from the default curve, `acceptance`.
     Returns None when the audio can't be explained at all (e.g. far too short).
     """
     options = [_candidates(word, inventory, accent) for word in words]
@@ -109,6 +116,7 @@ def analyse(
 
     labels = flatten(choice)
     results = gop.score_sequence(labels, log_probs, inventory, emissions=(scores, blank))
+    probabilities = model.score(results) if model is not None else [acceptance(r.gop) for r in results]
     out: list[WordAcoustics | None] = []
     position = 0
     for opts, k in zip(options, choice, strict=True):
@@ -116,14 +124,17 @@ def analyse(
             out.append(None)
             continue
         pron, word_labels = opts[k]
-        chunk = results[position : position + len(word_labels)]
+        span = range(position, position + len(word_labels))
         position += len(word_labels)
         out.append(
             WordAcoustics(
                 pron,
                 [
-                    PhonemeResult(r.phoneme, acceptance(r.gop), r.gop, r.best_alternative, r.start, r.end)
-                    for r in chunk
+                    PhonemeResult(
+                        results[i].phoneme, probabilities[i], results[i].gop, results[i].best_alternative,
+                        results[i].start, results[i].end,
+                    )
+                    for i in span
                 ],
             )
         )
