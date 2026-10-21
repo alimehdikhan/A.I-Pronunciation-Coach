@@ -14,6 +14,8 @@ piper-tts>=1.8,<2
 prometheus-client>=0.21,<1
 # Reads the text of a PDF CV for "Interview from your CV" (the CV itself is never stored).
 pypdf>=5,<7
+# Model downloads, and uploading the recordings learners give to a private dataset (backend.contributions).
+huggingface-hub>=0.30,<3
 # Calls the language model that writes the personalised coaching tips.
 httpx>=0.28,<1
 # The live voice conversation with the coach (Gemini Live).
