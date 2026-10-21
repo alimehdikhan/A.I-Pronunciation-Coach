@@ -142,7 +142,35 @@ def test_a_failure_at_google_is_reported_not_raised(client, monkeypatch):
         raise oauth.GoogleError("token endpoint said no")
 
     monkeypatch.setattr(oauth, "identity", broken)
-    assert callback(client, start(client)["state"][0])["error"] == ["google_failed"]
+    back = callback(client, start(client)["state"][0])
+    assert back["error"] == ["google_failed"] and back["reason"] == ["token_endpoint_said_no"]
+
+
+def test_google_s_own_refusal_becomes_the_reason(monkeypatch):
+    class Answer:
+        status_code = 401
+
+        def json(self):
+            return {"error": "invalid_client", "error_description": "Unauthorized"}
+
+    class Client:
+        def __init__(self, timeout):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def post(self, url, data):
+            assert data["code_verifier"] == "v" and data["grant_type"] == "authorization_code"
+            return Answer()
+
+    monkeypatch.setattr(oauth.httpx, "Client", Client)
+    pending = oauth.Pending(key="k", next="/practice", verifier="v", redirect_uri="https://x/cb", expires=0)
+    with pytest.raises(oauth.GoogleError, match="^invalid_client$"):
+        oauth.identity("code", pending)
 
 
 @pytest.mark.parametrize("unsafe", ["https://evil.example/", "//evil.example/", "/api/auth/me", "practice"])
