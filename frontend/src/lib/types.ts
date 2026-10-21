@@ -662,7 +662,33 @@ export type InterviewKind =
   | 'visa_study'
   | 'visa_funding'
   | 'visa_plans'
-export type FollowUpId = 'example' | 'result' | 'ownership' | 'more'
+export type FollowUpId =
+  | 'example'
+  | 'result'
+  | 'ownership'
+  | 'more'
+  | 'reason'
+  | 'challenge'
+  | 'consistency'
+  | 'clarify'
+  | 'redirect'
+
+/** The live interviewer's reply to an answer (`POST /api/interview/turn`). */
+export interface InterviewTurn {
+  /** What the candidate said, as the interviewer heard it. */
+  transcript: string
+  no_speech: boolean
+  seconds: number
+  /** Follow up, ask more simply, bring back to the question, go on, or (nothing heard) ask again. */
+  action: 'follow_up' | 'clarify' | 'redirect' | 'move_on' | 'repeat'
+  probe: FollowUpId | null
+  /** One short line said first, showing the interviewer listened. */
+  reaction: string | null
+  /** The follow-up question, when there is one. */
+  question: string | null
+  /** At the end: the interviewer's answer to the candidate's own questions. */
+  reply: string | null
+}
 
 export interface InterviewQuestion {
   id: string
@@ -779,8 +805,13 @@ export interface StoredInterviewAnswer {
   pronunciation: number | null
   attempt: number
   answered_at: string
-  follow_up?: Omit<StoredInterviewAnswer, 'follow_up'> & { id: FollowUpId; text: string }
+  /** Every follow-up the answer got, in order. */
+  follow_ups?: StoredFollowUp[]
+  /** Interviews saved before several follow-ups were kept: the one follow-up. */
+  follow_up?: StoredFollowUp
 }
+
+export type StoredFollowUp = Omit<StoredInterviewAnswer, 'follow_up' | 'follow_ups'> & { id: FollowUpId; text: string }
 
 export interface InterviewReport {
   answered: number
