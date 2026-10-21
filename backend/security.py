@@ -165,7 +165,7 @@ COMMON_PASSWORDS = frozenset(
     123123123 11111111 00000000 12341234 87654321 qwertyui qwerty123 qwertyuiop 1q2w3e4r 1qaz2wsx
     abcd1234 abc12345 iloveyou iloveyou1 letmein1 welcome1 welcome123 admin123 administrator
     football baseball dragon123 monkey123 sunshine1 princess1 superman1 whatever1 trustno1
-    changeme changeme1 default123 test1234 testtest guest123 pronunciation coach123
+    changeme changeme1 default123 test1234 testtest guest123 pronunciation coach123 vocaly vocaly123 vocalyai
     """.split()
 )
 
