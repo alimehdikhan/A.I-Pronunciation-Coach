@@ -6,6 +6,7 @@ import {
   LightbulbIcon,
   MicrophoneIcon,
   PhoneDisconnectIcon,
+  PlayIcon,
   SpeakerHighIcon,
   SpinnerGapIcon,
   StopIcon,
@@ -19,6 +20,7 @@ import { Panel } from '@/components/common'
 import { AnswerFeedback, viewFromResult } from '@/components/interview/AnswerFeedback'
 import { AnswerTimer } from '@/components/interview/AnswerTimer'
 import { CallButton, CallTimer, SpeakingBars, YouTile } from '@/components/interview/callParts'
+import { MINUTES } from '@/components/interview/setupParts'
 import { LazySiriOrb } from '@/components/orb/LazySiriOrb'
 import type { OrbState } from '@/components/orb/SiriOrb'
 import {
@@ -39,7 +41,7 @@ import { useRecorder, type Recording } from '@/hooks/useRecorder'
 import { api } from '@/lib/api'
 import { useVoiceCatalog } from '@/lib/queries'
 import { createAnalyserReader, MIC_GAIN, OUTPUT_GAIN } from '@/lib/audio'
-import { outputAnalyserRef, useVoiceStore } from '@/lib/audioEngine'
+import { audioEngine, outputAnalyserRef, useVoiceStore } from '@/lib/audioEngine'
 import { errorLine, showError } from '@/lib/errors'
 import {
   afterSmallTalkLine,
@@ -58,6 +60,7 @@ import type { FollowUpId, InterviewAnswerResult, InterviewStart } from '@/lib/ty
 import { cn } from '@/lib/utils'
 import { useInterviewPrefs } from '@/store/interview'
 import { useSettings } from '@/store/settings'
+import { useUI } from '@/store/ui'
 
 type Phase = 'speaking' | 'thinking' | 'ready' | 'turn' | 'scoring' | 'feedback' | 'closing'
 type FollowUp = { id: FollowUpId; text: string }
@@ -163,6 +166,9 @@ export function InterviewRoom({
   const earlier = useRef<{ question: string; answer: string }[]>([])
   // The whole conversation, shown under the call.
   const [log, setLog] = useState<LogEntry[]>([])
+  // Nothing is said until the learner presses Start: sound can only be switched on inside a tap.
+  const [begun, setBegun] = useState(false)
+  const setMicCheckOpen = useUI((s) => s.setMicCheckOpen)
 
   const question = questions[index]
   const target = smallTalk ? SMALL_TALK_SECONDS : followUp ? FOLLOW_UP_SECONDS : question.target_seconds
@@ -436,26 +442,46 @@ export function InterviewRoom({
     )
   }
 
-  // Opening: small talk in a real interview, then the interviewer explains what happens and asks the first question.
-  useEffect(() => {
-    alive.current = true
+  // How the interviewer opens: small talk in a real interview, or a welcome and the first question.
+  // Fixed when the interview starts.
+  const opening = useMemo(() => {
     const first = questions[startIndex]
     const name = (displayName || username).trim().split(/\s+/)[0] ?? ''
     const greeting = startIndex === 0 && mode === 'interview' && readAloud ? smallTalkLine({ name, type: session.type }) : null
-    if (greeting) {
-      setSmallTalk(greeting)
-      void ask(greeting)
+    const line = greeting ?? (startIndex === 0 ? `${openingLine({ name, ...plan })} ${firstQuestionLine(first.text)}` : resumeLine(first.text))
+    const soundCheck = `Hi${name ? ` ${name}` : ''}, I'm ${INTERVIEWER.name}. If you can hear me clearly, you're all set.`
+    return { first, greeting, line, soundCheck }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  /** The learner presses Start: sound is switched on inside the tap, then the interviewer begins. */
+  function begin() {
+    audioEngine.ensure()
+    setBegun(true)
+    if (opening.greeting) {
+      setSmallTalk(opening.greeting)
+      void ask(opening.greeting)
     } else {
-      conversation.current = [{ speaker: 'interviewer', text: first.text }]
-      void ask(startIndex === 0 ? `${openingLine({ name, ...plan })} ${firstQuestionLine(first.text)}` : resumeLine(first.text))
+      conversation.current = [{ speaker: 'interviewer', text: opening.first.text }]
+      void ask(opening.line)
     }
-    // The voice takes seconds per sentence on a small server, so render everything the interviewer will
-    // say next, one line after another, while the learner is still talking: each question then starts
-    // the moment the previous answer ends.
+  }
+
+  function testSound() {
+    void say(opening.soundCheck, { key: SPEAK_KEY, rate: fastSpeech ? 1.25 : 1 })
+  }
+
+  // While the learner reads the start screen, render what the interviewer says first and then everything
+  // after it, one line after another: each line then plays the moment it is needed.
+  useEffect(() => {
+    alive.current = true
+    const { first, greeting } = opening
     let cancelled = false
     if (readAloud) {
       const rate = fastSpeech ? 1.25 : 1
       const lines = [
+        opening.line,
+        opening.soundCheck,
         ...(greeting ? [`${afterSmallTalkLine(plan)} ${firstQuestionLine(first.text)}`] : []),
         ...questions.slice(startIndex + 1).map((q, k) => nextQuestionLine(startIndex + 1 + k, total, q.text)),
         closingLine(session.type),
@@ -473,7 +499,7 @@ export function InterviewRoom({
       step.current++
       stopVoice()
     }
-    // Runs once per interview; `ask` reads the settings fixed when it started.
+    // Runs once per interview; the lines are fixed when it starts.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -510,6 +536,10 @@ export function InterviewRoom({
   }, [session.saved, answered.size])
 
   function primary() {
+    if (!begun) {
+      begin()
+      return
+    }
     if (recording) recorder.stop()
     else if (phase === 'speaking' || phase === 'thinking' || phase === 'ready') startAnswer()
   }
@@ -589,8 +619,9 @@ export function InterviewRoom({
   const orbState: OrbState =
     phase === 'scoring' || phase === 'turn' || voicePreparing ? 'thinking' : recording ? 'listening' : voiceActive ? 'speaking' : 'idle'
 
-  const status =
-    phase === 'speaking'
+  const status = !begun
+    ? 'Waiting to start'
+    : phase === 'speaking'
       ? `${INTERVIEWER.name} is asking…`
       : phase === 'thinking'
         ? `Think about your answer · ${thinkLeft ?? 0} s`
@@ -632,12 +663,13 @@ export function InterviewRoom({
       >
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-3 sm:px-6">
           <div className="flex min-w-0 items-center gap-2 text-[13px]">
-            <span className="size-2 shrink-0 rounded-full bg-[#ff453a] motion-safe:animate-pulse" aria-hidden />
+            {begun && <span className="size-2 shrink-0 rounded-full bg-[#ff453a] motion-safe:animate-pulse" aria-hidden />}
             <span className="truncate font-medium text-white/90">
               {session.type_label}
               {session.role_label ? ` · ${session.role_label}` : ''}
             </span>
-            <CallTimer />
+            {/* Counts from the moment the interview starts. */}
+            {begun && <CallTimer />}
           </div>
           <div className="flex items-center gap-3">
             {pending > 0 && phase !== 'scoring' && (
@@ -691,6 +723,31 @@ export function InterviewRoom({
 
           <YouTile name={displayName || username || 'You'} live={recording} readLevel={readLevel} className="absolute top-3 right-3 sm:top-4 sm:right-4" />
 
+          {!begun && (
+            <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-[#0e0e11]/80 px-6 text-center backdrop-blur-md">
+              <h3 className="text-[22px] font-semibold tracking-[-0.01em] text-balance text-white sm:text-[26px]">
+                {startIndex > 0 ? 'Ready to carry on?' : `${INTERVIEWER.name} is ready when you are`}
+              </h3>
+              <p className="mt-2 max-w-md text-[15px] leading-relaxed text-white/70">
+                {session.type_label} · {total} questions{MINUTES[total] ? ` · ${MINUTES[total].toLowerCase()}` : ''}. Find a quiet spot
+                and turn your volume up.
+              </p>
+              <div className="mt-5 flex flex-wrap justify-center gap-2">
+                <Button variant="secondary" onClick={testSound} disabled={voiceActive || voicePreparing}>
+                  {voicePreparing ? <SpinnerGapIcon className="motion-safe:animate-spin" /> : <SpeakerHighIcon weight="fill" />}
+                  {voiceActive ? 'Playing…' : 'Test sound'}
+                </Button>
+                <Button variant="secondary" onClick={() => setMicCheckOpen(true)}>
+                  <MicrophoneIcon weight="fill" /> Check microphone
+                </Button>
+              </div>
+              <Button size="lg" className="mt-6 h-14 rounded-full px-8 text-[16px]" onClick={begin}>
+                <PlayIcon weight="fill" /> {startIndex > 0 ? 'Carry on' : 'Start interview'}
+              </Button>
+              <p className="mt-3 text-[12px] text-white/45">Headphones give the clearest sound.</p>
+            </div>
+          )}
+
           <div className="absolute bottom-3 left-3 flex items-center gap-2 rounded-full bg-black/55 px-3 py-1.5 text-[13px] font-medium text-white backdrop-blur-md sm:bottom-4 sm:left-4">
             {voiceActive && <SpeakingBars />}
             {INTERVIEWER.name}
@@ -722,7 +779,7 @@ export function InterviewRoom({
           </div>
         </div>
 
-        <div className="px-4 pt-5 pb-5 sm:px-8 sm:pb-6">
+        <div className={cn('px-4 pt-5 pb-5 sm:px-8 sm:pb-6', !begun && 'hidden')}>
           {phase !== 'feedback' && phase !== 'closing' && !smallTalk && (
             <AnswerTimer elapsed={recording ? recorder.elapsed : 0} target={target} max={session.max_seconds} active={recording} />
           )}
