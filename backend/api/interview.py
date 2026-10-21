@@ -49,6 +49,9 @@ class StartRequest(BaseModel):
     count: int = 5
     # With a name and a profile key the interview is saved (text only) so it can be resumed and reviewed.
     username: str | None = Field(None, max_length=40)
+    # The job the learner is preparing for, if they gave it: the interviewer words its questions for it.
+    company: str | None = Field(None, max_length=80)
+    job_title: str | None = Field(None, max_length=80)
 
 
 def _stamp(value) -> str | None:
@@ -109,12 +112,23 @@ def _labels(kind: str, role: str, level: str) -> dict[str, Any]:
     }
 
 
+def _context(row: InterviewSession) -> dict[str, str]:
+    try:
+        data = json.loads(row.context or "{}")
+    except ValueError:
+        return {}
+    return interview.clean_context(data.get("company"), data.get("job_title")) if isinstance(data, dict) else {}
+
+
 def _summary(row: InterviewSession) -> dict[str, Any]:
     total = len(_question_ids(row))
     answers = list(_answers(row).values())
+    context = _context(row)
     return {
         "id": row.id,
         **_labels(_kind(row), row.role, row.level),
+        "company": context.get("company"),
+        "job_title": context.get("job_title"),
         "created_at": _stamp(row.created_at),
         "updated_at": _stamp(row.updated_at),
         "total": total,
@@ -159,19 +173,43 @@ def interview_options() -> dict[str, Any]:
 
 
 @router.post("/api/interview/sessions")
-def start_interview(body: StartRequest, key: str | None = Depends(profile_key), db: Session = Depends(get_db)) -> dict[str, Any]:
-    """Pick the questions, in the order a real interview asks them; save the interview when the learner has a name."""
+async def start_interview(body: StartRequest, key: str | None = Depends(profile_key), db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Pick the questions, in the order a real interview asks them, and word them the way a real interviewer for
+    this job would (the language model; the bank's wording without it). Saved when the learner has a name."""
     kind, role, level = interview.settings_for(body.type, body.role, body.level)
-    questions = interview.build_session(role, level, interview.clean_count(body.count), kind=kind)
+    # A job interview can be for a named company and job; a visa or admission interview is not.
+    context = interview.clean_context(body.company, body.job_title) if kind not in ("visa", "university") else {}
+    planned = interview.build_session(role, level, interview.clean_count(body.count), kind=kind)
+    entries: list[Any] = [q["id"] for q in planned]
+    questions = planned
+    coach = get_coach()
+    if coach.enabled and planned:
+        spec = interview.TYPES[kind]
+        facts = {
+            "interview": spec["label"],
+            **({"role": interview.ROLES[role]} if spec["role"] else {}),
+            **({"candidate_level": interview.LEVELS[level]} if spec["level"] else {}),
+            **context,
+            "questions": [{"kind": q["kind"], "text": q["text"]} for q in planned],
+        }
+        texts, _source = await coach.generate(
+            "interview_wording", interview.WORDING_PROMPT, facts,
+            lambda data: interview.parse_wording(data, planned), lambda: None, cache=False, effort="low",
+        )
+        if texts:
+            entries = interview.worded(planned, texts)
+            questions = [interview.custom_view(entry) for entry in entries]
     session_id = None
     name = clean_username(body.username)
     if name and key:
         user = find_or_create_user(db, name, key)
-        session_id = create_interview(db, user, kind, role, level, [q["id"] for q in questions], interview.MAX_SAVED).id
+        session_id = create_interview(db, user, kind, role, level, entries, interview.MAX_SAVED, context).id
     return {
         "id": session_id,
         "saved": session_id is not None,
         **_labels(kind, role, level),
+        "company": context.get("company"),
+        "job_title": context.get("job_title"),
         "questions": [{**q, "index": i} for i, q in enumerate(questions)],
         "max_seconds": settings.interview_seconds,
     }
@@ -450,6 +488,8 @@ async def interviewer_turn(
     conversation: str = Form("[]", max_length=40_000, description="JSON: what was said on this question so far"),
     earlier: str = Form("[]", max_length=20_000, description="JSON: earlier questions and the start of each answer"),
     follow_ups_asked: int = Form(0, ge=0, le=10),
+    company: str | None = Form(None, max_length=80),
+    job_title: str | None = Form(None, max_length=80),
 ) -> dict[str, Any]:
     """What the interviewer says after an answer, in a second or two, the way a real interviewer reacts.
 
@@ -461,6 +501,9 @@ async def interviewer_turn(
     turn_rate_limiter.check(client_key(request))
     if question_id in interview.BY_ID:
         question = interview.question_view(interview.BY_ID[question_id])
+        asked = " ".join((question_text or "").split())
+        if 12 <= len(asked) <= cv.MAX_QUESTION_CHARS:
+            question = {**question, "text": asked}  # worded for this job when the interview started
     elif question_id.startswith("cv-") and question_text and question_kind in cv.KINDS:
         question = interview.custom_view({"id": question_id, "kind": question_kind, "text": " ".join(question_text.split())})
     else:
@@ -500,6 +543,7 @@ async def interviewer_turn(
         "interview": spec["label"],
         **({"role": interview.ROLES[role]} if spec["role"] else {}),
         **({"candidate_level": interview.LEVELS[level]} if spec["level"] else {}),
+        **interview.clean_context(company, job_title),
     }
     # The candidate's own questions at the end get an answer, as they would in the room.
     if question["kind"] == "closing":
