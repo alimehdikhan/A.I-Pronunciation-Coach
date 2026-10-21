@@ -735,6 +735,9 @@ export interface InterviewLabels {
   role_label: string | null
   level: string
   level_label: string | null
+  /** The job the learner is preparing for, when they gave it. */
+  company?: string | null
+  job_title?: string | null
 }
 
 export interface InterviewStart extends InterviewLabels {
