@@ -364,6 +364,8 @@ class InterviewSession(Base):
     level = Column(String(10), nullable=False)
     questions = Column(Text, nullable=False)  # JSON: the question ids, in order
     answers = Column(Text, nullable=False, default="{}")  # JSON: {question index: stored answer}
+    # JSON: the company and job title the learner is preparing for, when they gave them.
+    context = Column(Text, nullable=True)
     created_at = Column(DateTime, default=utcnow)
     updated_at = Column(DateTime, default=utcnow)
 
@@ -454,7 +456,7 @@ ADDED_COLUMNS = {
         "contribute_at", "contributor_id", "google_sub",
     ],
     "phoneme_observations": ["tier"],
-    "interview_sessions": ["interview_type"],
+    "interview_sessions": ["interview_type", "context"],
 }
 
 
