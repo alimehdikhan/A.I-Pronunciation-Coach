@@ -150,13 +150,44 @@ export function StyleAndOptions() {
             onChange={(showText) => prefs.set({ showText })}
             disabled={!prefs.readAloud}
           />
+          <Toggle
+            label="Hands-free"
+            hint={
+              prefs.mode === 'interview'
+                ? 'Your mic opens after each question and closes when you pause, and the next question comes straight away. Follow-up questions are skipped, since they wait for your answer to be scored.'
+                : 'Your mic opens after each question and closes when you pause.'
+            }
+            checked={prefs.handsFree}
+            onChange={(handsFree) => prefs.set({ handsFree })}
+          />
+          {prefs.handsFree && (
+            <div className="flex flex-wrap items-center justify-between gap-3 py-3">
+              <span>
+                <span className="block text-[15px] font-medium">Pause before you’re done</span>
+                <span className="block text-[13px] text-muted-foreground">How long you stay quiet to finish an answer. Pick Long if you stop to think.</span>
+              </span>
+              <Segmented
+                size="sm"
+                layoutId="interview-patience"
+                value={prefs.patience}
+                onChange={(patience) => prefs.set({ patience })}
+                options={[
+                  { value: 'short', label: 'Short' },
+                  { value: 'normal', label: 'Normal' },
+                  { value: 'long', label: 'Long' },
+                ]}
+              />
+            </div>
+          )}
           {prefs.mode === 'interview' ? (
-            <Toggle
-              label="Start recording when the question ends"
-              hint="Answer straight away, the way you would in the room."
-              checked={prefs.autoRecord}
-              onChange={(autoRecord) => prefs.set({ autoRecord })}
-            />
+            !prefs.handsFree && (
+              <Toggle
+                label="Start recording when the question ends"
+                hint="Answer straight away, the way you would in the room."
+                checked={prefs.autoRecord}
+                onChange={(autoRecord) => prefs.set({ autoRecord })}
+              />
+            )
           ) : (
             <div className="flex flex-wrap items-center justify-between gap-3 py-3">
               <span>
