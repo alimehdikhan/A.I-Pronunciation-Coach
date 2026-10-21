@@ -411,15 +411,24 @@ def delete_baseline_audio(db: Session, user: User) -> int:
 
 
 def create_interview(
-    db: Session, user: User, kind: str, role: str, level: str, questions: list[Any], keep: int
+    db: Session,
+    user: User,
+    kind: str,
+    role: str,
+    level: str,
+    questions: list[Any],
+    keep: int,
+    context: dict[str, str] | None = None,
 ) -> InterviewSession:
     """Start a saved interview; only the newest `keep` interviews are kept.
 
-    `questions` holds bank question ids, or whole questions written for this candidate (from their CV).
+    `questions` holds bank question ids, or whole questions worded for this candidate (for their job, or
+    from their CV). `context` is the company and job title they gave, if any.
     """
     row = InterviewSession(
         user_id=user.id, interview_type=kind, role=role, level=level,
         questions=json.dumps(questions, ensure_ascii=False), answers="{}",
+        context=json.dumps(context, ensure_ascii=False) if context else None,
     )
     db.add(row)
     db.flush()
