@@ -29,6 +29,9 @@ interface InterviewPrefs {
   patience: Patience
   /** Seconds to think before answering (practice mode). */
   thinkSeconds: number
+  /** The job the learner is preparing for (optional): the interviewer words its questions for it. */
+  company: string
+  jobTitle: string
   set: (changes: Partial<Omit<InterviewPrefs, 'set'>>) => void
 }
 
@@ -48,6 +51,8 @@ export const useInterviewPrefs = create<InterviewPrefs>()(
       handsFree: true,
       patience: 'normal',
       thinkSeconds: 0,
+      company: '',
+      jobTitle: '',
       set: (changes) => set(changes),
     }),
     { name: 'pc-interview', version: 1 },
