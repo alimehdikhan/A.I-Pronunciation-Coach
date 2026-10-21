@@ -256,7 +256,7 @@ export default function HomePage() {
             aria-label="Vocaly AI, home"
             className="flex items-center gap-2.5 rounded-sm text-[15px] font-semibold focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
           >
-            <LogoMark className="size-8 rounded-[10px]" />
+            <LogoMark />
             <span className="hidden sm:inline">Vocaly AI</span>
           </Link>
           <nav aria-label="Page" className="hidden items-center gap-7 text-[13px] text-muted-foreground md:flex">
