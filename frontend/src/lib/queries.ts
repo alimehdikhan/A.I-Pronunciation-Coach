@@ -29,6 +29,11 @@ export function useLearnerOptions() {
   return useQuery({ queryKey: ['learner-options'], queryFn: api.learnerOptions, staleTime: Infinity })
 }
 
+/** First languages whose speakers are scored by a sound model tuned for them ([] while loading or when none is installed). */
+export function useTunedLanguages(): string[] {
+  return useLearnerOptions().data?.tuned_languages ?? []
+}
+
 export function useHealth() {
   return useQuery({
     queryKey: keys.health,
