@@ -31,6 +31,7 @@ from backend import acoustic as acoustic_params
 from backend import gop, phonetics
 from backend.acoustic import WordAcoustics
 from backend.acoustic import analyse as analyse_acoustics
+from backend.sound_model import SoundModel
 
 logger = logging.getLogger("pronunciation_coach.pronunciation")
 
@@ -251,6 +252,7 @@ class PronunciationScorer:
         duration: Optional[float] = None,
         phoneme_log_probs: Optional[np.ndarray] = None,
         accent: str = "american",
+        sound_model: Optional[SoundModel] = None,
     ) -> Dict[str, Any]:
         level = normalize_difficulty(difficulty)
         settings = DIFFICULTY_SETTINGS[level]
@@ -264,11 +266,13 @@ class PronunciationScorer:
         # Acoustic evidence: what each target word's sounds were actually like.
         acoustic: Optional[List[Optional[WordAcoustics]]] = None
         if phoneme_log_probs is not None and self.inventory is not None and len(phoneme_log_probs):
+            # A trained model for the learner's first language replaces the default curve.
+            extra = {"model": sound_model} if sound_model is not None else {}
             # A British target also accepts non-rhotic forms ("car" without its /r/).
             acoustic = (
-                analyse_acoustics(ref_tokens, phoneme_log_probs, self.inventory, accent)
+                analyse_acoustics(ref_tokens, phoneme_log_probs, self.inventory, accent, **extra)
                 if accent != "american"
-                else analyse_acoustics(ref_tokens, phoneme_log_probs, self.inventory)
+                else analyse_acoustics(ref_tokens, phoneme_log_probs, self.inventory, **extra)
             )
 
         ops, _ = phonetics.align(ref_tokens, [t.text for t in spoken], phonetics.word_cost)
@@ -391,6 +395,8 @@ class PronunciationScorer:
                 "transcribed_phonemes": " ".join(e["spoken_ipa"] for e in entries if e["spoken"]),
                 "phoneme_similarity": _round(metrics["pronunciation"]),
                 "backend": backend,
+                # The trained sound model that judged the sounds ("south_asian"), or None for the default curve.
+                "sound_model": sound_model.profile if sound_model is not None and acoustic is not None else None,
             },
         }
 
@@ -684,5 +690,6 @@ class PronunciationScorer:
                 "transcribed_phonemes": "",
                 "phoneme_similarity": 0.0,
                 "backend": "cmudict",
+                "sound_model": None,
             },
         }
