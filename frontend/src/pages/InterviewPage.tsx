@@ -208,7 +208,7 @@ export default function InterviewPage({ tab = 'mock' }: { tab?: InterviewTab }) 
       />
       <div className="space-y-5">
         {tab === 'cv' ? <CvSetup onStart={start} /> : <InterviewSetup onStart={start} />}
-        <PastInterviews onOpen={(item) => setParams({ report: String(item.id) })} />
+        <PastInterviews hideEmpty onOpen={(item) => setParams({ report: String(item.id) })} />
         <Day30Link />
       </div>
     </>
