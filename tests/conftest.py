@@ -1,4 +1,4 @@
-"""Shared test fixtures for the AI Pronunciation Coach test suite."""
+"""Shared test fixtures for the Vocaly AI test suite."""
 
 import io
 import os
