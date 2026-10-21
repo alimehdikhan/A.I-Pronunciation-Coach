@@ -241,11 +241,12 @@
 }
 
 @layer components {
-  /* Translucent "material" used for bars and floating chrome. */
+  /* Translucent "material" used for bars and floating chrome. Write only the standard backdrop-filter:
+     the build adds -webkit- for Safari, and a hand-written prefixed line after it made the minifier drop
+     the standard one, so Chrome showed no blur. */
   .material {
     background: var(--material);
     backdrop-filter: saturate(180%) blur(24px);
-    -webkit-backdrop-filter: saturate(180%) blur(24px);
   }
   /* Elevated card surface. */
   .surface {
@@ -309,7 +310,6 @@
   .home-header[data-scrolled='true'] {
     background: var(--material);
     backdrop-filter: saturate(170%) blur(16px);
-    -webkit-backdrop-filter: saturate(170%) blur(16px);
   }
   .home-header[data-scrolled='true']::after {
     opacity: 1;
@@ -318,14 +318,12 @@
     .home-header[data-scrolled='true'] {
       background: var(--background);
       backdrop-filter: none;
-      -webkit-backdrop-filter: none;
     }
   }
   @media (prefers-contrast: more) {
     .home-header[data-scrolled='true'] {
       background: var(--background);
       backdrop-filter: none;
-      -webkit-backdrop-filter: none;
       box-shadow: 0 1px 0 var(--foreground);
     }
     .home-header::after {
