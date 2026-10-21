@@ -22,6 +22,8 @@ from backend.repositories import authorize, find_user
 from backend.security import RateLimiter, clean_username, client_key
 
 router = APIRouter()
+# What a teacher opens from a link: no account needed, the unguessable token is the permission.
+public_router = APIRouter()
 
 SHARE_DAYS = 7
 MAX_AUDIO_BYTES = 8 * 1024 * 1024
@@ -175,7 +177,7 @@ def _live(db: Session, token: str) -> Share:
     return share
 
 
-@router.get("/api/shared/{token}")
+@public_router.get("/api/shared/{token}")
 def view_share(token: str, db: Session = Depends(get_db)) -> dict[str, Any]:
     """The shared attempt, read-only, and the comments left so far."""
     share = _live(db, token)
@@ -188,7 +190,7 @@ def view_share(token: str, db: Session = Depends(get_db)) -> dict[str, Any]:
     }
 
 
-@router.get("/api/shared/{token}/audio")
+@public_router.get("/api/shared/{token}/audio")
 def share_audio(token: str, db: Session = Depends(get_db)) -> Response:
     share = _live(db, token)
     if share.audio is None:
@@ -201,7 +203,7 @@ class CommentBody(BaseModel):
     text: str = Field(min_length=1, max_length=1000)
 
 
-@router.post("/api/shared/{token}/comments")
+@public_router.post("/api/shared/{token}/comments")
 def comment_on_share(token: str, body: CommentBody, request: Request, db: Session = Depends(get_db)) -> dict[str, Any]:
     """A teacher's comment on the shared attempt (no account). Rate-limited and checked for abuse."""
     comment_rate_limiter.check(client_key(request))
