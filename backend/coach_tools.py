@@ -523,7 +523,7 @@ _COMPARE = re.compile(
 
 DEVELOPER = "Ali Mehdi Khan"
 MAKER_REPLY = (
-    f"This pronunciation coach was developed by {DEVELOPER}. I'm here to help you speak English clearly, "
+    f"Vocaly AI was developed by {DEVELOPER}. I'm here to help you speak English clearly, "
     "so tell me any word or sound you'd like to work on."
 )
 _MAKER_VERBS = r"(?:made|make|built|build|created|create|developed|develop|designed|design|programmed|coded|trained|owns?)"
