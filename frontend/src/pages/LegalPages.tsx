@@ -101,8 +101,8 @@ export function PrivacyPage() {
           head={['What', 'Why', 'How long']}
           rows={[
             [
-              'Account: email, username, display name, password',
-              'To sign you in and keep your progress. The password is stored only as a salted scrypt hash.',
+              'Account: email, username, display name, password, and your Google account id if you sign in with Google',
+              'To sign you in and keep your progress. The password is stored only as a salted scrypt hash. Google sends only your name, email and account id.',
               'Until you delete your account',
             ],
             [
@@ -190,8 +190,9 @@ export function PrivacyPage() {
           </li>
           <li>
             <b>Hosting</b>: the app runs on Hugging Face Spaces and the database on Neon, and recordings you give to improve the scoring
-            are kept in a private Hugging Face dataset. Where password reset is switched on, an email provider sends the reset email. They
-            process data only to run the service.
+            are kept in a private Hugging Face dataset. Where password reset is switched on, an email provider sends the reset email. If
+            you choose <b>Continue with Google</b>, Google confirms who you are and tells the Coach your name and email. They process data
+            only to run the service.
           </li>
         </ul>
         <p>We do not sell your data, show ads, or use advertising or analytics trackers.</p>
