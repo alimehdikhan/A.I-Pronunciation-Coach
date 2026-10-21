@@ -1,18 +1,22 @@
 """
 The learner's profile: first language, goal and the language tips are written in.
 
-First language never changes a score. It decides what is shown first (the sounds that are
-usually hard for speakers of that language) and lets the coach explain *why* a slip
-happens ("Hindi has one sound between v and w"). The notes below are the commonly
-described transfer patterns for each language (as in Swan & Smith, *Learner English*,
-and similar teaching references): tendencies, not rules about any one person.
+First language decides what is shown first (the sounds that are usually hard for speakers
+of that language) and lets the coach explain *why* a slip happens ("Hindi has one sound
+between v and w"). When a sound model was trained on speakers of the language
+(backend.sound_model), it also chooses that model to judge each sound; it never adds or
+removes points by itself. The notes below are the commonly described transfer patterns for
+each language (as in Swan & Smith, *Learner English*, and similar teaching references):
+tendencies, not rules about any one person.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
+from backend import sound_model
 from backend.coach_tools import LANGUAGES
+from backend.config import settings
 
 GOALS = ("understood", "accent")
 DEFAULT_GOAL = "understood"
@@ -132,6 +136,18 @@ def why_hard(first_language: str | None, sound: str) -> str | None:
     return next((why for s, why in L1_SOUNDS.get(first_language or "", ()) if s == sound), None)
 
 
+def sound_model_for(first_language: str | None) -> sound_model.SoundModel | None:
+    """The sound model trained for speakers of this language, or None for the default curve."""
+    return sound_model.for_learner(first_language) if settings.sound_models else None
+
+
+def tuned_languages() -> list[str]:
+    """First languages whose speakers are scored with a model trained on speakers like them."""
+    if not settings.sound_models:
+        return []
+    return [language for language in FIRST_LANGUAGES if sound_model.for_learner(language) is not None]
+
+
 def options() -> dict[str, Any]:
     """What the profile screen offers, and the sounds each first language puts first."""
     return {
@@ -142,4 +158,5 @@ def options() -> dict[str, Any]:
         ],
         "tip_languages": list(TIP_LANGUAGES),
         "common_sounds": {language: common_sounds(language) for language in L1_SOUNDS},
+        "tuned_languages": tuned_languages(),
     }
