@@ -38,7 +38,16 @@ GOOGLE_ONLY = "google"
 
 
 class GoogleError(Exception):
-    """Google did not confirm who this is (a network error, a bad code, missing fields)."""
+    """Google did not confirm who this is. The message is a short code: Google's own error
+    (`invalid_client`, `invalid_grant`, ...), `network`, or what was missing."""
+
+
+def _refusal(response: httpx.Response, step: str) -> GoogleError:
+    try:
+        code = response.json().get("error")
+    except ValueError:
+        code = None
+    return GoogleError(code if isinstance(code, str) and code else f"{step}_{response.status_code}")
 
 
 @dataclass(frozen=True)
@@ -118,17 +127,21 @@ def identity(code: str, pending: Pending) -> dict[str, Any]:
                     "code_verifier": pending.verifier,
                 },
             )
-            token.raise_for_status()
+            if token.status_code >= 400:
+                raise _refusal(token, "token")
             access = token.json().get("access_token")
             if not access:
-                raise GoogleError("Google sent no access token")
+                raise GoogleError("no_access_token")
             info = client.get(USERINFO_URL, headers={"Authorization": f"Bearer {access}"})
-            info.raise_for_status()
+            if info.status_code >= 400:
+                raise _refusal(info, "userinfo")
             data = info.json()
-    except (httpx.HTTPError, ValueError) as error:
-        raise GoogleError(str(error)) from error
+    except httpx.HTTPError as error:
+        raise GoogleError("network") from error
+    except ValueError as error:
+        raise GoogleError("unreadable_answer") from error
     if not data.get("sub") or not data.get("email"):
-        raise GoogleError("Google sent no account id or email")
+        raise GoogleError("no_account_id_or_email")
     return {
         "sub": str(data["sub"]),
         "email": str(data["email"]).strip().lower(),
