@@ -25,7 +25,7 @@ export function Logo() {
   return (
     <div className="flex items-center gap-2.5">
       <LogoMark />
-      <span className="text-[15px] font-semibold tracking-[-0.02em]">Pronunciation Coach</span>
+      <span className="text-[15px] font-semibold tracking-[-0.02em]">Vocaly AI</span>
     </div>
   )
 }
