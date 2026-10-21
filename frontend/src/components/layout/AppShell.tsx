@@ -302,32 +302,24 @@ function PageFallback() {
   )
 }
 
-/**
- * Someone opening the site for the first time lands on the sign-in page.
- * "Continue as a guest" there (or having used the app before) skips it for good.
- * Deep links such as /sounds are never redirected.
- */
-function useEntryGate(pathname: string): boolean {
-  const accountEmail = useSettings((s) => s.accountEmail)
-  const guestChosen = useSettings((s) => s.guestChosen)
-  const onboarded = useSettings((s) => s.onboarded)
-  return pathname === '/practice' && !accountEmail && !guestChosen && !onboarded
-}
-
+/** Every page of the app needs an account: a signed-out visitor signs in, then comes straight back. */
 export function AppShell() {
   useThemeSync()
+  const accountEmail = useSettings((s) => s.accountEmail)
+  const location = useLocation()
+  if (!accountEmail) return <Navigate to={`/login?next=${encodeURIComponent(location.pathname + location.search)}`} replace />
+  return <SignedInShell />
+}
+
+function SignedInShell() {
   useAccountSync()
   useProfileSync()
   useCommandShortcut()
   const location = useLocation()
-  const gated = useEntryGate(location.pathname)
 
   useEffect(() => {
     window.scrollTo({ top: 0 })
   }, [location.pathname])
-
-  // First-time visitors see the front page; it leads to sign-up, sign-in or practising as a guest.
-  if (gated) return <Navigate to="/" replace />
 
   return (
     <div className="relative min-h-dvh">
