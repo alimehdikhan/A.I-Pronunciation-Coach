@@ -15,7 +15,7 @@ function Shell({ title, children }: { title: string; children: React.ReactNode }
       <Background />
       <div className="relative w-full max-w-[400px]">
         <div className="mb-6 flex flex-col items-center text-center">
-          <LogoMark className="size-14 rounded-[16px]" />
+          <LogoMark className="size-14" />
           <h1 className="headline mt-5 text-[28px]">{title}</h1>
         </div>
         {children}
