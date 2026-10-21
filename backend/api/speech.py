@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import importlib.util
 import logging
+import os
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
 
-from backend import phonetics
+from backend import contributions, learners, phonetics
 from backend.api.deps import profile_key, require_models
 from backend.audio import SAMPLE_RATE, AudioError, decode_audio, normalize_loudness, read_upload, validate_upload
 from backend.config import settings
@@ -55,6 +56,10 @@ def _prepare(data: bytes, suffix: str, max_seconds: float | None = None):
         samples, cleanup = enhance(samples, neural=settings.noise_neural)
     samples, gain_db = normalize_loudness(samples)
     return samples, gain_db, cleanup
+
+
+def _suffix(audio: UploadFile) -> str:
+    return os.path.splitext(audio.filename or "")[1].lower() or ".wav"
 
 
 def _phoneme_posteriors(samples):
@@ -104,6 +109,7 @@ async def transcribe_upload(
 async def evaluate_pronunciation(
     request: Request,
     response: Response,
+    background: BackgroundTasks,
     audio: UploadFile = File(...),
     target_text: str | None = Form(None),
     username: str | None = Form(None),
@@ -126,6 +132,10 @@ async def evaluate_pronunciation(
 
     audio_rate_limiter.check(client_key(request))
     asr, scorer = require_models()
+    learner = find_user(db, name) if name else None
+    # Speakers of a language with a trained sound model are judged by it (backend.sound_model).
+    model = learners.sound_model_for(learner.first_language if learner else None)
+    db.commit()  # end the read before transcription, which can take a while
     timer = StageTimer()
     try:
         transcription = await transcribe_upload(audio, asr, timer, phonemes=True)
@@ -140,6 +150,7 @@ async def evaluate_pronunciation(
                 transcription.get("duration"),
                 transcription.get("phoneme_log_probs"),
                 accent,
+                model,
             )
     except HTTPException:
         raise
@@ -148,7 +159,7 @@ async def evaluate_pronunciation(
         raise HTTPException(status_code=500, detail="Error processing audio. See server logs for details.") from exc
 
     samples = transcription.pop("_samples", None)
-    transcription.pop("_upload", None)
+    upload = transcription.pop("_upload", None)
     if stress and samples is not None:
         with timer.stage("stress"):
             found = await run_in_threadpool(annotate_stress, score_result["words"], samples)
@@ -158,11 +169,20 @@ async def evaluate_pronunciation(
     counted = not (natural_speed and careful)
     record_id: int | None = None
     save_error: str | None = None
+    # "Help improve Vocaly AI": a clean recording of one of the app's own sentences is kept for training.
+    clip: tuple[str, Any, dict[str, Any]] | None = None
+    if name and text and contributions.giving(db, learner, reference_text):
+        with timer.stage("quality"):
+            raw, checks = await run_in_threadpool(contributions.assess_upload, upload, _suffix(audio), score_result)
+        if raw is not None and checks["usable"]:
+            clip = (contributions.new_clip_id(), raw, checks)
     # Silent or unintelligible clips aren't attempts; keep them out of history.
     if name and text:
         with timer.stage("save"):
             try:
-                record_id = await run_in_threadpool(save_attempt, db, name, key, reference_text, text, score_result, counted)
+                record_id = await run_in_threadpool(
+                    save_attempt, db, name, key, reference_text, text, score_result, counted, clip[0] if clip else None
+                )
             except ProfileLocked:
                 db.rollback()
                 save_error = "profile_locked"
@@ -172,6 +192,16 @@ async def evaluate_pronunciation(
                 save_error = "storage_error"
                 logger.exception("Failed to save attempt for user %r", name)
 
+    contributed = clip is not None and record_id is not None and learner is not None
+    if contributed:
+        meta = contributions.describe(
+            clip[0], learner.contributor_id, text=reference_text, transcript=text, first_language=learner.first_language,
+            accent=accent, difficulty=score_result.get("difficulty", "intermediate"), result=score_result, checks=clip[2],
+            sound_model=model.profile if model else None,
+            phoneme_model=runtime.phonemes.description if runtime.phonemes is not None else None,
+        )
+        background.add_task(contributions.keep, clip[1], meta)  # written after the response is sent
+
     response.headers["Server-Timing"] = timer.header()
     body: dict[str, Any] = {
         "success": True,
@@ -179,6 +209,8 @@ async def evaluate_pronunciation(
         "reference_text": reference_text,
         "record_id": record_id,
         "saved": record_id is not None,
+        # The recording was kept to help improve the scorer (the learner turned this on).
+        "contributed": contributed,
         # False when "natural speed" is on and this was careful speech: shown, but not counted.
         "counted": counted,
         # Nothing was heard: the UI explains it (microphone, volume) instead of showing empty results.
