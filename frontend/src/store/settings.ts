@@ -134,6 +134,14 @@ export const useSettings = create<SettingsState>()(
   ),
 )
 
+// Nothing is stored until a setting changes, but the profile key must outlive a reload from the start:
+// signing in with Google leaves the page, and the server binds the account to the key sent before leaving.
+try {
+  if (window.localStorage.getItem('pc-settings') === null) useSettings.setState({})
+} catch {
+  /* storage is blocked; StorageNotice tells the learner */
+}
+
 export function applyTheme(theme: Theme) {
   const dark =
     theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
