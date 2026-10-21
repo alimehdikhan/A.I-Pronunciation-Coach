@@ -320,7 +320,7 @@ async def forgot_password(body: ForgotBody, request: Request, db: Session = Depe
     base = settings.public_url or str(request.base_url).rstrip("/")
     link = f"{base}/reset?token={token}"
     text = (
-        f"Someone asked to reset the password for your AI Pronunciation Coach account ({user.username}).\n\n"
+        f"Someone asked to reset the password for your Vocaly AI account ({user.username}).\n\n"
         f"To choose a new password, open this link within {RESET_MINUTES} minutes:\n{link}\n\n"
         "If it wasn't you, ignore this email: your password stays the same."
     )
