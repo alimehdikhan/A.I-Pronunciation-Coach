@@ -6,11 +6,13 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from backend import contributions
 from backend.api.deps import profile_key
 from backend.config import settings
-from backend.database import get_db
+from backend.database import PronunciationRecord, get_db
 from backend.repositories import RecordNotFound, authorize, find_user, save_dispute
 from backend.security import RateLimiter, clean_username, client_key
 
@@ -49,4 +51,11 @@ def dispute_sound(
         )
     except RecordNotFound as exc:
         raise HTTPException(status_code=404, detail="That sound was not found in your attempt.") from exc
+    # A recording the learner gave carries the dispute too, so reviewers look at it first.
+    clip_id = db.scalar(select(PronunciationRecord.clip_id).where(PronunciationRecord.id == body.record_id))
+    if clip_id and user.contributor_id:
+        contributions.add_dispute(user.contributor_id, clip_id, {
+            "word": dispute.word, "expected": dispute.expected_phoneme, "detected": dispute.detected_phoneme,
+            "score": dispute.score, "tier": dispute.tier, "reason": dispute.reason,
+        })
     return {"saved": True, "id": dispute.id, "tier": dispute.tier, "reason": dispute.reason}
