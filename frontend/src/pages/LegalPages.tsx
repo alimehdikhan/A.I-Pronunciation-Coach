@@ -4,7 +4,7 @@ import { Link } from 'react-router'
 import { AtAGlance, Contact, DocLayout, DocSection, REPOSITORY, useOperator } from '@/components/site/DocLayout'
 import { cn } from '@/lib/utils'
 
-const UPDATED = '20 October 2026'
+const UPDATED = '21 October 2026'
 
 /** A plain, readable table of facts; on a phone each row becomes a card. */
 function DataTable({ head, rows }: { head: string[]; rows: ReactNode[][] }) {
@@ -77,11 +77,11 @@ export function PrivacyPage() {
       title="Privacy Policy"
       updated={UPDATED}
       toc={PRIVACY_TOC}
-      intro="What the AI Pronunciation Coach keeps about you, why, who else sees it, and how to delete it. Written to be read, not skimmed past."
+      intro="What Vocaly AI keeps about you, why, who else sees it, and how to delete it. Written to be read, not skimmed past."
     >
       <AtAGlance
         items={[
-          'Practice recordings are analysed and thrown away. Audio is kept only when you ask, for a feature that needs it.',
+          'Practice recordings are analysed and thrown away. Audio is kept only when you ask, for a feature that needs it or to help improve the scoring.',
           'We never sell your data, show ads or use tracking cookies.',
           'Other learners never see your name. Teachers see an attempt only through a link you create.',
           'You can delete your history, recordings, interviews and account yourself, at any time.',
@@ -90,7 +90,7 @@ export function PrivacyPage() {
 
       <DocSection id="who" title="Who is responsible">
         <p>
-          {name} runs this copy of the AI Pronunciation Coach (“the Coach”, “we”) and is responsible for your data. You can reach us at{' '}
+          {name} runs this copy of Vocaly AI (“the Coach”, “we”) and is responsible for your data. You can reach us at{' '}
           <Contact />.
         </p>
       </DocSection>
@@ -117,7 +117,7 @@ export function PrivacyPage() {
             ],
             [
               'Your settings: first language, goal, tip language',
-              'To put the right sounds first and write tips. They never change a score.',
+              'To put the right sounds first and write tips. For some first languages it also picks a sound model tuned for their speakers; no language gets a bonus or penalty.',
               'Until you change them or delete your account',
             ],
             [
@@ -127,6 +127,11 @@ export function PrivacyPage() {
             ],
             ['A CV or job advert you add', 'To write the interview questions.', 'Not stored: read once'],
             ['Group discussions', 'To give you a report on the discussion.', 'Not stored: kept in your browser'],
+            [
+              'Recordings you give to improve the scoring',
+              'To train and test the scoring, only while “Help improve Vocaly AI” is on. See Your recordings below.',
+              'Until you delete them, your history or your account',
+            ],
             [
               '“I think this is wrong” reports',
               'To improve the scoring. The word, the sounds and your reason; no audio.',
@@ -157,6 +162,15 @@ export function PrivacyPage() {
             word by word, how many understood it, never who listened or their exact words. It is deleted after 30 days, when you delete it,
             or if a listener reports it.
           </li>
+          <li>
+            <b>Help improve Vocaly AI</b> (off unless you turn it on in Settings, and only for signed-in accounts): clean recordings of the
+            app’s own practice sentences and words, never text you type yourself, interviews, discussions or conversations. Each is kept
+            with the sentence, what was heard, the scores, your first language and the date, filed under a random number instead of your
+            name, username or email, in a private Hugging Face dataset that only {name} can open. They are used to train and test the
+            scoring, and a person may listen to some of them to mark which sounds were right. They are kept until you delete them (in
+            Settings), delete your history or delete your account, and are then removed from the dataset and its history, usually within
+            minutes. A scoring model already trained can’t forget a recording, but a deleted one is never used again.
+          </li>
         </ul>
         <p>You agree to each of these in the app before anything is stored, and you can withdraw by deleting the recording.</p>
       </DocSection>
@@ -175,8 +189,9 @@ export function PrivacyPage() {
             The Coach does not store this audio.
           </li>
           <li>
-            <b>Hosting</b>: the app runs on Hugging Face Spaces and the database on Neon. Where password reset is switched on, an email
-            provider sends the reset email. They process data only to run the service.
+            <b>Hosting</b>: the app runs on Hugging Face Spaces and the database on Neon, and recordings you give to improve the scoring
+            are kept in a private Hugging Face dataset. Where password reset is switched on, an email provider sends the reset email. They
+            process data only to run the service.
           </li>
         </ul>
         <p>We do not sell your data, show ads, or use advertising or analytics trackers.</p>
@@ -188,8 +203,8 @@ export function PrivacyPage() {
             <b>To provide the service you asked for</b> (your account, practice results, interviews and settings).
           </li>
           <li>
-            <b>Your consent</b>, for stored recordings, teacher links, real listeners and voice conversations. You can withdraw it at any
-            time by deleting the recording or not using the feature.
+            <b>Your consent</b>, for stored recordings, teacher links, real listeners, voice conversations and recordings you give to
+            improve the scoring. You can withdraw it at any time by deleting the recording or not using the feature.
           </li>
           <li>
             <b>Legitimate interests</b>, to keep the service safe (rate limits, abuse checks) and to improve the scoring from the reports
@@ -225,8 +240,8 @@ export function PrivacyPage() {
       <DocSection id="rights" title="Your choices and rights">
         <p>From your Profile and the pages themselves you can:</p>
         <ul>
-          <li>delete your practice history (with your interviews, shared recordings and Day 1 vs Day 30 recordings);</li>
-          <li>delete stored recordings, a single interview, a recording shared with real listeners, or a teacher link;</li>
+          <li>delete your practice history (with your interviews, shared recordings, Day 1 vs Day 30 recordings and the recordings you gave to improve the scoring);</li>
+          <li>delete stored recordings, a single interview, a recording shared with real listeners, a teacher link, or the recordings you gave (in Settings);</li>
           <li>delete your account, which removes everything above and your sign-ins.</li>
         </ul>
         <p>
@@ -275,7 +290,7 @@ export function TermsPage() {
       toc={TERMS_TOC}
       intro={
         <>
-          The rules for using this hosted copy of the AI Pronunciation Coach, run by {name}. They are short, and written in plain English.
+          The rules for using this hosted copy of Vocaly AI (“the Coach”), run by {name}. They are short, and written in plain English.
         </>
       }
     >
@@ -333,7 +348,8 @@ export function TermsPage() {
       <DocSection id="content" title="6. Your content">
         <p>
           Your recordings, answers, CV and comments remain yours. You allow the Coach to process and store them only as needed to provide
-          the features you use, as the Privacy Policy describes. You can delete them at any time.
+          the features you use, as the Privacy Policy describes. If you turn on “Help improve Vocaly AI”, you also allow the recordings you
+          give to be used to train and test the scoring. You can delete them at any time.
         </p>
       </DocSection>
 
@@ -454,14 +470,14 @@ export function AboutPage() {
       tabTitle="About"
       toc={ABOUT_TOC}
       wide
-      intro="The AI Pronunciation Coach helps you speak English so that people understand you: in interviews, exams, calls and presentations."
+      intro="Vocaly AI helps you speak English so that people understand you: in interviews, exams, calls and presentations."
     >
       <DocSection id="mission" title="Why it exists">
         <div className="max-w-[70ch]">
           <p>
             Millions of people know English well and are still asked to repeat themselves. They don’t need more grammar. They need to know
             which sounds get in the way, to hear the difference themselves, and to practise for the moments that matter, like an interview.
-            Most tools give a single score. The Coach listens to every sound, says honestly when it isn’t sure, and builds practice around
+            Most tools give a single score. Vocaly AI listens to every sound, says honestly when it isn’t sure, and builds practice around
             you.
           </p>
         </div>
@@ -524,7 +540,7 @@ export function AboutPage() {
       </DocSection>
 
       <DocSection id="people" title="Who made it">
-        <p>The Coach was developed by Ali Mehdi Khan. This copy is run by {name}. It is open source under the MIT licence.</p>
+        <p>Vocaly AI was developed by Ali Mehdi Khan. This copy is run by {name}. It is open source under the MIT licence.</p>
       </DocSection>
 
       <DocSection id="built-with" title="Built with">
