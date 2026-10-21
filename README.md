@@ -16,15 +16,76 @@ pinned: false
 
 <p align="center"><b>Speak English that people understand.</b></p>
 
-<p align="center">You say a sentence. The coach tells you which sounds were off, not just a score, and then helps you fix them.</p>
+<p align="center">Say a sentence. Vocaly AI marks each sound that came out wrong (a th heard as f, a v heard as w)<br>and shows you how to fix it.</p>
 
 <p align="center">
-  <a href="https://alimehdi973-ai-pronunciation-coach.hf.space"><img alt="Live demo on Hugging Face" src="https://img.shields.io/badge/Live%20demo-Hugging%20Face-FFD21E?logo=huggingface&logoColor=black"></a>
-  <img alt="Python 3.11+" src="https://img.shields.io/badge/python-3.11+-blue.svg">
-  <img alt="FastAPI" src="https://img.shields.io/badge/FastAPI-005571?style=flat&logo=fastapi">
-  <img alt="React 19" src="https://img.shields.io/badge/React-19-149eca?logo=react">
-  <img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-yellow.svg">
+  <a href="https://alimehdi973-ai-pronunciation-coach.hf.space"><img alt="Try the live demo on Hugging Face" src="https://img.shields.io/badge/Try_the_live_demo-FFD21E?style=for-the-badge&amp;logo=huggingface&amp;logoColor=black"></a>
+  <a href="#license"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-3DA639?style=for-the-badge"></a>
 </p>
+
+<table align="center">
+  <tr>
+    <td align="right"><b>Frontend</b></td>
+    <td>
+      <a href="https://react.dev"><img alt="React 19" src="https://img.shields.io/badge/React%2019-20232A?style=flat&amp;logo=react&amp;logoColor=61DAFB"></a>
+      <a href="https://www.typescriptlang.org"><img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-20232A?style=flat&amp;logo=typescript&amp;logoColor=4E9BEA"></a>
+      <a href="https://vite.dev"><img alt="Vite 8" src="https://img.shields.io/badge/Vite%208-20232A?style=flat&amp;logo=vite&amp;logoColor=9499FF"></a>
+      <a href="https://tailwindcss.com"><img alt="Tailwind CSS 4" src="https://img.shields.io/badge/Tailwind%20CSS%204-20232A?style=flat&amp;logo=tailwindcss&amp;logoColor=38BDF8"></a>
+      <a href="https://ui.shadcn.com"><img alt="shadcn/ui" src="https://img.shields.io/badge/shadcn%2Fui-20232A?style=flat&amp;logo=shadcnui&amp;logoColor=FFFFFF"></a>
+      <a href="https://www.radix-ui.com"><img alt="Radix UI" src="https://img.shields.io/badge/Radix%20UI-20232A?style=flat&amp;logo=radixui&amp;logoColor=FFFFFF"></a>
+      <a href="https://motion.dev"><img alt="Motion" src="https://img.shields.io/badge/Motion-20232A?style=flat&amp;logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAyNTYgMjU2JyBmaWxsPScjRkZGMzEyJz48cGF0aCBkPSdNMTk5LDEyNS4zMWwtNDkuODgtMTguMzlMMTMwLjY5LDU3YTE5LjkyLDE5LjkyLDAsMCwwLTM3LjM4LDBMNzQuOTIsMTA2LjkyLDI1LDEyNS4zMWExOS45MiwxOS45MiwwLDAsMCwwLDM3LjM4bDQ5Ljg4LDE4LjM5TDkzLjMxLDIzMWExOS45MiwxOS45MiwwLDAsMCwzNy4zOCwwbDE4LjM5LTQ5Ljg4TDE5OSwxNjIuNjlhMTkuOTIsMTkuOTIsMCwwLDAsMC0zNy4zOFptLTYzLjM4LDM1LjE2YTEyLDEyLDAsMCwwLTcuMTEsNy4xMUwxMTIsMjEyLjI4bC0xNi40Ny00NC43YTEyLDEyLDAsMCwwLTcuMTEtNy4xMUw0My43MiwxNDRsNDQuNy0xNi40N2ExMiwxMiwwLDAsMCw3LjExLTcuMTFMMTEyLDc1LjcybDE2LjQ3LDQ0LjdhMTIsMTIsMCwwLDAsNy4xMSw3LjExTDE4MC4yOCwxNDRaTTE0MCw0MGExMiwxMiwwLDAsMSwxMi0xMmgxMlYxNmExMiwxMiwwLDAsMSwyNCwwVjI4aDEyYTEyLDEyLDAsMCwxLDAsMjRIMTg4VjY0YTEyLDEyLDAsMCwxLTI0LDBWNTJIMTUyQTEyLDEyLDAsMCwxLDE0MCw0MFpNMjUyLDg4YTEyLDEyLDAsMCwxLTEyLDEyaC00djRhMTIsMTIsMCwwLDEtMjQsMHYtNGgtNGExMiwxMiwwLDAsMSwwLTI0aDRWNzJhMTIsMTIsMCwwLDEsMjQsMHY0aDRBMTIsMTIsMCwwLDEsMjUyLDg4WicvPjwvc3ZnPg%3D%3D"></a>
+      <a href="https://gsap.com"><img alt="GSAP" src="https://img.shields.io/badge/GSAP-20232A?style=flat&amp;logo=gsap&amp;logoColor=0AE448"></a>
+      <a href="https://threejs.org"><img alt="Three.js" src="https://img.shields.io/badge/Three.js-20232A?style=flat&amp;logo=threedotjs&amp;logoColor=FFFFFF"></a>
+      <a href="https://tanstack.com/query"><img alt="TanStack Query" src="https://img.shields.io/badge/TanStack%20Query-20232A?style=flat&amp;logo=reactquery&amp;logoColor=FF4154"></a>
+      <a href="https://reactrouter.com"><img alt="React Router" src="https://img.shields.io/badge/React%20Router-20232A?style=flat&amp;logo=reactrouter&amp;logoColor=F44250"></a>
+      <a href="https://zustand.docs.pmnd.rs"><img alt="Zustand" src="https://img.shields.io/badge/Zustand-20232A?style=flat&amp;logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAyNTYgMjU2JyBmaWxsPScjRThCNjdBJz48cGF0aCBkPSdNMjM2LDEwOGEyNCwyNCwwLDEsMS0yNC0yNEEyNCwyNCwwLDAsMSwyMzYsMTA4Wk02OCwxMDhhMjQsMjQsMCwxLDAtMjQsMjRBMjQsMjQsMCwwLDAsNjgsMTA4Wk05Miw4NEEyNCwyNCwwLDEsMCw2OCw2MCwyNCwyNCwwLDAsMCw5Miw4NFptNzIsMGEyNCwyNCwwLDEsMC0yNC0yNEEyNCwyNCwwLDAsMCwxNjQsODRabTQ4LDEwMGE0NCw0NCwwLDAsMS02MS4xLDQwLjU1LDYwLjE1LDYwLjE1LDAsMCwwLTQ1LjgsMEE0NCw0NCwwLDAsMSw2NywxNDUuMzQsMzEuMzMsMzEuMzMsMCwwLDAsODEuOTEsMTI2LjZhNDgsNDgsMCwwLDEsOTIuMTgsMEEzMS4zNCwzMS4zNCwwLDAsMCwxODksMTQ1LjM0LDQ0LDQ0LDAsMCwxLDIxMiwxODRabS0yNCwwYTIwLDIwLDAsMCwwLTEwLjQ5LTE3LjZsLS4xLS4wNmE1NS4yMiw1NS4yMiwwLDAsMS0yNi4zNy0zMywyNCwyNCwwLDAsMC00Ni4wOCwwLDU1LjIxLDU1LjIxLDAsMCwxLTI2LjM3LDMzLjA1bC0uMS4wNkEyMCwyMCwwLDAsMCw4OCwyMDRhMTkuNzcsMTkuNzcsMCwwLDAsNy44LTEuNThsLjEzLDBhODQsODQsMCwwLDEsNjQuMTQsMGwuMTMsMEExOS43NywxOS43NywwLDAsMCwxNjgsMjA0LDIwLDIwLDAsMCwwLDE4OCwxODRaJy8%2BPC9zdmc%2B"></a>
+      <a href="https://recharts.org"><img alt="Recharts" src="https://img.shields.io/badge/Recharts-20232A?style=flat&amp;logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAyNTYgMjU2JyBmaWxsPScjODg4NEQ4Jz48cGF0aCBkPSdNMjM2LDIwOGExMiwxMiwwLDAsMS0xMiwxMkgzMmExMiwxMiwwLDAsMS0xMi0xMlY0OGExMiwxMiwwLDAsMSwyNCwwdjg1LjU1TDg4LjEsOTVhMTIsMTIsMCwwLDEsMTUuMS0uNTdsNTYuMjIsNDIuMTZMMjE2LjEsODdBMTIsMTIsMCwxLDEsMjMxLjksMTA1bC02NCw1NmExMiwxMiwwLDAsMS0xNS4xLjU3TDk2LjU4LDExOS40NCw0NCwxNjUuNDVWMTk2SDIyNEExMiwxMiwwLDAsMSwyMzYsMjA4WicvPjwvc3ZnPg%3D%3D"></a>
+      <a href="https://phosphoricons.com"><img alt="Phosphor Icons" src="https://img.shields.io/badge/Phosphor%20Icons-20232A?style=flat&amp;logo=phosphoricons&amp;logoColor=FFFFFF"></a>
+    </td>
+  </tr>
+  <tr>
+    <td align="right"><b>Backend</b></td>
+    <td>
+      <a href="https://www.python.org"><img alt="Python 3.11" src="https://img.shields.io/badge/Python%203.11-20232A?style=flat&amp;logo=python&amp;logoColor=FFD43B"></a>
+      <a href="https://fastapi.tiangolo.com"><img alt="FastAPI" src="https://img.shields.io/badge/FastAPI-20232A?style=flat&amp;logo=fastapi&amp;logoColor=05B39F"></a>
+      <a href="https://www.uvicorn.org"><img alt="Uvicorn" src="https://img.shields.io/badge/Uvicorn-20232A?style=flat&amp;logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAyNTYgMjU2JyBmaWxsPScjRkZGRkZGJz48cGF0aCBkPSdNMTQ0LDEwNGExNiwxNiwwLDEsMS0xNi0xNkExNiwxNiwwLDAsMSwxNDQsMTA0Wm05MiwyNS41M0ExMDguMywxMDguMywwLDAsMSwxMzAuMTgsMjM2bC0yLjI1LDBBMTA3LjMxLDEwNy4zMSwwLDAsMSw1NiwyMDguOTRhMTIsMTIsMCwxLDEsMTYtMTcuODgsODEuNDIsODEuNDIsMCwwLDAsMTYuMiwxMS4yNmwyMS41NC0yOS42MmMtMjAuNC03LTQxLjkxLTMuMzMtNTQuNDMtMS4yMWEzNS43OSwzNS43OSwwLDAsMS0zNS4yNS0xNC40M2MtLjE2LS4yMS0uMzEtLjQzLS40NS0uNjVsLTEzLjc4LTIyQTEyLDEyLDAsMCwxLDkuNDMsMTE4TDEwOCw1My41MVYzMmExMiwxMiwwLDAsMSwxMi0xMmg4QTEwOCwxMDgsMCwwLDEsMjM2LDEyOS41M1ptLTI0LS4zM2E4NCw4NCwwLDAsMC04MC04NS4xMVY2MGExMiwxMiwwLDAsMS01LjQzLDEwTDMyLjQxLDEzMS42MWw3LjMxLDExLjY4YTEyLDEyLDAsMCwwLDExLjU4LDQuNTRjMTYuMjMtMi43NSw0OS40LTguMzYsNzkuNjQsOEEzNiwzNiwwLDAsMCwxNjQsMTIwYTEyLDEyLDAsMCwxLDI0LDAsNjAuMDksNjAuMDksMCwwLDEtNTMuNjQsNTkuNjZsLTIyLjQ1LDMwLjg3YTg3LjU3LDg3LjU3LDAsMCwwLDE3LjgsMS40NUE4NC4yOSw4NC4yOSwwLDAsMCwyMTIsMTI5LjJaJy8%2BPC9zdmc%2B"></a>
+      <a href="https://docs.pydantic.dev"><img alt="Pydantic" src="https://img.shields.io/badge/Pydantic-20232A?style=flat&amp;logo=pydantic&amp;logoColor=E92063"></a>
+      <a href="https://www.sqlalchemy.org"><img alt="SQLAlchemy" src="https://img.shields.io/badge/SQLAlchemy-20232A?style=flat&amp;logo=sqlalchemy&amp;logoColor=FF5A3C"></a>
+      <a href="https://sqlite.org"><img alt="SQLite" src="https://img.shields.io/badge/SQLite-20232A?style=flat&amp;logo=sqlite&amp;logoColor=44A8E8"></a>
+      <a href="https://www.postgresql.org"><img alt="PostgreSQL" src="https://img.shields.io/badge/PostgreSQL-20232A?style=flat&amp;logo=postgresql&amp;logoColor=699EEB"></a>
+      <a href="https://prometheus.io"><img alt="Prometheus" src="https://img.shields.io/badge/Prometheus-20232A?style=flat&amp;logo=prometheus&amp;logoColor=E6522C"></a>
+    </td>
+  </tr>
+  <tr>
+    <td align="right"><b>Speech&nbsp;&amp;&nbsp;AI</b></td>
+    <td>
+      <a href="https://github.com/SYSTRAN/faster-whisper"><img alt="Whisper (faster-whisper)" src="https://img.shields.io/badge/Whisper%20%28faster--whisper%29-20232A?style=flat&amp;logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAyNTYgMjU2JyBmaWxsPScjRkZGRkZGJz48cGF0aCBkPSdNNjAsOTZ2NjRhMTIsMTIsMCwwLDEtMjQsMFY5NmExMiwxMiwwLDAsMSwyNCwwWk04OCwyMEExMiwxMiwwLDAsMCw3NiwzMlYyMjRhMTIsMTIsMCwwLDAsMjQsMFYzMkExMiwxMiwwLDAsMCw4OCwyMFptNDAsMzJhMTIsMTIsMCwwLDAtMTIsMTJWMTkyYTEyLDEyLDAsMCwwLDI0LDBWNjRBMTIsMTIsMCwwLDAsMTI4LDUyWm00MCwzMmExMiwxMiwwLDAsMC0xMiwxMnY2NGExMiwxMiwwLDAsMCwyNCwwVjk2QTEyLDEyLDAsMCwwLDE2OCw4NFptNDAtMTZhMTIsMTIsMCwwLDAtMTIsMTJ2OTZhMTIsMTIsMCwwLDAsMjQsMFY4MEExMiwxMiwwLDAsMCwyMDgsNjhaJy8%2BPC9zdmc%2B"></a>
+      <a href="https://huggingface.co/facebook/wav2vec2-lv-60-espeak-cv-ft"><img alt="wav2vec 2.0" src="https://img.shields.io/badge/wav2vec%202.0-20232A?style=flat&amp;logo=meta&amp;logoColor=4A9DFF"></a>
+      <a href="https://onnxruntime.ai"><img alt="ONNX Runtime" src="https://img.shields.io/badge/ONNX%20Runtime-20232A?style=flat&amp;logo=onnx&amp;logoColor=FFFFFF"></a>
+      <a href="https://huggingface.co/hexgrad/Kokoro-82M"><img alt="Kokoro TTS" src="https://img.shields.io/badge/Kokoro%20TTS-20232A?style=flat&amp;logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAyNTYgMjU2JyBmaWxsPScjRjBBQkZDJz48cGF0aCBkPSdNMTc4LDM2Yy0yMC4wOSwwLTM3LjkyLDcuOTMtNTAsMjEuNTZDMTE1LjkyLDQzLjkzLDk4LjA5LDM2LDc4LDM2YTY2LjA4LDY2LjA4LDAsMCwwLTY2LDY2YzAsNzIuMzQsMTA1LjgxLDEzMC4xNCwxMTAuMzEsMTMyLjU3YTEyLDEyLDAsMCwwLDExLjM4LDBDMTM4LjE5LDIzMi4xNCwyNDQsMTc0LjM0LDI0NCwxMDJBNjYuMDgsNjYuMDgsMCwwLDAsMTc4LDM2Wm0tNS40OSwxNDIuMzZBMzI4LjY5LDMyOC42OSwwLDAsMSwxMjgsMjEwLjE2YTMyOC42OSwzMjguNjksMCwwLDEtNDQuNTEtMzEuOEM2MS44MiwxNTkuNzcsMzYsMTMxLjQyLDM2LDEwMkE0Miw0MiwwLDAsMSw3OCw2MGMxNy44LDAsMzIuNyw5LjQsMzguODksMjQuNTRhMTIsMTIsMCwwLDAsMjIuMjIsMEMxNDUuMyw2OS40LDE2MC4yLDYwLDE3OCw2MGE0Miw0MiwwLDAsMSw0Miw0MkMyMjAsMTMxLjQyLDE5NC4xOCwxNTkuNzcsMTcyLjUxLDE3OC4zNlonLz48L3N2Zz4%3D"></a>
+      <a href="https://github.com/OHF-Voice/piper1-gpl"><img alt="Piper TTS" src="https://img.shields.io/badge/Piper%20TTS-20232A?style=flat&amp;logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAyNTYgMjU2JyBmaWxsPScjN0REM0ZDJz48cGF0aCBkPSdNMTc2LDcyYTE2LDE2LDAsMSwxLTE2LTE2QTE2LDE2LDAsMCwxLDE3Niw3MlptNjgsOGExMiwxMiwwLDAsMS01LjM0LDEwTDIyMCwxMDIuNDJWMTIwQTEwOC4xMiwxMDguMTIsMCwwLDEsMTEyLDIyOEgyNEEyMCwyMCwwLDAsMSw4LjQxLDE5NS41bC4xNS0uMThMOTIsOTUuMThWNzYuODlDOTIsNDEuMjgsMTIwLjU3LDEyLjE3LDE1NS42OSwxMkgxNTZhNjMuOTQsNjMuOTQsMCwwLDEsNjAuNTgsNDMuMjlMMjM4LjY2LDcwQTEyLDEyLDAsMCwxLDI0NCw4MFptLTMzLjYzLDAtMTAuNjktNy4xM2ExMiwxMiwwLDAsMS01LTdBNDAsNDAsMCwwLDAsMTU2LDM2aC0uMTljLTIxLjk1LjExLTM5LjgsMTguNDUtMzkuOCw0MC44OVY5OS41MmExMiwxMiwwLDAsMS0yLjc5LDcuNjlMMzIuNTcsMjA0SDUzLjA1bDY5Ljc0LTgzLjY4YTEyLDEyLDAsMSwxLDE4LjQzLDE1LjM2TDg0LjI5LDIwNEgxMTJhODQuMDksODQuMDksMCwwLDAsODQtODRWOTZhMTIsMTIsMCwwLDEsNS4zNS0xMFonLz48L3N2Zz4%3D"></a>
+      <a href="https://ai.google.dev/gemini-api/docs/live"><img alt="Gemini Live" src="https://img.shields.io/badge/Gemini%20Live-20232A?style=flat&amp;logo=googlegemini&amp;logoColor=A88BFA"></a>
+      <a href="https://groq.com"><img alt="Groq" src="https://img.shields.io/badge/Groq-20232A?style=flat&amp;logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAyNTYgMjU2JyBmaWxsPScjRjU1MDM2Jz48cGF0aCBkPSdNMjE5LjcxLDExNy4zOGExMiwxMiwwLDAsMC03LjI1LTguNTJMMTYxLjI4LDg4LjM5bDEwLjU5LTcwLjYxYTEyLDEyLDAsMCwwLTIwLjY0LTEwbC0xMTIsMTIwYTEyLDEyLDAsMCwwLDQuMzEsMTkuMzNsNTEuMTgsMjAuNDdMODQuMTMsMjM4LjIyYTEyLDEyLDAsMCwwLDIwLjY0LDEwbDExMi0xMjBBMTIsMTIsMCwwLDAsMjE5LjcxLDExNy4zOFpNMTEzLjYsMjAzLjU1bDYuMjctNDEuNzdhMTIsMTIsMCwwLDAtNy40MS0xMi45Mkw2OC43NCwxMzEuMzcsMTQyLjQsNTIuNDVsLTYuMjcsNDEuNzdhMTIsMTIsMCwwLDAsNy40MSwxMi45Mmw0My43MiwxNy40OVonLz48L3N2Zz4%3D"></a>
+      <a href="https://scikit-learn.org"><img alt="scikit-learn" src="https://img.shields.io/badge/scikit--learn-20232A?style=flat&amp;logo=scikitlearn&amp;logoColor=F7931E"></a>
+      <a href="https://numpy.org"><img alt="NumPy" src="https://img.shields.io/badge/NumPy-20232A?style=flat&amp;logo=numpy&amp;logoColor=4DABCF"></a>
+      <a href="https://www.nltk.org"><img alt="NLTK (CMUDict)" src="https://img.shields.io/badge/NLTK%20%28CMUDict%29-20232A?style=flat&amp;logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAyNTYgMjU2JyBmaWxsPScjRkZGRkZGJz48cGF0aCBkPSdNMjMyLDQ0SDE2MGE0My44Niw0My44NiwwLDAsMC0zMiwxMy44NUE0My44Niw0My44NiwwLDAsMCw5Niw0NEgyNEExMiwxMiwwLDAsMCwxMiw1NlYyMDBhMTIsMTIsMCwwLDAsMTIsMTJIOTZhMjAsMjAsMCwwLDEsMjAsMjAsMTIsMTIsMCwwLDAsMjQsMCwyMCwyMCwwLDAsMSwyMC0yMGg3MmExMiwxMiwwLDAsMCwxMi0xMlY1NkExMiwxMiwwLDAsMCwyMzIsNDRaTTk2LDE4OEgzNlY2OEg5NmEyMCwyMCwwLDAsMSwyMCwyMFYxOTIuODFBNDMuNzksNDMuNzksMCwwLDAsOTYsMTg4Wm0xMjQsMEgxNjBhNDMuNzEsNDMuNzEsMCwwLDAtMjAsNC44M1Y4OGEyMCwyMCwwLDAsMSwyMC0yMGg2MFpNMTY0LDk2aDMyYTEyLDEyLDAsMCwxLDAsMjRIMTY0YTEyLDEyLDAsMCwxLDAtMjRabTQ0LDUyYTEyLDEyLDAsMCwxLTEyLDEySDE2NGExMiwxMiwwLDAsMSwwLTI0aDMyQTEyLDEyLDAsMCwxLDIwOCwxNDhaJy8%2BPC9zdmc%2B"></a>
+      <a href="https://ffmpeg.org"><img alt="FFmpeg" src="https://img.shields.io/badge/FFmpeg-20232A?style=flat&amp;logo=ffmpeg&amp;logoColor=3FBF3F"></a>
+    </td>
+  </tr>
+  <tr>
+    <td align="right"><b>Ship&nbsp;&amp;&nbsp;test</b></td>
+    <td>
+      <a href="https://huggingface.co/spaces"><img alt="Hugging Face Spaces" src="https://img.shields.io/badge/Hugging%20Face%20Spaces-20232A?style=flat&amp;logo=huggingface&amp;logoColor=FFD21E"></a>
+      <a href="https://huggingface.co/docs/hub/datasets"><img alt="HF Datasets" src="https://img.shields.io/badge/HF%20Datasets-20232A?style=flat&amp;logo=huggingface&amp;logoColor=FFD21E"></a>
+      <a href="https://www.docker.com"><img alt="Docker" src="https://img.shields.io/badge/Docker-20232A?style=flat&amp;logo=docker&amp;logoColor=2496ED"></a>
+      <a href="https://render.com"><img alt="Render" src="https://img.shields.io/badge/Render-20232A?style=flat&amp;logo=render&amp;logoColor=FFFFFF"></a>
+      <a href="https://nodejs.org"><img alt="Node.js 22" src="https://img.shields.io/badge/Node.js%2022-20232A?style=flat&amp;logo=nodedotjs&amp;logoColor=5FA04E"></a>
+      <a href="https://github.com/features/actions"><img alt="GitHub Actions" src="https://img.shields.io/badge/GitHub%20Actions-20232A?style=flat&amp;logo=githubactions&amp;logoColor=2088FF"></a>
+      <a href="https://pytest.org"><img alt="pytest" src="https://img.shields.io/badge/pytest-20232A?style=flat&amp;logo=pytest&amp;logoColor=0A9EDC"></a>
+      <a href="https://docs.astral.sh/ruff"><img alt="Ruff" src="https://img.shields.io/badge/Ruff-20232A?style=flat&amp;logo=ruff&amp;logoColor=D7FF64"></a>
+    </td>
+  </tr>
+</table>
 
 <p align="center">
   <a href="https://alimehdi973-ai-pronunciation-coach.hf.space"><b>Live demo</b></a> ·
@@ -52,46 +113,38 @@ pinned: false
 
 ## Features
 
-**Practice and scoring**
+### Practice
 
-- Sentences at three levels, or your own text, with every word respelled in plain letters (or IPA) and a neural voice at normal or slow speed.
-- Four scores (pronunciation, fluency, clarity, completeness) and every word marked correct, unclear, mispronounced, skipped or extra.
-- Tap a word to see it sound by sound and to hear just that part of your recording.
-- Two kinds of flag: *Fix this* for a likely slip, *Worth checking* for a borderline one you can check by saying the word alone.
-- An American or British English target, and a tuned sound model for speakers of Hindi, Urdu, Bengali, Gujarati, Marathi, Punjabi, Tamil and Telugu.
+Pick a sentence at one of three levels or type your own. Every word is respelled in plain letters (uh-BOWT) or IPA, and a neural voice reads it at normal or slow speed.
 
-**Coaching**
+After you speak you get four scores: pronunciation, fluency, clarity and completeness. Each word is marked correct, unclear, mispronounced, skipped or extra, and tapping one shows it sound by sound and replays just that part of your recording. A likely slip is marked *Fix this*. A borderline one is *Worth checking*, which you can settle by saying the word on its own.
 
-- A coach card after every attempt: a short summary, one tip per slip and a sentence to try next.
-- A coaching session on the one sound you most need, picked from your own history.
-- Ask the coach in a chat, or talk to it out loud in a live voice conversation.
-- Tips in English, Hindi, Urdu or Hinglish.
+The target is American or British English. Speakers of Hindi, Urdu, Bengali, Gujarati, Marathi, Punjabi, Tamil and Telugu are scored by a sound model trained for them ([how it was trained](#speakers-of-south-asian-languages)).
 
-**Interview prep**
+### Coaching
 
-- Mock interviews with a spoken interviewer: full, HR, behavioural, role-specific, tough questions, phone screen, university admission or student visa.
-- Hands-free by default: the microphone opens and closes by itself, and the next question comes straight away.
-- Interviews built from your own CV and the job advert, and a group discussion with three participants and a moderator.
-- Speak freely: answer interview questions, IELTS-style cue cards or everyday situations in your own words.
+Each attempt ends with a coach card: a line or two on how it went, one tip per slip and a sentence to try next. The Coach page goes further. It looks through your history for the sound you miss most and runs a five-step session on it. You can also type questions to the coach or talk to it out loud, and tips come in English, Hindi, Urdu or Hinglish.
 
-**Listening and drills**
+### Interviews
 
-- Minimal-pair drills built from the sounds you miss most often.
-- Listening drills that train your ear with many different voices.
-- Real listeners: other learners type what they heard in your recording.
-- A library of all 41 American English sounds, with how to make each one.
+A spoken interviewer runs eight kinds of mock interview, from an HR round to a student visa interview. By default it is hands-free: the microphone opens after each question, closes when you stop talking, and the next question plays straight away. Upload a CV and a job advert and the questions are written for that job. There is also a group discussion with three AI participants and a moderator, and a *Speak freely* mode for interview questions, IELTS-style cue cards and everyday situations.
 
-**Progress**
+### Drills and listening
 
-- Streaks, trends and history, and a learning journey with levels, badges and a daily goal.
-- Before and after: your first recordings next to your latest ones, and a Day 1 vs Day 30 video of an interview answer.
-- Share one attempt with a teacher through a link that works for seven days.
+| Mode | What it does |
+|---|---|
+| Minimal pairs | Built from the sounds you get wrong most often |
+| Listening drills | Many different voices, so you learn to hear a contrast before you say it |
+| Real listeners | Other learners play your recording and type what they heard |
+| Sound library | All 41 American English sounds, with how to make each one |
 
-**Privacy**
+### Progress
 
-- Audio is stored only with your consent, for the features that need it.
-- *Help improve Vocaly AI* is off until you turn it on, and Delete removes what you gave.
-- You can delete your history, recordings, interviews and account yourself.
+The Progress page keeps streaks, score trends and your history. The Journey page adds levels, badges and a daily goal. *Before & after* plays your first recordings next to your latest ones, and *Day 1 vs Day 30* turns two answers to the same interview question into a short video. A teacher can hear one of your attempts through a share link, which stops working after seven days.
+
+### Privacy
+
+Audio is kept only when you agree to it, and only for the features that need it. *Help improve Vocaly AI* stays off until you switch it on, and its Delete button removes everything you gave. Your history, recordings, interviews and account can all be deleted from Profile → Your data.
 
 <details>
 <summary><b>The practice page in detail</b></summary>
@@ -376,7 +429,7 @@ When pyarrow can't load (for example on Windows machines with Application Contro
 
 ## Features in depth
 
-Every feature, how it works and its limits. Click a title to open it.
+How each feature works and where it falls short. Click a title to open it.
 
 <details>
 <summary><b>Microphone check and clear failures</b></summary>
@@ -421,9 +474,9 @@ mic --16 kHz PCM--> this server --> Gemini Live --24 kHz PCM--> this server --> 
 ```
 
 - **The key stays on the server.** The browser only ever talks to our own WebSocket; `GEMINI_API_KEY` is read on the server.
-- **It hears how you said it, not only what.** After each turn the audio is scored with the same Whisper and phoneme models used for practice. If a word was clearly mispronounced, the coach is told, at most once every 25 seconds, so it can say the word and invite another try. A generic voice assistant cannot do this.
-- **Grounded.** The coach is told the learner's level, first language and weak and strong sounds, and is instructed to speak plainly, in one to three short sentences, about everyday topics.
-- **Safe.** Abusive speech is caught by `backend/moderation.py` and answered calmly, and the model is told to stay on speaking practice. Asked who made it, the coach says Vocaly AI was developed by Ali Mehdi Khan (the text chat answers that question itself, without calling the model).
+- **Pronunciation.** After each turn the audio is scored with the same Whisper and phoneme models used for practice. If a word was clearly mispronounced, the coach is told, at most once every 25 seconds, so it can say the word and invite another try.
+- **What the coach knows.** The coach is told the learner's level, first language and weak and strong sounds, and is instructed to speak plainly, in one to three short sentences, about everyday topics.
+- **Abuse.** Abusive speech is caught by `backend/moderation.py` and answered calmly, and the model is told to stay on speaking practice. Asked who made it, the coach says Vocaly AI was developed by Ali Mehdi Khan (the text chat answers that question itself, without calling the model).
 - **Limits.** Gemini Live is paid by the second, so every call has a budget:
 
   | Limit | Default | What the learner sees |
@@ -603,7 +656,7 @@ Limits: results depend on who is listening, and other learners are not native sp
 <details>
 <summary><b>Before and after, and Day 1 vs Day 30</b></summary>
 
-Scores are numbers; hearing yourself is proof. **Before & after** (`/before-after`, offered right after sign-up) records five fixed sentences that cover the sounds learners find hardest. After 14 days, and then every 30 days, the practice page reminds you to record them again, and the page plays each sentence side by side (*Before* and *Now*) with both scores.
+Hearing an old recording next to a new one shows progress in a way a score can't. **Before & after** (`/before-after`, offered right after sign-up) records five fixed sentences that cover the sounds learners find hardest. After 14 days, and then every 30 days, the practice page reminds you to record them again, and the page plays each sentence side by side (*Before* and *Now*) with both scores.
 
 - **Only with consent.** Audio is stored only after you tick an explicit consent box, and each stored recording keeps the time you agreed. The server refuses to store anything without it (`consent=true`). Audio is kept in the database (so it survives container restarts) and is never at a public URL: it is fetched with your profile key and played from memory.
 - **Delete any time.** *Delete stored audio* on the page or in Profile → Your data removes every recording and keeps the scores, so your progress is still shown. Deleting your history or your account removes the recordings and their scores too.
@@ -643,7 +696,7 @@ Limits: anyone who has the link can play the recording until it expires, so shar
 <details>
 <summary><b>The learning journey</b></summary>
 
-A scorer tells you how you did. A coach gives you a route and a reason to come back. The **Journey** page (`backend/journey.py`) turns the attempts the app already stores into that, with no extra tables:
+The **Journey** page (`backend/journey.py`) builds a plan out of the attempts the app already stores, with no extra tables:
 
 | Part | What it does |
 |---|---|
@@ -794,23 +847,28 @@ flowchart LR
         Phon --> Scorer
         Scorer --> CMU[(CMUDict IPA<br/>+ letter-to-sound rules)]
         Scorer --> DB[(PostgreSQL / SQLite<br/>history, weak sounds)]
+        Scorer --> SM[Sound model<br/>South Asian learners]
         Coach[/api/coach/] -->|diagnosed slips only| Groq[Groq LLM]
         Coach -.fallback.-> KB[Tutor knowledge base]
-        TTS[/api/tts<br/>Piper voice/]
+        TTS[/api/tts<br/>Kokoro or Piper/]
+        Voice[/ws/voice/] --> Gemini[Gemini Live]
+        Gift[Help improve<br/>quality checks] -->|FLAC every 10 min| HF[(Private HF dataset)]
     end
 
     Scorer -->|JSON| UI
     UI --> Coach
+    UI <-->|PCM audio| Voice
 ```
 
 | Layer | Tools |
 |---|---|
 | Frontend | React 19, TypeScript, Vite, Tailwind CSS v4, shadcn/ui (Radix), Motion, GSAP, Three.js (orb), TanStack Query, Zustand, Recharts |
-| Backend | Python 3.11, FastAPI, SQLAlchemy, Prometheus client |
-| Speech | faster-whisper (CTranslate2, Silero VAD), wav2vec 2.0 phoneme model on ONNX Runtime, Piper TTS, NLTK CMUDict |
-| Coaching | Groq chat API (optional), built-in knowledge base of 41 sounds, 50 substitution tips and 16 deletion tips |
-| Data | PostgreSQL (for example Neon) in production, SQLite locally |
-| Delivery | Docker multi-stage build, GitHub Actions CI |
+| Backend | Python 3.11, FastAPI, Uvicorn, Pydantic, SQLAlchemy, Prometheus client |
+| Speech | faster-whisper (CTranslate2, Silero VAD), wav2vec 2.0 phoneme model on ONNX Runtime, Kokoro and Piper TTS, NLTK CMUDict, FFmpeg |
+| Coaching | Groq chat API (optional), Gemini Live for spoken conversations (optional), built-in knowledge base of 41 sounds, 50 substitution tips and 16 deletion tips |
+| Sound model | Logistic regression and gradient-boosted trees in scikit-learn, exported to JSON and run with NumPy |
+| Data | PostgreSQL (for example Neon) in production, SQLite locally, a private Hugging Face dataset for given recordings |
+| Delivery | Docker multi-stage build, Hugging Face Spaces, Render, GitHub Actions CI |
 
 ## Run it locally
 
