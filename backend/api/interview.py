@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Resp
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from backend import cv, interview
+from backend import cv, interview, learners
 from backend.api.coach import coach_rate_limiter
 from backend.api.deps import profile_key
 from backend.api.speaking import analyse_free_answer
@@ -333,11 +333,15 @@ async def answer_question(
         raise HTTPException(status_code=400, detail="Unknown interview question.")
     question = interview.follow_up_view(main_question, follow_up, follow_up_text) if follow_up else main_question
     kind, role, level = interview.settings_for(interview_type, role, level)
+    learner = find_user(db, clean_username(username) or "") if username else None
+    model = learners.sound_model_for(learner.first_language if learner else None)
     db.commit()  # end the read before transcription, which can take a while
 
     audio_rate_limiter.check(client_key(request))
     timer = StageTimer()
-    analysed = await analyse_free_answer(audio, timer, max_seconds=settings.interview_seconds, endpoint="/api/interview/answer")
+    analysed = await analyse_free_answer(
+        audio, timer, max_seconds=settings.interview_seconds, endpoint="/api/interview/answer", sound_model=model
+    )
     body: dict[str, Any] = {
         "question": {**question, "index": question_index},
         "transcription": analysed["text"],
