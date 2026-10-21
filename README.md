@@ -8,28 +8,93 @@ app_port: 7860
 pinned: false
 ---
 
-# Vocaly AI
+<p align="center">
+  <img src="frontend/public/favicon.svg" width="88" height="88" alt="Vocaly AI app icon">
+</p>
 
-![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)
-![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=flat&logo=fastapi)
-![React 19](https://img.shields.io/badge/React-19-149eca?logo=react)
-![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
+<h1 align="center">Vocaly AI</h1>
 
-You say a sentence. The coach tells you which sounds were off, not just a score, and then helps you fix them. It transcribes your speech with Whisper, listens for the individual sounds with a phoneme recogniser, compares both against the target sentence, and explains each slip.
+<p align="center"><b>Speak English that people understand.</b></p>
 
-**Live demo:** [Hugging Face Space](https://alimehdi973-ai-pronunciation-coach.hf.space)
+<p align="center">You say a sentence. The coach tells you which sounds were off, not just a score, and then helps you fix them.</p>
 
-![Practice page: a target sentence with a plain-letter respelling under every word, Listen and Slowly, and the microphone orb](assets/practice.jpg)
+<p align="center">
+  <a href="https://alimehdi973-ai-pronunciation-coach.hf.space"><img alt="Live demo on Hugging Face" src="https://img.shields.io/badge/Live%20demo-Hugging%20Face-FFD21E?logo=huggingface&logoColor=black"></a>
+  <img alt="Python 3.11+" src="https://img.shields.io/badge/python-3.11+-blue.svg">
+  <img alt="FastAPI" src="https://img.shields.io/badge/FastAPI-005571?style=flat&logo=fastapi">
+  <img alt="React 19" src="https://img.shields.io/badge/React-19-149eca?logo=react">
+  <img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-yellow.svg">
+</p>
 
-![Results: the overall score and its rings, whether a listener would understand you, the metrics, and the word-by-word transcript with "third" marked Worth checking](assets/results.jpg)
+<p align="center">
+  <a href="https://alimehdi973-ai-pronunciation-coach.hf.space"><b>Live demo</b></a> ·
+  <a href="#features">Features</a> ·
+  <a href="#how-it-works">How it works</a> ·
+  <a href="#run-it-locally">Run locally</a> ·
+  <a href="#api">API</a>
+</p>
 
-![Word inspector: "third" sound by sound, with /θ/ heard as /f/ at 77% (Worth checking), the coach note, "Say just this word" and "I think this is wrong"](assets/inspector.jpg)
+<p align="center">
+  <img src="assets/practice.jpg" width="100%" alt="Practice page: a target sentence with a plain-letter respelling under every word, Listen and Slowly, and the microphone orb">
+</p>
 
-![Coach card: a short summary, the borderline word to say on its own, and a sentence to try next](assets/coach.jpg)
+## Contents
 
-The screenshots are from the running app in Chrome (1600 × 900, dark theme), taken in October 2026. The learner is a synthetic voice (Kokoro) saying "I think this is the furd time" against the target "I think this is the third time", so the slip is deliberate; every score, flag and tip is what the app returned for that recording.
+- [Features](#features)
+- [Screenshots](#screenshots)
+- [How it works](#how-it-works)
+- [How accurate it is](#how-accurate-it-is)
+- [Features in depth](#features-in-depth)
+- [Help improve Vocaly AI](#help-improve-vocaly-ai)
+- [Architecture](#architecture)
+- [Run it locally](#run-it-locally) · [Deployment](#deployment) · [Configuration](#configuration) · [API](#api)
+- [Tests](#tests) · [Project layout](#project-layout) · [License](#license)
 
-## What you get
+## Features
+
+**Practice and scoring**
+
+- Sentences at three levels, or your own text, with every word respelled in plain letters (or IPA) and a neural voice at normal or slow speed.
+- Four scores (pronunciation, fluency, clarity, completeness) and every word marked correct, unclear, mispronounced, skipped or extra.
+- Tap a word to see it sound by sound and to hear just that part of your recording.
+- Two kinds of flag: *Fix this* for a likely slip, *Worth checking* for a borderline one you can check by saying the word alone.
+- An American or British English target, and a tuned sound model for speakers of Hindi, Urdu, Bengali, Gujarati, Marathi, Punjabi, Tamil and Telugu.
+
+**Coaching**
+
+- A coach card after every attempt: a short summary, one tip per slip and a sentence to try next.
+- A coaching session on the one sound you most need, picked from your own history.
+- Ask the coach in a chat, or talk to it out loud in a live voice conversation.
+- Tips in English, Hindi, Urdu or Hinglish.
+
+**Interview prep**
+
+- Mock interviews with a spoken interviewer: full, HR, behavioural, role-specific, tough questions, phone screen, university admission or student visa.
+- Hands-free by default: the microphone opens and closes by itself, and the next question comes straight away.
+- Interviews built from your own CV and the job advert, and a group discussion with three participants and a moderator.
+- Speak freely: answer interview questions, IELTS-style cue cards or everyday situations in your own words.
+
+**Listening and drills**
+
+- Minimal-pair drills built from the sounds you miss most often.
+- Listening drills that train your ear with many different voices.
+- Real listeners: other learners type what they heard in your recording.
+- A library of all 41 American English sounds, with how to make each one.
+
+**Progress**
+
+- Streaks, trends and history, and a learning journey with levels, badges and a daily goal.
+- Before and after: your first recordings next to your latest ones, and a Day 1 vs Day 30 video of an interview answer.
+- Share one attempt with a teacher through a link that works for seven days.
+
+**Privacy**
+
+- Audio is stored only with your consent, for the features that need it.
+- *Help improve Vocaly AI* is off until you turn it on, and Delete removes what you gave.
+- You can delete your history, recordings, interviews and account yourself.
+
+<details>
+<summary><b>The practice page in detail</b></summary>
 
 The practice page offers sentences at three levels, or your own text. Every word shows how it sounds, in plain letters (uh-BOWT) or IPA (your choice in Settings), and you can hear the sentence at normal or slow speed in a neural voice. The orb in the middle is a WebGL shader that follows the real audio: your microphone while you record, the coach's voice or your own playback otherwise.
 
@@ -37,23 +102,53 @@ After you speak, you get four scores (pronunciation, fluency, clarity, completen
 
 Four more pages: drills built from the sounds you miss most often (you record each minimal pair and the coach checks which word it heard), a library of all 41 American English sounds with articulation steps and minimal pairs, a progress page with streaks, trends and history, and a profile page where you manage your account.
 
-![Coach page: today's focus sound and why, and your clean rate for every sound you have practised](assets/coach-page.jpg)
-
-![Journey: your level, today's goal, talking to your coach, and the learning path through all 41 sounds](assets/journey.jpg)
-
-![Drills: the minimal-pair challenge for th, with "think" heard correctly, next to the guide for the sound](assets/drills.jpg)
-
-![Sound Library: the guide for th as in "think", with how to make it, words that sound alike and a practice sentence](assets/sounds.jpg)
-
-![Progress: your usual score, what to practise next, and your scores over time](assets/progress.jpg)
-
-![Coach chat: "How do I say thorough?" answered with the stress, the th sound and a line to try](assets/chat.jpg)
-
-![Talk to your coach: a live spoken conversation, with the coach's reply and your own words shown under the orb](assets/talk.jpg)
-
 Keyboard: `Space` records, `R` retries, `N` moves to the next phrase, `L` plays the sentence, `C` says a *Worth checking* word on its own (while it is open in the word inspector), `M` opens the microphone check, `Ctrl/⌘ K` opens the command palette. Dark and light themes, a layout for phones, and reduced-motion support.
 
-## How a recording is scored
+</details>
+
+## Screenshots
+
+<table>
+  <tr>
+    <td width="50%" valign="top"><img src="assets/results.jpg" alt="Results: the overall score and its rings, whether a listener would understand you, the metrics, and the word-by-word transcript with &quot;third&quot; marked Worth checking"><br><sub><b>Results.</b> The score, whether a listener would understand you, and every word marked.</sub></td>
+    <td width="50%" valign="top"><img src="assets/inspector.jpg" alt="Word inspector: &quot;third&quot; sound by sound, with /θ/ heard as /f/ at 77% (Worth checking), the coach note, &quot;Say just this word&quot; and &quot;I think this is wrong&quot;"><br><sub><b>Word inspector.</b> “third” sound by sound, with /θ/ heard as /f/.</sub></td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top"><img src="assets/coach.jpg" alt="Coach card: a short summary, the borderline word to say on its own, and a sentence to try next"><br><sub><b>Coach card.</b> A short summary, the word to check and a sentence to try next.</sub></td>
+    <td width="50%" valign="top"><img src="assets/coach-page.jpg" alt="Coach page: today's focus sound and why, and your clean rate for every sound you have practised"><br><sub><b>Coach page.</b> Today’s focus sound and your clean rate for every sound.</sub></td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top"><img src="assets/journey.jpg" alt="Journey: your level, today's goal, talking to your coach, and the learning path through all 41 sounds"><br><sub><b>Journey.</b> Your level, today’s goal and the path through all 41 sounds.</sub></td>
+    <td width="50%" valign="top"><img src="assets/drills.jpg" alt="Drills: the minimal-pair challenge for th, with &quot;think&quot; heard correctly, next to the guide for the sound"><br><sub><b>Drills.</b> The minimal-pair challenge for th, next to the guide for the sound.</sub></td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top"><img src="assets/sounds.jpg" alt="Sound Library: the guide for th as in &quot;think&quot;, with how to make it, words that sound alike and a practice sentence"><br><sub><b>Sound Library.</b> How to make th as in “think”, with words that sound alike.</sub></td>
+    <td width="50%" valign="top"><img src="assets/progress.jpg" alt="Progress: your usual score, what to practise next, and your scores over time"><br><sub><b>Progress.</b> Your usual score, what to practise next and your scores over time.</sub></td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top"><img src="assets/chat.jpg" alt="Coach chat: &quot;How do I say thorough?&quot; answered with the stress, the th sound and a line to try"><br><sub><b>Coach chat.</b> “How do I say thorough?” answered with the stress and the th sound.</sub></td>
+    <td width="50%" valign="top"><img src="assets/talk.jpg" alt="Talk to your coach: a live spoken conversation, with the coach's reply and your own words shown under the orb"><br><sub><b>Talk to your coach.</b> A live spoken conversation, with the coach’s reply under the orb.</sub></td>
+  </tr>
+</table>
+
+The screenshots are from the running app in Chrome (1600 × 900, dark theme), taken in October 2026. The learner is a synthetic voice (Kokoro) saying "I think this is the furd time" against the target "I think this is the third time", so the slip is deliberate; every score, flag and tip is what the app returned for that recording.
+
+## How it works
+
+The app transcribes your speech with Whisper, listens for the individual sounds with a phoneme recogniser, compares both against the target sentence, and explains each slip.
+
+```mermaid
+flowchart LR
+    A["You speak"] --> B["The browser levels the audio<br/>16 kHz WAV"]
+    B --> C["Whisper<br/>words and timings"]
+    B --> D["Phoneme model<br/>every sound, every 20 ms"]
+    C --> E["Words aligned<br/>with the target"]
+    D --> F["Goodness of pronunciation<br/>for each expected sound"]
+    F --> G["Chance each sound is clean<br/>default curve or sound model"]
+    E --> H["Four scores and<br/>every word marked"]
+    G --> H
+    H --> I["Coach card<br/>tips and a sentence to try"]
+```
 
 1. **The browser levels the audio.** Quiet microphones are boosted by up to 24 dB with a soft limiter, then the clip is encoded as 16 kHz mono WAV, so the server rarely needs ffmpeg.
 2. **Whisper transcribes it** (faster-whisper, int8) with word timestamps and confidence. Voice activity detection drops silence, which stops Whisper from inventing words on empty clips.
@@ -64,7 +159,8 @@ Keyboard: `Space` records, `R` retries, `N` moves to the next phrase, `L` plays 
 
 When the phoneme model is not installed, steps 3 and 4 are skipped and scoring uses Whisper's words and CMUDict alone. Everything still works, with less precise sound-level feedback.
 
-### The coaching session
+<details>
+<summary><b>The coaching session</b></summary>
 
 The Coach page (`/coach`, sign-in required) works from what the app has recorded about you. Every sound you attempt is stored as clean or not, so the coach knows your clean-rate per sound and whether it is improving, steady or slipping.
 
@@ -72,7 +168,9 @@ It then picks one sound to work on, weighting how often it goes wrong by how oft
 
 After any normal attempt the coach card ends with a single "change this on your next try" cue instead of a list. The focus and every number come from your history; the language model only writes the wording, and a built-in coach does when it is unavailable.
 
-### How well it works
+</details>
+
+## How accurate it is
 
 Scoring was checked against expert ratings on [speechocean762](https://huggingface.co/datasets/mispeech/speechocean762) (Apache-2.0): 5,000 English sentences read by Mandarin speakers, rated per sentence, word and sound by trained annotators. The blend weights, sound threshold and fluency curve were fitted on its training split. The figures below are on recordings from the test split that were not used for fitting. Correlations are Pearson's r with the human rating.
 
@@ -89,13 +187,15 @@ Scoring was checked against expert ratings on [speechocean762](https://huggingfa
 
 The fluency rule changed because human raters in this data score *faster* readers as more fluent (word rate correlates at +0.56 with their fluency rating), while the old rule punished anything over 180 words per minute. The audio model also rescues words Whisper drops: when Whisper reports a word as missing but the sounds are there, the word is scored from the sounds instead of getting zero. That one change moved word accuracy from 0.398 to 0.555.
 
-#### What these numbers do not say
+The scores estimate how a human rater would hear you. They are not a measurement of your accent, and the absolute level is generous: a sentence with one wrong sound in seven words can still score in the nineties.
+
+### What these numbers do not say
 
 The recordings are scripted reading by one first-language group, so they say little about spontaneous speech or other accents. Only about 4% of sounds in the data are rated less than clean, which makes "was this sound wrong" a rare-event problem. At the threshold the app uses, about two flagged sounds in five are real slips (0.41 precision on the test split), and many slips go unflagged.
 
 The phoneme model also leans toward the sound you were supposed to make. In a separate check I had the Piper voice say twelve deliberate substitutions inside full sentences (θ→s, ð→d, v→b, r→l, ʃ→s and similar). The sound model flagged four of them, and Whisper hearing a different word caught two more, so half were reported as less than clean. When the same sounds are spoken alone the model separates them (it hears `think` and `sink` differently), but inside a familiar phrase it often hears the intended sound: `berry` read as `very` came back clean both times. Synthetic speech is not learner speech, so this is not a recall figure for real users, but it is the main weakness to know about. A model fine-tuned on non-native speech would be the next step.
 
-#### Speakers of South Asian languages
+### Speakers of South Asian languages
 
 The numbers above are for Mandarin speakers, and the curve that turns each sound's evidence into "chance it is clean" was fitted on them. For Indian speakers it misses almost everything. On [L2-ARCTIC](https://psi.engr.tamu.edu/l2-arctic-corpus/) (24 speakers of six first languages reading English, every sound marked by trained annotators as right, distorted, replaced or dropped; CC BY-NC 4.0, used through the 16 kHz mirror `chikingsley/l2-arctic-manual-v5.0-16k`), the default curve flagged under 1% of a Hindi speaker's sounds and caught 4% of the ones the annotators marked wrong.
 
@@ -121,7 +221,8 @@ For the Hindi speaker it catches three times as many of the slips the annotators
 
 Limits: it still misses most slips. The annotators marked about 10% of this speaker's sounds wrong, and the model flags a quarter as many sounds, because flagging more would mean flagging correct speech too. Four Hindi speakers are in the data (two for training, one for validation, one for testing), all reading scripted sentences, and there are no Urdu, Bengali, Tamil or Telugu speakers, so the numbers say how it does on careful reading by speakers like them, not on everyone the profile covers. The native check set is synthetic speech, which is cleaner than any real voice. L2-ARCTIC's annotators judged against General American English and mark Indian-English features (dental t and d for th, v and w, a dropped r) as wrong, so the model is closer to *Reduce my accent* than to *Be clearly understood*; the goal setting still decides which slips get tips. On speechocean762's Mandarin speakers it does worse than the default curve (AUC 0.857 against 0.924), which is why it is used only for the languages above. L2-ARCTIC is licensed for non-commercial use only: a paid copy of the app should retrain this model on its own reviewed recordings (see [Help improve Vocaly AI](#help-improve-vocaly-ai)) before charging. The sound model judges practice, drills, the coach session, the check-up and interview answers. *Say just this word* and the before-and-after recordings keep the default curve, so their cut-offs and comparisons over time stay as they were, and so do Speak freely and group discussions, which don't send who is speaking.
 
-#### British English target
+<details>
+<summary><b>British English target</b></summary>
 
 Settings → *Your coach* offers **American English** (the default) or **British English**. With British:
 
@@ -140,7 +241,10 @@ Settings → *Your coach* offers **American English** (the default) or **British
 
 Not done yet: a real en-GB pronunciation lexicon. The BATH and TRAP split ("dance" as /dɑːns/), the LOT vowel /ɒ/ and British word-specific forms ("schedule", "tomato") are not modelled, so the target sound for those words is still American. Single-word checks, Speak freely and before-and-after scoring use the American target.
 
-#### Word stress (experimental, off by default)
+</details>
+
+<details>
+<summary><b>Word stress (experimental, off by default)</b></summary>
 
 Settings → *Word stress (experimental)* turns on a check of which syllable of each long word you stressed (`stress=true` on `/api/evaluate`). The sound alignment already times every vowel; for each word of two or more syllables the check compares the syllables' vowels on length, loudness and pitch (autocorrelation), each as a z-score within the word so a quiet or low voice is not penalised. The most prominent syllable is shown in the word inspector as "you stressed". A stress slip is reported only when it beats the dictionary's stressed syllable by a clear margin (2.5 summed z-scores; on a two-syllable word that means length, loudness and pitch all point the wrong way).
 
@@ -155,7 +259,10 @@ It does not agree well with expert listeners, which is why it is experimental. s
 
 At lower margins about 6% of flags are real, barely above the base rate. So the check rarely reports anything, and the "you stressed" marker should be read as a hint. Likely reasons: the speakers in the data read carefully and rarely misplace stress, the vowel timings come from a phoneme model rather than a forced aligner, and English stress also shows in vowel quality (reduced /ə/), which this does not measure.
 
-#### Natural speed
+</details>
+
+<details>
+<summary><b>Natural speed</b></summary>
 
 Reading slowly and over-pronouncing every sound gets high scores, but it is not how anyone talks. An attempt slower than **100 words a minute** is labelled *careful speech* next to its pace. With **Natural speed** on (Settings), careful attempts are still scored, shown and saved, but they don't count toward your sound mastery, the coach's choice of focus, your streak or your daily goal. History marks them "not counted".
 
@@ -163,13 +270,19 @@ Why 100: on speechocean762's training split (300 recordings, Whisper's word timi
 
 Limits: the readers in that data are reading, not talking, and slow reading there is mostly struggling rather than deliberate over-enunciation, so the cut-off says "slower than fluent readers", not "fake". Pace is measured from the first to the last word Whisper heard, so a long pause in the middle slows it. Very short phrases (under three words) are never labelled.
 
-#### Would a listener understand you?
+</details>
+
+<details>
+<summary><b>Would a listener understand you?</b></summary>
 
 Next to the scores, the results show a **machine estimate** of whether a listener would catch your words: the share of target words that Whisper recovered (after the usual normalisation, so numbers spelled out and homophones count). Whisper is given no prompt or hint about the target sentence, so it hears you cold, the way a stranger would. The existing transcript is reused: there is no second pass and no extra wait. In the transcript a wavy underline marks the words a listener would likely miss, separately from the colours for sound slips, and the word inspector says what came across instead.
 
 It is not folded into the overall score. On the 500 test recordings it averages 74% and correlates at r = 0.48 with the experts' overall rating (0.49 with their accuracy rating), clearly weaker than the score itself (0.70), so it is labelled an estimate. Limits: Whisper is not a person. It misses some words a person would get (it writes "third" as "3rd", which then counts as missed), and it gets some a person would not, because its language model guesses likely words. It has not been checked against real listeners. Speechocean762 has no listener ratings to check it against.
 
-#### "Fix this" and "Worth checking"
+</details>
+
+<details>
+<summary><b>“Fix this” and “Worth checking”</b></summary>
 
 Because so many flags are false alarms, flagged sounds come in two tiers. A sound whose chance of being rated clean is below 0.70 is **Fix this** (solid red in the transcript). One between 0.70 and the flag cut-off of 0.80 is **Worth checking** (amber, dashed outline). The cut-off was chosen on the training split alone (2,500 recordings, 1,278 real slips) as the loosest one at which "Fix this" reached 0.6 precision there (0.63). On the held-out test split:
 
@@ -187,7 +300,10 @@ A real slip is a sound the experts rated below 0.5 of 2. What each tier is allow
 
 Limits: "Fix this" is still wrong almost half the time on the test split, and the tiers split only what is flagged, so the 59% of real slips the app misses stay missed. The two tiers separate less than you might hope, because the probability that sets them clusters between 0.55 and 0.80. With little history the coach now picks a sound that has already slipped ("early days") instead of saying your sounds are in good shape. To redo the calibration: `python scripts/eval_speechocean.py prepare --split train --limit 2500 --no-asr`, then `tiers --split train --limit 2500`, then `tiers --split test --fix-below 0.7`.
 
-#### "Not sure? Say just this word"
+</details>
+
+<details>
+<summary><b>“Not sure? Say just this word”</b></summary>
 
 A *Worth checking* word has a **Not sure? Say just this word** button, in the word inspector (`C` on the keyboard) and in the coach card. You record the word on its own and it goes through the same pipeline as a sentence (`POST /api/evaluate/confirm`, with the word as the target), with one of three outcomes:
 
@@ -208,7 +324,10 @@ Said alone, the sound model separates sounds but stays generous: a correct word 
 
 Whisper on its own is too eager with single words: it turns a lone "sheet" into "See you next time." Limits: this is synthetic speech, and the same recordings were used to choose the cut-offs and to measure them (the per-voice figures agree, which is some reassurance). About one correct word in eleven is still confirmed as a slip, and there is no data yet on learners' own voices; the disputes below are meant to collect it.
 
-#### "I think this is wrong"
+</details>
+
+<details>
+<summary><b>“I think this is wrong”</b></summary>
 
 Under every flagged sound in the word inspector, a signed-in learner can say the coach got it wrong, with an optional reason: *I said it correctly* or *That's normal in my accent* (`POST /api/disputes`). A report stores the attempt id, the word, the expected sound, what the scorer heard instead, the raw GOP value, the tier and the score saved with the attempt (the server takes those two from the database, not from the browser), and the reason. It never stores audio, and reporting the same sound again only updates the reason. Reports don't change any score. They are for recalibration:
 
@@ -218,7 +337,10 @@ python -m backend.manage disputes --out disputes.csv   # one row per report, wit
 
 Reports are rate-limited, need the profile key of the attempt's owner, and are deleted with the learner's history or account. Limits: a report is the learner's opinion, not a rating by a trained listener, and "that's normal in my accent" mixes real accent features with misheard slips, so treat the export as a list of places to listen again, not as labels to train on.
 
-#### Weak forms of small words
+</details>
+
+<details>
+<summary><b>Weak forms of small words</b></summary>
 
 CMUDict lists careful citation forms, so a natural "fish *ən* chips" or "see *jə* later" used to be marked wrong. The twenty most common function words (a, an, the, to, for, of, and, can, was, were, have, has, them, from, you, your, at, as, but, that) now also accept their reduced vowel form (/ən/, /jə/, /ət/, /bət/, /həv/ ...). Most were already in CMUDict; `phonetics.WEAK_FORMS` adds the missing nine, and the scorer uses whichever form best matches the audio. The inspector then shows the form you actually used.
 
@@ -233,7 +355,10 @@ CMUDict lists careful citation forms, so a natural "fish *ən* chips" or "see *j
 
 Sound agreement is computed only on words whose chosen pronunciation matches the dataset's own, so accepting weak forms changes which sounds are compared (6,663 before, 6,717 after); the two figures are not like for like. A first version also accepted dropped consonants ("and" as plain /n/, "have" as /əv/, "of" as /ə/). That lowered sentence accuracy to 0.648 and was cut. Limits: only the vowel is reduced, so a learner who says "gonna" or drops the h of "have" is still marked; a changed consonant ("the" as "də") is always a slip; and the r-less forms of British English are left to a British target. speechocean762 is careful reading, where reductions are rare, so it can only show that weak forms do no harm, not how much they help in conversation.
 
-The scores estimate how a human rater would hear you. They are not a measurement of your accent, and the absolute level is generous: a sentence with one wrong sound in seven words can still score in the nineties.
+</details>
+
+<details>
+<summary><b>Reproduce the evaluation</b></summary>
 
 To reproduce:
 
@@ -247,7 +372,14 @@ python scripts/eval_speechocean.py calibrate --split train --limit 700   # after
 
 When pyarrow can't load (for example on Windows machines with Application Control, which blocks its DLL), the script reads the dataset with polars instead (`pip install polars`, listed in `requirements-dev.txt`).
 
-### Microphone check and clear failures
+</details>
+
+## Features in depth
+
+Every feature, how it works and its limits. Click a title to open it.
+
+<details>
+<summary><b>Microphone check and clear failures</b></summary>
 
 A bad microphone looks exactly like bad pronunciation to a scorer, so before the first recording of a session the practice page offers a three-second **microphone check** (also under Settings → Microphone, and `M`). You say a short phrase; the browser measures it after its own processing, the same processing a real recording gets, and reports what to fix:
 
@@ -273,7 +405,10 @@ Failures now say what happened and what to do. Every error from the speech endpo
 
 Silence is not an error: `/api/evaluate` answers with `"no_speech": true`, and the practice page explains it (and offers the mic check) instead of showing an empty result.
 
-## Talking to the coach
+</details>
+
+<details>
+<summary><b>Talking to the coach</b></summary>
 
 The coach can hold a spoken conversation (`backend/voice_agent.py`, `GET /ws/voice`), powered by Gemini Live:
 
@@ -307,7 +442,10 @@ mic --16 kHz PCM--> this server --> Gemini Live --24 kHz PCM--> this server --> 
 
 Set `GEMINI_API_KEY` to switch it on (`/health` then reports `voice_agent: true`); without it the Talk buttons are hidden.
 
-## Your profile: first language, goal and tip language
+</details>
+
+<details>
+<summary><b>Your profile: first language, goal and tip language</b></summary>
 
 Onboarding (and Settings) asks three optional things, saved with the profile (`GET`/`PUT /api/learner/{username}`, three new columns on `users`):
 
@@ -317,7 +455,10 @@ Onboarding (and Settings) asks three optional things, saved with the profile (`G
 
 Limits: the first-language notes cover nine languages and are general tendencies. "Changes the word" only knows dictionary words, so a slip that makes a rare word or a non-word counts as minor unless a listener would mishear it. The Hindi and Urdu tips were written for this app and have not been reviewed by native-speaker teachers.
 
-## Speak freely
+</details>
+
+<details>
+<summary><b>Speak freely</b></summary>
 
 Reading a sentence aloud is not how interviews, IELTS or a phone call work. **Speak freely** (`/speak`) gives you a question and you answer in your own words, for up to two minutes (`PRONUNCIATION_COACH_FREE_SPEECH_SECONDS`, 120; this mode only, everything else keeps the 60-second limit):
 
@@ -330,7 +471,10 @@ Whisper usually tidies "um" and "uh" away. `scripts/eval_fillers.py` tested whet
 
 Limits: with no script, a sound that Whisper and the sound model both "hear" as intended is never caught, so free-speech scores are generous. Pauses are measured between Whisper's word timings. The structure feedback is the language model's opinion and has not been compared with examiners.
 
-## Interview prep
+</details>
+
+<details>
+<summary><b>Interview prep, interviews from your CV and group discussion</b></summary>
 
 **Interview prep** (`/interview`) is a mock interview with a spoken interviewer. You choose:
 
@@ -359,7 +503,7 @@ The questions follow the order a real interview of that kind uses (`backend/inte
 
 **Saving.** Under your name, an interview is saved after every answer, as text: questions, transcripts and feedback, never audio. You can carry on an unfinished one later. The newest 50 are kept. You can delete one from its report, and all of them go with your practice history or account. Guests can take an interview but need an account to see the feedback, as everywhere else.
 
-### Interview from your CV
+#### Interview from your CV
 
 Generic questions are the top complaint about interview apps, so **From your CV** (`/interview/cv`) builds the interview from the learner's own CV and, optionally, the job advert. Upload a PDF, Word (.docx) or text file, or paste the resume or CV. Then pick experience, length and style as above.
 
@@ -381,7 +525,7 @@ Generic questions are the top complaint about interview apps, so **From your CV*
 
 Limits: parsing finds skills from a fixed list and project titles only under a "Projects" heading, so a CV in an unusual layout gives plainer questions without the model. The model's questions are checked for length and form, not for accuracy against the CV.
 
-### Group discussion
+#### Group discussion
 
 Many campus placements and job selections include a group discussion (GD): four or five people discuss a topic while assessors watch who starts, who adds new points, who listens and builds on others, and who summarises. **Group discussion** (`/interview/group`) recreates it as a video call. You join three participants and a moderator:
 
@@ -422,7 +566,10 @@ Limits:
 - Practice for a visa interview is not immigration advice. The setup screen says to always answer truthfully, and the model is told never to suggest facts or reasons to claim.
 - Answers can run up to 150 seconds (`PRONUNCIATION_COACH_INTERVIEW_SECONDS`).
 
-## Listening drills
+</details>
+
+<details>
+<summary><b>Listening drills</b></summary>
 
 It is hard to say a sound you can't hear. The **Listen** drills (Drills → Listen) use high variability phonetic training: you hear one word of a minimal pair (think / sink, vest / west, ship / sip) and pick which one it was, with the answer straight away and both words to replay. Each trial is said by a different voice: all eight Kokoro voices, American and British, female and male, plus Piper. That variety, of voices and of words, is what helps the training carry over to real speakers.
 
@@ -437,7 +584,10 @@ Limits: with fewer than three voices installed (Piper only, for example) the dri
 
 `GET /api/listen/session/{username}` returns the trials and `POST /api/listen/results` stores the answers (correctness is checked on the server, and only real pairs are accepted).
 
-## Real listeners
+</details>
+
+<details>
+<summary><b>Real listeners</b></summary>
 
 The scorer is a machine; what matters in the end is whether a person understands you. **Real listeners** (Drills → Real listeners) lets signed-in learners test that on each other:
 
@@ -447,6 +597,146 @@ The scorer is a machine; what matters in the end is whether a person understands
 - **Safety:** a listener can report a recording. It stops being played and its audio is deleted at once. Recordings expire after 30 days, when their audio is deleted. Deleting a recording, your history or your account deletes it and its results. Deleting an account also deletes what that person heard in others' recordings.
 
 Limits: results depend on who is listening, and other learners are not native speakers. Spelling matters: "dont" is not "don't". With few learners online there may be nothing to listen to yet.
+
+</details>
+
+<details>
+<summary><b>Before and after, and Day 1 vs Day 30</b></summary>
+
+Scores are numbers; hearing yourself is proof. **Before & after** (`/before-after`, offered right after sign-up) records five fixed sentences that cover the sounds learners find hardest. After 14 days, and then every 30 days, the practice page reminds you to record them again, and the page plays each sentence side by side (*Before* and *Now*) with both scores.
+
+- **Only with consent.** Audio is stored only after you tick an explicit consent box, and each stored recording keeps the time you agreed. The server refuses to store anything without it (`consent=true`). Audio is kept in the database (so it survives container restarts) and is never at a public URL: it is fetched with your profile key and played from memory.
+- **Delete any time.** *Delete stored audio* on the page or in Profile → Your data removes every recording and keeps the scores, so your progress is still shown. Deleting your history or your account removes the recordings and their scores too.
+- `GET /api/baseline/{username}` gives the rounds, scores and when the next one is due; `POST /api/baseline/{username}/record` scores and stores one sentence; `GET .../audio/{id}` plays one back to its owner; `DELETE .../audio` deletes all stored audio.
+
+Limits: these attempts are not part of practice history (they don't change streaks or mastery). Re-recordings are only accepted once they are due. A recording made in a different room or on a different microphone can sound different for reasons that have nothing to do with pronunciation.
+
+#### Day 1 vs Day 30
+
+Before & after → **Interview answer** (`/before-after?mode=interview`; also linked from Interview prep and Progress) is the same idea for speaking freely:
+
+- **Record.** Answer one interview question today ("Tell me about yourself", "Why should we hire you?" or a challenge you overcame), for up to a minute. The recording is stored only with your consent. After `PRONUNCIATION_COACH_COMPARE_DAYS` days (30), you answer the same question again, and once more every month after that.
+- **Measure.** Each recording is measured like a free answer: pace, long pauses, fillers a minute, sure sound slips and the sound score.
+- **Compare.** Day 1 sits next to the latest round: play either one, read both transcripts, and see each measure's change. A change counts as better when fillers, pauses or slips go down, the sound score goes up, or the pace moves towards an easy 140 words a minute.
+- **Make a video.** "Make a video" builds a vertical 720×1280 video entirely in the browser (`frontend/src/lib/progressVideo.ts`):
+  - It plays both recordings through Web Audio while a canvas draws the captions, a waveform that moves with the voice, the numbers, and a "What changed" ending. MediaRecorder captures the two (MP4 where the browser supports it, otherwise WebM).
+  - It is never uploaded. You download it or share it from the device.
+  - At about 1 Mbit/s, two full one-minute answers stay under WhatsApp's 16 MB limit.
+
+Delete the recordings any time on the page; deleting your history or account deletes them too. Limits: the video is recorded in real time, so the tab must stay open for as long as both answers last plus about eight seconds.
+
+</details>
+
+<details>
+<summary><b>Share with a teacher</b></summary>
+
+A machine estimate is not a teacher. **Share with a teacher** on a saved attempt creates a read-only link for seven days. After you agree to store that attempt's audio (the dialog asks first, and the server refuses without `consent=true`), the teacher opens `/shared/<token>` without an account and sees the target sentence, hears the recording, and sees the transcript, the scores and the coach's notes, but not your name. They can leave text comments, which appear under that attempt in your history and stay there after the link expires.
+
+- **What is stored.** The audio, and a snapshot of the analysis: the sentence, transcript and scores are taken from the database, and from what the browser sends only the listed word and insight fields are kept. Only a SHA-256 of the link's token is stored.
+- **When it goes.** After seven days the link answers *expired* (410) and the audio is deleted, when the link is next opened and at every server start. Profile → *Shared with teachers* stops a link early and deletes its recording at once. Deleting your history or your account removes links and comments too.
+- **Comments.** No account, so they are limited to 5 a minute per IP and 50 per link, at most 1,000 characters, and abusive text is refused by the same check the chat uses.
+
+Limits: anyone who has the link can play the recording until it expires, so share it only with the person meant to hear it. Comments have no identity check: the name a teacher types is just text.
+
+</details>
+
+<details>
+<summary><b>The learning journey</b></summary>
+
+A scorer tells you how you did. A coach gives you a route and a reason to come back. The **Journey** page (`backend/journey.py`) turns the attempts the app already stores into that, with no extra tables:
+
+| Part | What it does |
+|---|---|
+| **Check-up** | Six short sentences that between them cover the sounds learners most often miss. At the end it suggests a level (average under 60 is beginner, under 80 intermediate, otherwise advanced) and the path starts from real data. |
+| **Learning path** | The 41 sounds in teaching order (th, r, l, v, w, sh, ch, j, ng ... first). Each unit shows Got it / Practising / Started / Not started, and **Start** opens a coach session on exactly that sound (`/coach?focus=`). |
+| **Daily goal** | 3, 5 or 10 attempts a day, chosen in Settings, shown on the practice page as `2/5 today` with the streak. |
+| **Level and points** | 10 to 20 points per attempt (a little more for a good score). Level n needs 60 x (n-1)^2 points in total. |
+| **Badges** | Twelve milestones (first attempt, 10/50/100 attempts, scores of 80 and 90, 3/7/30-day streaks, first and fifth sound mastered, goal met on five days), with how far away each one is. |
+| **Time to review** | Words missed at least twice and at least a quarter of the time, not seen for 12 hours, most missed first. |
+
+`GET /api/journey/{username}` returns all of it in one call, and `GET /api/journey/placement` returns the check-up sentences.
+
+</details>
+
+<details>
+<summary><b>Home, help and legal pages</b></summary>
+
+Visitors who are not signed in land on the home page (`/`); the practice screen lives at `/practice`. These public pages sit outside the app shell, so anyone can read them before signing up:
+
+- **Help centre** (`/help`). Getting started in four steps, a short guide to every feature, every keyboard shortcut, and searchable questions and troubleshooting (blocked microphone, models warming up, no speech heard, rate limits).
+- **Privacy Policy** (`/privacy`). What is kept, why and for how long (a table that becomes cards on a phone), recordings, the outside services (Groq, Google Gemini, email), cookies and browser storage, security, your rights and how to delete everything.
+- **Terms of Use** (`/terms`). Thirteen short numbered sections, including AI features and sharing with teachers and real listeners.
+- **About** (`/about`). Why Vocaly AI exists, how it works, what it can do, how accurate it is, and who made it.
+
+Each page has a contents list that follows your reading, a link to every section, its own browser-tab title, and the same footer. The operator's name and contact come from `PRONUNCIATION_COACH_OPERATOR` and `PRONUNCIATION_COACH_CONTACT_EMAIL` (via `/health`); without an email, the pages point to the project's GitHub issues. `robots.txt` and `sitemap.xml` list the public pages; share and password-reset links are sent with `noindex` and `no-referrer`.
+
+</details>
+
+<details>
+<summary><b>The coach’s notes: what the language model does</b></summary>
+
+The tip text comes from a language model through [Groq](https://groq.com) when `GROQ_API_KEY` is set, and from the built-in knowledge base otherwise. The model only explains slips that the scorer already found. It never sees audio or your name, it cannot change a score, and its answer is validated before it is shown. If the call fails or times out, the knowledge-base tip appears instead. Replies are cached per set of slips, and the endpoint has its own rate limit.
+
+The default model is `openai/gpt-oss-120b` at medium reasoning effort, which answered in about two seconds on Groq's free tier. High effort took about 18 seconds without better tips.
+
+#### What else the model does
+
+Beyond explaining one attempt, the model has three larger jobs. They share one rule: the facts come from the learner's own data and the model only words or composes with them, and its answer is checked before anyone sees it. Each falls back to a built-in template when the model is unavailable.
+
+| Feature | Where | What is checked |
+|---|---|---|
+| **Ask your coach** | Coach page, `POST /api/coach/chat` | Answers are grounded in the learner's sounds and latest attempts. Replies are length-capped, practice words are validated, and the prompt keeps it to pronunciation. No name or email is sent. |
+| **Fresh sentences** | Coach page, `POST /api/coach/practice` | Every sentence must fit the level's length and contain at least two words whose dictionary pronunciation has the target sound. The words listed come from our own check, not the model's claim. |
+| **Progress note** | Progress page, `GET /api/coach/report/{username}` | Written only from the numbers in the analytics, and cached per set of numbers. |
+
+#### How the chat understands a question
+
+The chat is a floating button on every page. Before the model is called, the server works out what is being asked and attaches the right facts:
+
+| The learner asks | What the server adds |
+|---|---|
+| A word ("mitochondria", "how do I say thorough") | The word, spelling-corrected against the dictionary, with IPA, syllables and stress |
+| A sound ("the r sound") | The library's description of how that sound is made |
+| "Ship or sheep?" | Both words, their sounds, and the sounds that differ |
+| "How am I doing?" | The learner's real numbers: average, improvement, weakest and strongest sounds |
+| "Give me sentences with th" | Sentences written by the model and checked against the dictionary |
+| Something abusive | A respectful reply from `backend/moderation.py`, with no model call |
+
+The model is asked to talk like a coach sitting next to the learner: short sentences, no IPA unless the learner used it, and words broken into syllables with the stressed one in capitals (my-toh-KON-dree-uh). The practice chips under an answer are the word that was asked about, not whatever the model suggested.
+
+#### Across the whole app
+
+The model is not a feature on one screen. Wherever it appears it gets the same context:
+
+- **First language.** Part of the learner profile (below). It is sent with attempt feedback, chat, generated sentences and the progress note so the coach can say what is usually hard for that group ("Hindi speakers often swap v and w"). Only list values ever reach a prompt.
+- **Continuity.** Attempt feedback receives the score of the previous attempt at the same phrase and says how this one compares.
+- **On the practice page.** The "For me" button writes one new sentence for the learner's weakest sound at their level, checked against the dictionary.
+- **Visibility.** `/health` reports which model is configured, the fallbacks and how many answers each has given. `/metrics` exposes `pc_llm_calls_total{model,outcome}`, `pc_llm_seconds{model}` and `pc_llm_results_total{kind,source}` (what learners were actually shown: model, cached or template), so a rising template share or a run of `http_429` is easy to see.
+
+#### Keeping the model reliable
+
+Groq's free tier allows about 8,000 tokens a minute per model, and reasoning models occasionally produce JSON the provider rejects. `CoachService` therefore tries `PRONUNCIATION_COACH_LLM_MODEL` first, then each model in `PRONUNCIATION_COACH_LLM_FALLBACKS` (default `qwen/qwen3.8-27b,openai/gpt-oss-20b`), and retries a rejected JSON reply as plain text. A bad key stops at once. If every model fails the template answer is used.
+
+`scripts/eval_coach.py` runs a fixed set of questions through any model and checks the answers (valid JSON, correct articulation, stays on topic, ignores prompt injection, no invented numbers). On the free tier all three usable models passed the same cases, with median latency 1.7 s (`gpt-oss-120b`), 1.2 s (`gpt-oss-20b`) and 0.4 s (`qwen3.8-27b`).
+
+</details>
+
+<details>
+<summary><b>Noise cleanup</b></summary>
+
+Recordings go through `backend/enhance.py` before scoring. A spectral filter removes steady room noise when the recording is audibly noisy, and stretches of speech far quieter than the learner (people talking behind them) are turned down. Clean recordings are left untouched. The results screen says when the room was noisy.
+
+It was measured on 60 human-rated utterances from speechocean762 with room noise 8 dB under the speech (`scripts/eval_noise.py`):
+
+| | Sentence accuracy (PCC) | Word accuracy (PCC) |
+|---|---|---|
+| Noisy, no cleanup | 0.587 | 0.418 |
+| Noisy, spectral filter | 0.592 | 0.448 |
+| Noisy, RNNoise (neural) | 0.573 | 0.355 |
+
+RNNoise sounds cleaner to a person but lowered accuracy, because it distorts the cues the scoring models use, so it is off by default (`PRONUNCIATION_COACH_NOISE_NEURAL=1` turns it on, with `pyrnnoise` installed). Two limits to know about: a second person talking at the same loudness as the learner cannot be removed by loudness alone, and cleanup is not applied to the audio played back to the learner.
+
+</details>
 
 ## Help improve Vocaly AI
 
@@ -486,126 +776,6 @@ A learner's own "I said it right" is not used as a label: people often can't hea
 `train` fits every candidate (three kinds of model, three feature sets, two training sets; `--clean` adds confident-learning label cleaning), calibrates each on the validation speakers, picks each one's cut-offs under the native-speech limits, keeps the one that catches the most slips at its cut-off, and writes it with its test results. Build the native check set once with `python scripts/train_sound_model.py prepare --dataset native` (Kokoro must be installed). `promote` copies the candidate into `backend/data/sound_models/` only when all of these hold: on the held-out speakers of its group (and on held-out contributors, once there are some) it separates wrong from right sounds better by at least 0.005 AUC and catches at least as many real slips; it is no worse on the other L2-ARCTIC test speakers; and on the two native voices it never saw, it flags at most 3% of sounds, 1% as *Fix this*, and no sound more than 15% of the time. Otherwise the app keeps what it has. Restart the app to load a new model.
 
 Not done yet: fine-tuning the phoneme recogniser itself on these recordings. That needs a GPU (a free Kaggle or Colab notebook would do) and is the next step once a few thousand recordings are reviewed.
-
-## Before and after
-
-Scores are numbers; hearing yourself is proof. **Before & after** (`/before-after`, offered right after sign-up) records five fixed sentences that cover the sounds learners find hardest. After 14 days, and then every 30 days, the practice page reminds you to record them again, and the page plays each sentence side by side (*Before* and *Now*) with both scores.
-
-- **Only with consent.** Audio is stored only after you tick an explicit consent box, and each stored recording keeps the time you agreed. The server refuses to store anything without it (`consent=true`). Audio is kept in the database (so it survives container restarts) and is never at a public URL: it is fetched with your profile key and played from memory.
-- **Delete any time.** *Delete stored audio* on the page or in Profile → Your data removes every recording and keeps the scores, so your progress is still shown. Deleting your history or your account removes the recordings and their scores too.
-- `GET /api/baseline/{username}` gives the rounds, scores and when the next one is due; `POST /api/baseline/{username}/record` scores and stores one sentence; `GET .../audio/{id}` plays one back to its owner; `DELETE .../audio` deletes all stored audio.
-
-Limits: these attempts are not part of practice history (they don't change streaks or mastery). Re-recordings are only accepted once they are due. A recording made in a different room or on a different microphone can sound different for reasons that have nothing to do with pronunciation.
-
-### Day 1 vs Day 30
-
-Before & after → **Interview answer** (`/before-after?mode=interview`; also linked from Interview prep and Progress) is the same idea for speaking freely:
-
-- **Record.** Answer one interview question today ("Tell me about yourself", "Why should we hire you?" or a challenge you overcame), for up to a minute. The recording is stored only with your consent. After `PRONUNCIATION_COACH_COMPARE_DAYS` days (30), you answer the same question again, and once more every month after that.
-- **Measure.** Each recording is measured like a free answer: pace, long pauses, fillers a minute, sure sound slips and the sound score.
-- **Compare.** Day 1 sits next to the latest round: play either one, read both transcripts, and see each measure's change. A change counts as better when fillers, pauses or slips go down, the sound score goes up, or the pace moves towards an easy 140 words a minute.
-- **Make a video.** "Make a video" builds a vertical 720×1280 video entirely in the browser (`frontend/src/lib/progressVideo.ts`):
-  - It plays both recordings through Web Audio while a canvas draws the captions, a waveform that moves with the voice, the numbers, and a "What changed" ending. MediaRecorder captures the two (MP4 where the browser supports it, otherwise WebM).
-  - It is never uploaded. You download it or share it from the device.
-  - At about 1 Mbit/s, two full one-minute answers stay under WhatsApp's 16 MB limit.
-
-Delete the recordings any time on the page; deleting your history or account deletes them too. Limits: the video is recorded in real time, so the tab must stay open for as long as both answers last plus about eight seconds.
-
-## Share with a teacher
-
-A machine estimate is not a teacher. **Share with a teacher** on a saved attempt creates a read-only link for seven days. After you agree to store that attempt's audio (the dialog asks first, and the server refuses without `consent=true`), the teacher opens `/shared/<token>` without an account and sees the target sentence, hears the recording, and sees the transcript, the scores and the coach's notes, but not your name. They can leave text comments, which appear under that attempt in your history and stay there after the link expires.
-
-- **What is stored.** The audio, and a snapshot of the analysis: the sentence, transcript and scores are taken from the database, and from what the browser sends only the listed word and insight fields are kept. Only a SHA-256 of the link's token is stored.
-- **When it goes.** After seven days the link answers *expired* (410) and the audio is deleted, when the link is next opened and at every server start. Profile → *Shared with teachers* stops a link early and deletes its recording at once. Deleting your history or your account removes links and comments too.
-- **Comments.** No account, so they are limited to 5 a minute per IP and 50 per link, at most 1,000 characters, and abusive text is refused by the same check the chat uses.
-
-Limits: anyone who has the link can play the recording until it expires, so share it only with the person meant to hear it. Comments have no identity check: the name a teacher types is just text.
-
-## The learning journey
-
-A scorer tells you how you did. A coach gives you a route and a reason to come back. The **Journey** page (`backend/journey.py`) turns the attempts the app already stores into that, with no extra tables:
-
-| Part | What it does |
-|---|---|
-| **Check-up** | Six short sentences that between them cover the sounds learners most often miss. At the end it suggests a level (average under 60 is beginner, under 80 intermediate, otherwise advanced) and the path starts from real data. |
-| **Learning path** | The 41 sounds in teaching order (th, r, l, v, w, sh, ch, j, ng ... first). Each unit shows Got it / Practising / Started / Not started, and **Start** opens a coach session on exactly that sound (`/coach?focus=`). |
-| **Daily goal** | 3, 5 or 10 attempts a day, chosen in Settings, shown on the practice page as `2/5 today` with the streak. |
-| **Level and points** | 10 to 20 points per attempt (a little more for a good score). Level n needs 60 x (n-1)^2 points in total. |
-| **Badges** | Twelve milestones (first attempt, 10/50/100 attempts, scores of 80 and 90, 3/7/30-day streaks, first and fifth sound mastered, goal met on five days), with how far away each one is. |
-| **Time to review** | Words missed at least twice and at least a quarter of the time, not seen for 12 hours, most missed first. |
-
-`GET /api/journey/{username}` returns all of it in one call, and `GET /api/journey/placement` returns the check-up sentences.
-
-## Home, help and legal pages
-
-Visitors who are not signed in land on the home page (`/`); the practice screen lives at `/practice`. These public pages sit outside the app shell, so anyone can read them before signing up:
-
-- **Help centre** (`/help`). Getting started in four steps, a short guide to every feature, every keyboard shortcut, and searchable questions and troubleshooting (blocked microphone, models warming up, no speech heard, rate limits).
-- **Privacy Policy** (`/privacy`). What is kept, why and for how long (a table that becomes cards on a phone), recordings, the outside services (Groq, Google Gemini, email), cookies and browser storage, security, your rights and how to delete everything.
-- **Terms of Use** (`/terms`). Thirteen short numbered sections, including AI features and sharing with teachers and real listeners.
-- **About** (`/about`). Why Vocaly AI exists, how it works, what it can do, how accurate it is, and who made it.
-
-Each page has a contents list that follows your reading, a link to every section, its own browser-tab title, and the same footer. The operator's name and contact come from `PRONUNCIATION_COACH_OPERATOR` and `PRONUNCIATION_COACH_CONTACT_EMAIL` (via `/health`); without an email, the pages point to the project's GitHub issues. `robots.txt` and `sitemap.xml` list the public pages; share and password-reset links are sent with `noindex` and `no-referrer`.
-
-## The coach's notes
-
-The tip text comes from a language model through [Groq](https://groq.com) when `GROQ_API_KEY` is set, and from the built-in knowledge base otherwise. The model only explains slips that the scorer already found. It never sees audio or your name, it cannot change a score, and its answer is validated before it is shown. If the call fails or times out, the knowledge-base tip appears instead. Replies are cached per set of slips, and the endpoint has its own rate limit.
-
-The default model is `openai/gpt-oss-120b` at medium reasoning effort, which answered in about two seconds on Groq's free tier. High effort took about 18 seconds without better tips.
-
-### What else the model does
-
-Beyond explaining one attempt, the model has three larger jobs. They share one rule: the facts come from the learner's own data and the model only words or composes with them, and its answer is checked before anyone sees it. Each falls back to a built-in template when the model is unavailable.
-
-| Feature | Where | What is checked |
-|---|---|---|
-| **Ask your coach** | Coach page, `POST /api/coach/chat` | Answers are grounded in the learner's sounds and latest attempts. Replies are length-capped, practice words are validated, and the prompt keeps it to pronunciation. No name or email is sent. |
-| **Fresh sentences** | Coach page, `POST /api/coach/practice` | Every sentence must fit the level's length and contain at least two words whose dictionary pronunciation has the target sound. The words listed come from our own check, not the model's claim. |
-| **Progress note** | Progress page, `GET /api/coach/report/{username}` | Written only from the numbers in the analytics, and cached per set of numbers. |
-
-### How the chat understands a question
-
-The chat is a floating button on every page. Before the model is called, the server works out what is being asked and attaches the right facts:
-
-| The learner asks | What the server adds |
-|---|---|
-| A word ("mitochondria", "how do I say thorough") | The word, spelling-corrected against the dictionary, with IPA, syllables and stress |
-| A sound ("the r sound") | The library's description of how that sound is made |
-| "Ship or sheep?" | Both words, their sounds, and the sounds that differ |
-| "How am I doing?" | The learner's real numbers: average, improvement, weakest and strongest sounds |
-| "Give me sentences with th" | Sentences written by the model and checked against the dictionary |
-| Something abusive | A respectful reply from `backend/moderation.py`, with no model call |
-
-The model is asked to talk like a coach sitting next to the learner: short sentences, no IPA unless the learner used it, and words broken into syllables with the stressed one in capitals (my-toh-KON-dree-uh). The practice chips under an answer are the word that was asked about, not whatever the model suggested.
-
-### Across the whole app
-
-The model is not a feature on one screen. Wherever it appears it gets the same context:
-
-- **First language.** Part of the learner profile (below). It is sent with attempt feedback, chat, generated sentences and the progress note so the coach can say what is usually hard for that group ("Hindi speakers often swap v and w"). Only list values ever reach a prompt.
-- **Continuity.** Attempt feedback receives the score of the previous attempt at the same phrase and says how this one compares.
-- **On the practice page.** The "For me" button writes one new sentence for the learner's weakest sound at their level, checked against the dictionary.
-- **Visibility.** `/health` reports which model is configured, the fallbacks and how many answers each has given. `/metrics` exposes `pc_llm_calls_total{model,outcome}`, `pc_llm_seconds{model}` and `pc_llm_results_total{kind,source}` (what learners were actually shown: model, cached or template), so a rising template share or a run of `http_429` is easy to see.
-
-### Keeping the model reliable
-
-Groq's free tier allows about 8,000 tokens a minute per model, and reasoning models occasionally produce JSON the provider rejects. `CoachService` therefore tries `PRONUNCIATION_COACH_LLM_MODEL` first, then each model in `PRONUNCIATION_COACH_LLM_FALLBACKS` (default `qwen/qwen3.8-27b,openai/gpt-oss-20b`), and retries a rejected JSON reply as plain text. A bad key stops at once. If every model fails the template answer is used.
-
-`scripts/eval_coach.py` runs a fixed set of questions through any model and checks the answers (valid JSON, correct articulation, stays on topic, ignores prompt injection, no invented numbers). On the free tier all three usable models passed the same cases, with median latency 1.7 s (`gpt-oss-120b`), 1.2 s (`gpt-oss-20b`) and 0.4 s (`qwen3.8-27b`).
-
-### Noise cleanup
-
-Recordings go through `backend/enhance.py` before scoring. A spectral filter removes steady room noise when the recording is audibly noisy, and stretches of speech far quieter than the learner (people talking behind them) are turned down. Clean recordings are left untouched. The results screen says when the room was noisy.
-
-It was measured on 60 human-rated utterances from speechocean762 with room noise 8 dB under the speech (`scripts/eval_noise.py`):
-
-| | Sentence accuracy (PCC) | Word accuracy (PCC) |
-|---|---|---|
-| Noisy, no cleanup | 0.587 | 0.418 |
-| Noisy, spectral filter | 0.592 | 0.448 |
-| Noisy, RNNoise (neural) | 0.573 | 0.355 |
-
-RNNoise sounds cleaner to a person but lowered accuracy, because it distorts the cues the scoring models use, so it is off by default (`PRONUNCIATION_COACH_NOISE_NEURAL=1` turns it on, with `pyrnnoise` installed). Two limits to know about: a second person talking at the same loudness as the learner cannot be removed by loudness alone, and cleanup is not applied to the audio played back to the learner.
 
 ## Architecture
 
@@ -742,6 +912,9 @@ Free Spaces sleep after 48 hours without traffic. The `Keep Space awake` workflo
 
 All settings are environment variables. See [`.env.example`](.env.example).
 
+<details>
+<summary><b>All settings</b></summary>
+
 | Variable | Default | Description |
 |---|---|---|
 | `NEON_DATABASE_URL` | `sqlite:///./pronunciation_coach.db` | PostgreSQL URL (for example Neon) or SQLite path |
@@ -800,7 +973,14 @@ All settings are environment variables. See [`.env.example`](.env.example).
 | `PRONUNCIATION_COACH_LOG_FORMAT` | `text` | `json` for structured logs (the Docker image uses `json`) |
 | `VITE_API_URL` | same origin | Build-time API origin if the UI is hosted separately |
 
+</details>
+
 ## API
+
+Interactive docs are at `/docs`. Every response carries an `X-Request-ID` (also in the logs), and `/api/evaluate` reports `Server-Timing` for upload, decode, asr, phonemes, score and save.
+
+<details>
+<summary><b>All endpoints</b></summary>
 
 | Method | Path | Description |
 |---|---|---|
@@ -873,9 +1053,10 @@ All settings are environment variables. See [`.env.example`](.env.example).
 | `POST` | `/api/auth/reset` | Set a new password with a reset link's `token` (`token`, `password`); signs out every device |
 | `POST` | `/api/auth/delete` | Delete the account and its history (needs the password) |
 
-Interactive docs are at `/docs`. Every response carries an `X-Request-ID` (also in the logs), and `/api/evaluate` reports `Server-Timing` for upload, decode, asr, phonemes, score and save.
+</details>
 
-### Accounts and profiles
+<details>
+<summary><b>Accounts and profiles</b></summary>
 
 First-time visitors land on the sign-in page, which also offers "Practice without signing in". A guest can record and be analysed, but the score, the word-by-word breakdown, the coach's tips and the progress page are shown only to signed-in users. The result is kept in the browser, so signing in or creating an account brings that same recording's score straight back. This is an interface gate rather than an access control: the API still returns a result to any client that asks for it.
 
@@ -889,6 +1070,8 @@ Passwords are hashed with scrypt (stdlib, per-password salt) and compared in con
 
 To release a guest name, for example after clearing browser data, run `python -m backend.manage unlock "<name>"`. `python -m backend.manage users` lists names and whether they are claimed, and `python -m backend.manage disputes` exports the "I think this is wrong" reports as CSV.
 
+</details>
+
 ## Tests
 
 ```bash
@@ -900,6 +1083,9 @@ make typecheck   # TypeScript
 The GOP implementation is checked against brute-force enumeration of CTC paths on small inputs, so the dynamic programming is tested against the definition, not against itself. CI runs backend lint and tests plus the frontend typecheck and production build on every push and pull request.
 
 ## Project layout
+
+<details>
+<summary><b>Folders and files</b></summary>
 
 ```
 backend/
@@ -943,6 +1129,8 @@ scripts/
   review_clips.py           Pull, review and label the recordings learners gave
 tests/
 ```
+
+</details>
 
 ## License
 
