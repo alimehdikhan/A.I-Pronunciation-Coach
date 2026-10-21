@@ -191,7 +191,8 @@ function NamesForm({ username, displayName }: { username: string; displayName: s
   )
 }
 
-function PasswordForm() {
+/** Change the password, or (for an account made with Google) add one. */
+function PasswordForm({ googleOnly }: { googleOnly: boolean }) {
   const [current, setCurrent] = useState('')
   const [next, setNext] = useState('')
   const queryClient = useQueryClient()
@@ -202,10 +203,10 @@ function PasswordForm() {
       setCurrent('')
       setNext('')
       void queryClient.invalidateQueries({ queryKey: keys.account })
-      toast.success('Password changed. Your other devices were signed out.')
+      toast.success(googleOnly ? 'Password added. You can now sign in with it too.' : 'Password changed. Your other devices were signed out.')
     },
   })
-  const ready = current.length > 0 && next.length >= 8
+  const ready = (googleOnly || current.length > 0) && next.length >= 8
 
   return (
     <form
@@ -215,15 +216,17 @@ function PasswordForm() {
       }}
       className="grid gap-3 sm:grid-cols-2"
     >
-      <Input
-        type="password"
-        value={current}
-        onChange={(e) => setCurrent(e.target.value)}
-        placeholder="Current password"
-        autoComplete="current-password"
-        aria-label="Current password"
-        className="h-11 rounded-xl text-[15px]"
-      />
+      {!googleOnly && (
+        <Input
+          type="password"
+          value={current}
+          onChange={(e) => setCurrent(e.target.value)}
+          placeholder="Current password"
+          autoComplete="current-password"
+          aria-label="Current password"
+          className="h-11 rounded-xl text-[15px]"
+        />
+      )}
       <Input
         type="password"
         value={next}
@@ -236,7 +239,7 @@ function PasswordForm() {
       <div className="sm:col-span-2">
         {change.error && <p className="mb-3 text-xs text-bad">{errorText(change.error)}</p>}
         <Button type="submit" size="lg" variant="secondary" disabled={!ready || change.isPending} className="h-11 rounded-xl">
-          <KeyIcon weight="bold" /> Change password
+          <KeyIcon weight="bold" /> {googleOnly ? 'Add a password' : 'Change password'}
         </Button>
       </div>
     </form>
@@ -386,7 +389,7 @@ export default function ProfilePage() {
         description={
           signedIn
             ? 'Manage your name, password and the devices signed in to your account.'
-            : 'You are practising as a guest. Create an account to keep your progress everywhere.'
+            : 'Sign in to manage your account.'
         }
       />
 
@@ -422,7 +425,7 @@ export default function ProfilePage() {
             </Card>
 
             <Card icon={<LockKeyIcon weight="fill" />} title="Password" description="Changing it signs out every other device.">
-              <PasswordForm />
+              <PasswordForm googleOnly={account?.account === true && !!account.google_only} />
             </Card>
 
             <Card icon={<DevicesIcon weight="fill" />} title="Session">
@@ -510,9 +513,13 @@ export default function ProfilePage() {
         open={confirm === 'account'}
         onOpenChange={(open) => !open && setConfirm(null)}
         title="Delete your account?"
-        description="Your account, practice history, stored recordings and every signed-in device are removed for good. Enter your password to confirm."
+        description={
+          account?.account && account.google_only
+            ? 'Your account, practice history, stored recordings and every signed-in device are removed for good.'
+            : 'Your account, practice history, stored recordings and every signed-in device are removed for good. Enter your password to confirm.'
+        }
         confirmLabel="Delete account"
-        needsPassword
+        needsPassword={!(account?.account && account.google_only)}
         onConfirm={(password) => removeAccount.mutate(password)}
         pending={removeAccount.isPending}
         error={removeAccount.error}
