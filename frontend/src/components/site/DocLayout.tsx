@@ -62,7 +62,7 @@ export function PublicHeader() {
             aria-label="Vocaly AI, home"
             className={cn('flex items-center gap-2.5 text-[15px] font-semibold', SITE_LINK)}
           >
-            <LogoMark className="size-8 rounded-[10px]" />
+            <LogoMark />
             <span className="hidden sm:inline">Vocaly AI</span>
           </Link>
           <nav aria-label="Site" className="hidden items-center gap-7 text-[13px] text-muted-foreground md:flex">
