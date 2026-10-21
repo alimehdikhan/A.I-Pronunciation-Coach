@@ -25,14 +25,15 @@ import os
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 
 from backend import contributions
-from backend.api import routers
+from backend.api import public_routers, routers
+from backend.api.deps import require_account
 from backend.api.listeners import purge_on_startup as purge_listener_clips
 from backend.api.sharing import purge_on_startup
 from backend.config import PROJECT_ROOT, settings
@@ -123,8 +124,10 @@ async def auth_error_handler(request: Request, exc: AuthError) -> JSONResponse:
     return JSONResponse({"detail": exc.detail, "code": exc.code}, status_code=exc.status_code)
 
 
-for router in routers:
+for router in public_routers:
     app.include_router(router)
+for router in routers:
+    app.include_router(router, dependencies=[Depends(require_account)])
 
 
 # The agent endpoint exposes internal source code details (file paths,
