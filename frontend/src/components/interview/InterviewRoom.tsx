@@ -44,6 +44,7 @@ import { createAnalyserReader, MIC_GAIN, OUTPUT_GAIN } from '@/lib/audio'
 import { audioEngine, outputAnalyserRef, useVoiceStore } from '@/lib/audioEngine'
 import { errorLine, showError } from '@/lib/errors'
 import {
+  acknowledgement,
   afterSmallTalkLine,
   closingLine,
   cutInLine,
@@ -173,7 +174,14 @@ export function InterviewRoom({
   const question = questions[index]
   const target = smallTalk ? SMALL_TALK_SECONDS : followUp ? FOLLOW_UP_SECONDS : question.target_seconds
   const askedText = smallTalk ?? (followUp ? followUp.text : question.text)
-  const plan = { type: session.type, role: session.role, count: total, jobTitle: session.read?.job_title }
+  const plan = {
+    type: session.type,
+    role: session.role,
+    count: total,
+    jobTitle: session.read?.job_title ?? session.job_title,
+    company: session.company,
+    closing: questions.some((q) => q.kind === 'closing'),
+  }
   const current = results[index]
   const latest = followUp ? current?.followUps?.at(-1) : current?.main
 
@@ -246,7 +254,7 @@ export function InterviewRoom({
   function beginAfterSmallTalk() {
     setSmallTalk(null)
     conversation.current = [{ speaker: 'interviewer', text: questions[startIndex].text }]
-    void ask(`${afterSmallTalkLine(plan)} ${firstQuestionLine(questions[startIndex].text)}`)
+    void ask(`${afterSmallTalkLine(plan)} ${firstQuestionLine(questions[startIndex].text, session.type)}`)
   }
 
   /** `lead`: what the interviewer says first (a reply to the candidate's questions, or a cut-in). */
@@ -278,7 +286,7 @@ export function InterviewRoom({
     setIndex(next)
     conversation.current = [{ speaker: 'interviewer', text: questions[next].text }]
     // The question was rendered while the learner answered; the reaction plays first.
-    void ask([lead, nextQuestionLine(next, total, questions[next].text)])
+    void ask([lead ?? acknowledgement(next, session.type), nextQuestionLine(next, total, questions[next].text)])
   }
 
   /** Keep a note of an answer, so a later follow-up can pick up on it (or on a clash with it). */
@@ -331,10 +339,12 @@ export function InterviewRoom({
         audio: clip.blob,
         filename: clip.filename,
         questionId: q.id,
-        custom: q.id.startsWith('cv-') ? { text: q.text, kind: q.kind } : undefined,
+        custom: { text: q.text, kind: q.kind },
         type: session.type,
         role: session.role,
         level: session.level,
+        company: session.company,
+        jobTitle: plan.jobTitle,
         conversation: conversation.current,
         earlier: earlier.current.filter((note) => note.question !== q.text),
         followUpsAsked: asked,
@@ -447,8 +457,11 @@ export function InterviewRoom({
   const opening = useMemo(() => {
     const first = questions[startIndex]
     const name = (displayName || username).trim().split(/\s+/)[0] ?? ''
-    const greeting = startIndex === 0 && mode === 'interview' && readAloud ? smallTalkLine({ name, type: session.type }) : null
-    const line = greeting ?? (startIndex === 0 ? `${openingLine({ name, ...plan })} ${firstQuestionLine(first.text)}` : resumeLine(first.text))
+    const greeting =
+      startIndex === 0 && mode === 'interview' && readAloud ? smallTalkLine({ name, type: session.type, company: plan.company }) : null
+    const line =
+      greeting ??
+      (startIndex === 0 ? `${openingLine({ name, ...plan })} ${firstQuestionLine(first.text, session.type)}` : resumeLine(first.text))
     const soundCheck = `Hi${name ? ` ${name}` : ''}, I'm ${INTERVIEWER.name}. If you can hear me clearly, you're all set.`
     return { first, greeting, line, soundCheck }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -482,8 +495,11 @@ export function InterviewRoom({
       const lines = [
         opening.line,
         opening.soundCheck,
-        ...(greeting ? [`${afterSmallTalkLine(plan)} ${firstQuestionLine(first.text)}`] : []),
-        ...questions.slice(startIndex + 1).map((q, k) => nextQuestionLine(startIndex + 1 + k, total, q.text)),
+        ...(greeting ? [`${afterSmallTalkLine(plan)} ${firstQuestionLine(first.text, session.type)}`] : []),
+        ...questions.slice(startIndex + 1).flatMap((q, k) => [
+          acknowledgement(startIndex + 1 + k, session.type),
+          nextQuestionLine(startIndex + 1 + k, total, q.text),
+        ]),
         closingLine(session.type),
       ]
       void (async () => {
