@@ -59,7 +59,7 @@ export function SiteFooter() {
       <div className="mx-auto grid max-w-6xl gap-10 px-4 py-14 sm:grid-cols-2 lg:grid-cols-[1.5fr_repeat(4,1fr)]">
         <div className="max-w-xs">
           <Link to="/" className="flex items-center gap-2.5 text-[15px] font-semibold">
-            <LogoMark className="size-8 rounded-[10px]" /> Vocaly AI
+            <LogoMark /> Vocaly AI
           </Link>
           <p className="mt-3 text-[14px] leading-relaxed text-muted-foreground">
             Speak English that people understand, in interviews, exams, calls and presentations.
