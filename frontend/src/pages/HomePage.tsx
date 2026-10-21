@@ -216,7 +216,7 @@ const STEPS = [
 /** The public home page: who it is for, what it does (shown, not described), and how to start. */
 export default function HomePage() {
   // Someone who already signed in or practised here goes straight back to the app.
-  const returning = useSettings((s) => !!s.accountEmail || s.guestChosen || s.onboarded)
+  const returning = useSettings((s) => !!s.accountEmail)
   const topRef = useRef<HTMLDivElement>(null)
   const heroRef = useRef<HTMLElement>(null)
   const [scrolled, setScrolled] = useState(false)
