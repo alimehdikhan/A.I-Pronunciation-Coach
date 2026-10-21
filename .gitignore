@@ -19,6 +19,10 @@ htmlcov/
 *.db-wal
 *.db-shm
 backups/
+# Learners' recordings must never be committed (scripts/review_clips.py).
+review.html
+labels.json
+*.flac
 
 # Frontend
 frontend/node_modules/
