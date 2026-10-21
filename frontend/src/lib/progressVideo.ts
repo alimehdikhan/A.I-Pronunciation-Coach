@@ -78,7 +78,7 @@ function brand(ctx: CanvasRenderingContext2D) {
   ctx.fillStyle = 'rgba(255,255,255,0.88)'
   ctx.font = `600 24px ${FONT}`
   ctx.textBaseline = 'middle'
-  ctx.fillText('AI Pronunciation Coach', 110, 85)
+  ctx.fillText('Vocaly AI', 110, 85)
 }
 
 function centred(ctx: CanvasRenderingContext2D, text: string, y: number, font: string, colour: string, maxWidth = WIDTH - 112) {
@@ -183,7 +183,7 @@ function outro(ctx: CanvasRenderingContext2D, input: VideoInput) {
     ctx.fillText(text, WIDTH - 86 - ctx.measureText(text).width, y + 48)
     y += 112
   }
-  centred(ctx, 'Made with AI Pronunciation Coach', HEIGHT - 110, `500 26px ${FONT}`, 'rgba(255,255,255,0.55)')
+  centred(ctx, 'Made with Vocaly AI', HEIGHT - 110, `500 26px ${FONT}`, 'rgba(255,255,255,0.55)')
 }
 
 /** Renders the video in real time (about as long as both recordings plus a few seconds). */
