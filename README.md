@@ -1,3 +1,13 @@
+---
+title: Vocaly AI
+emoji: 🎤
+colorFrom: blue
+colorTo: purple
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.png">
@@ -949,7 +959,7 @@ The phoneme model is downloaded from the Hub during the build as well (`--build-
 
 ### Hugging Face Spaces
 
-A Space reads its settings from a YAML block at the top of its README (`sdk: docker`, `app_port: 7860`, title, emoji and colours). GitHub would show that block as a table, so it lives only in the Space's copy of this file and is added back when deploying. Pushing to the Space remote rebuilds it. Add `NEON_DATABASE_URL` and `GROQ_API_KEY` as secrets. Hugging Face passes Space variables to the build as build args, so `WHISPER_MODEL_SIZE` (and `PRELOAD_PHONEMES=0` to skip the phoneme model) can be set under Settings → Variables.
+The front matter at the top of this file configures a Docker Space on port 7860. Pushing to the Space remote rebuilds it. Add `NEON_DATABASE_URL` and `GROQ_API_KEY` as secrets. Hugging Face passes Space variables to the build as build args, so `WHISPER_MODEL_SIZE` (and `PRELOAD_PHONEMES=0` to skip the phoneme model) can be set under Settings → Variables.
 
 Free Spaces sleep after 48 hours without traffic. The `Keep Space awake` workflow (`.github/workflows/keep-alive.yml`) pings the Space every 6 hours and waits for it to come back if it was asleep. GitHub pauses scheduled workflows after 60 days without repository activity; re-enable it from the Actions tab if that happens.
 
