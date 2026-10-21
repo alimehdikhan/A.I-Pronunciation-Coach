@@ -1,11 +1,31 @@
 ---
 title: Vocaly AI
 emoji: 🎤
-colorFrom: blue
-colorTo: purple
+colorFrom: purple
+colorTo: blue
 sdk: docker
 app_port: 7860
-pinned: false
+pinned: true
+license: mit
+short_description: Hear which sounds you got wrong, and how to fix them
+header: mini
+fullWidth: true
+thumbnail: https://alimehdi973-ai-pronunciation-coach.hf.space/og-image.jpg
+tags:
+  - pronunciation
+  - english
+  - speech-recognition
+  - text-to-speech
+  - education
+  - interview-practice
+models:
+  - Systran/faster-whisper-medium
+  - facebook/wav2vec2-lv-60-espeak-cv-ft
+  - hexgrad/Kokoro-82M
+  - rhasspy/piper-voices
+datasets:
+  - mispeech/speechocean762
+  - chikingsley/l2-arctic-manual-v5.0-16k
 ---
 
 <p align="center">
