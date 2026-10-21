@@ -2,7 +2,7 @@ import { ArrowLeftIcon, ArrowRightIcon, FileArrowUpIcon, FileTextIcon, ShieldChe
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useRef, useState } from 'react'
 import { Panel, Pill, Segmented } from '@/components/common'
-import { Field, LevelAndLength, StartBar, StyleAndOptions } from '@/components/interview/setupParts'
+import { ContinueBar, Field, LevelAndLength, StartBar, StepBody, StepHeader, StyleAndOptions } from '@/components/interview/setupParts'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { api } from '@/lib/api'
@@ -176,6 +176,7 @@ export function CvSetup({ onStart }: { onStart: (session: InterviewStart) => voi
   const [jobAd, setJobAd] = useState('')
   const [problem, setProblem] = useState<string | null>(null)
   const [ready, setReady] = useState<InterviewStart | null>(null)
+  const [step, setStep] = useState<'cv' | 'how'>('cv')
   const write = useMutation({
     mutationFn: api.interviewFromCv,
     onSuccess: (session) => {
@@ -189,9 +190,14 @@ export function CvSetup({ onStart }: { onStart: (session: InterviewStart) => voi
 
   const count = COUNTS.includes(prefs.count) ? prefs.count : 5
   const hasCv = source === 'upload' ? !!file : text.trim().length >= 80
+  const needCv = () => {
+    if (hasCv) return false
+    setProblem(source === 'upload' ? 'Add your CV first: drop the file or choose it.' : 'Paste your CV first: a few lines at least.')
+    return true
+  }
   const begin = () => {
-    if (!hasCv) {
-      setProblem(source === 'upload' ? 'Add your CV first: drop the file or choose it.' : 'Paste your CV first: a few lines at least.')
+    if (needCv()) {
+      setStep('cv')
       return
     }
     write.mutate({
@@ -206,75 +212,94 @@ export function CvSetup({ onStart }: { onStart: (session: InterviewStart) => voi
 
   return (
     <Panel className="p-5 sm:p-8">
-      <div className="space-y-9">
-        <Field title="Your CV or resume" hint="Upload the file or paste the text. The interviewer asks about what is on it.">
-          <Segmented
-            layoutId="cv-source"
-            value={source}
-            onChange={(value) => {
-              setSource(value)
-              setProblem(null)
-            }}
-            options={[
-              { value: 'upload', label: 'Upload a file' },
-              { value: 'paste', label: 'Paste your resume or CV' },
-            ]}
-          />
-          <div className="mt-3.5">
-            {source === 'upload' ? (
-              <DropZone
-                file={file}
-                onFile={(picked, why) => {
-                  setFile(picked)
-                  setProblem(why ?? null)
+      {step === 'cv' ? (
+        <StepHeader index={0} total={2} title="Your CV and the job" hint="The interviewer asks about what is on your CV." />
+      ) : (
+        <StepHeader index={1} total={2} title="How should it go?" onBack={() => setStep('cv')} />
+      )}
+      <StepBody step={step}>
+        {step === 'cv' ? (
+          <div className="space-y-9">
+            <Field title="Your CV or resume" hint="Upload the file or paste the text.">
+              <Segmented
+                layoutId="cv-source"
+                value={source}
+                onChange={(value) => {
+                  setSource(value)
+                  setProblem(null)
                 }}
+                options={[
+                  { value: 'upload', label: 'Upload a file' },
+                  { value: 'paste', label: 'Paste your resume or CV' },
+                ]}
               />
-            ) : (
-              <>
-                <Textarea
-                  value={text}
-                  onChange={(e) => setText(e.target.value)}
-                  placeholder="Paste your resume or CV here: your experience, projects, skills and education."
-                  aria-label="Your resume or CV"
-                  maxLength={30000}
-                  className="min-h-56 rounded-2xl text-[15px] leading-relaxed"
-                />
-                <p className="mt-1.5 text-right text-[12px] text-subtle tabular-nums">{text.length.toLocaleString()} characters</p>
-              </>
-            )}
+              <div className="mt-3.5">
+                {source === 'upload' ? (
+                  <DropZone
+                    file={file}
+                    onFile={(picked, why) => {
+                      setFile(picked)
+                      setProblem(why ?? null)
+                    }}
+                  />
+                ) : (
+                  <>
+                    <Textarea
+                      value={text}
+                      onChange={(e) => setText(e.target.value)}
+                      placeholder="Paste your resume or CV here: your experience, projects, skills and education."
+                      aria-label="Your resume or CV"
+                      maxLength={30000}
+                      className="min-h-56 rounded-2xl text-[15px] leading-relaxed"
+                    />
+                    <p className="mt-1.5 text-right text-[12px] text-subtle tabular-nums">{text.length.toLocaleString()} characters</p>
+                  </>
+                )}
+              </div>
+            </Field>
+
+            <Field
+              title="The job (optional)"
+              hint="Paste the job advert, and the questions match that job: its title, its must-have skills and what your CV lacks."
+            >
+              <Textarea
+                value={jobAd}
+                onChange={(e) => setJobAd(e.target.value)}
+                placeholder="Backend Engineer, FinPay. We are looking for… (paste the job description)"
+                aria-label="The job advert"
+                maxLength={12000}
+                className="min-h-32 rounded-2xl text-[15px] leading-relaxed"
+              />
+            </Field>
+
+            {problem && <p className="rounded-2xl bg-bad-soft px-4 py-3 text-[14px] text-bad">{problem}</p>}
+            <ContinueBar onContinue={() => !needCv() && setStep('how')}>
+              <span className="flex gap-2">
+                <ShieldCheckIcon size={18} weight="fill" className="mt-px shrink-0 text-good" />
+                Never stored.
+              </span>
+            </ContinueBar>
           </div>
-        </Field>
+        ) : (
+          <div className="space-y-9">
+            <LevelAndLength levels={options?.levels ?? []} counts={COUNTS} showLevel={!!options} />
+            <StyleAndOptions />
 
-        <Field
-          title="The job (optional)"
-          hint="Paste the job advert, and the questions match that job: its title, its must-have skills and what your CV lacks."
-        >
-          <Textarea
-            value={jobAd}
-            onChange={(e) => setJobAd(e.target.value)}
-            placeholder="Backend Engineer, FinPay. We are looking for… (paste the job description)"
-            aria-label="The job advert"
-            maxLength={12000}
-            className="min-h-32 rounded-2xl text-[15px] leading-relaxed"
-          />
-        </Field>
-
-        <LevelAndLength levels={options?.levels ?? []} counts={COUNTS} showLevel={!!options} />
-        <StyleAndOptions />
-
-        {problem && <p className="rounded-2xl bg-bad-soft px-4 py-3 text-[14px] text-bad">{problem}</p>}
-        <StartBar
-          label={write.isPending ? 'Reading your CV…' : 'Write my questions'}
-          pending={write.isPending}
-          onStart={begin}
-          note={
-            <span className="flex gap-2">
-              <ShieldCheckIcon size={18} weight="fill" className="mt-px shrink-0 text-good" />
-              {PRIVACY}
-            </span>
-          }
-        />
-      </div>
+            {problem && <p className="rounded-2xl bg-bad-soft px-4 py-3 text-[14px] text-bad">{problem}</p>}
+            <StartBar
+              label={write.isPending ? 'Reading your CV…' : 'Write my questions'}
+              pending={write.isPending}
+              onStart={begin}
+              note={
+                <span className="flex gap-2">
+                  <ShieldCheckIcon size={18} weight="fill" className="mt-px shrink-0 text-good" />
+                  {PRIVACY}
+                </span>
+              }
+            />
+          </div>
+        )}
+      </StepBody>
     </Panel>
   )
 }
