@@ -9,14 +9,16 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from backend import cv, interview, learners
+from backend import cv, interview, learners, quick_transcribe
 from backend.api.coach import coach_rate_limiter
-from backend.api.deps import profile_key
+from backend.api.deps import profile_key, require_models
 from backend.api.speaking import analyse_free_answer
 from backend.api.speech import audio_rate_limiter
+from backend.audio import decode_audio, normalize_loudness, read_upload, validate_upload
 from backend.config import settings
 from backend.database import InterviewSession, as_utc, get_db, utcnow
 from backend.errors import CodedHTTPException
@@ -31,11 +33,13 @@ from backend.repositories import (
     interview_rows,
     save_interview_answer,
 )
-from backend.runtime import get_coach
-from backend.security import clean_username, client_key
+from backend.runtime import get_coach, runtime
+from backend.security import RateLimiter, clean_username, client_key
 
 logger = logging.getLogger("pronunciation_coach.api.interview")
 router = APIRouter()
+# Every answer in a live interview asks for a turn as well as its scoring, so turns have their own budget.
+turn_rate_limiter = RateLimiter(settings.rate_limit_per_minute, name="interview_turn")
 
 
 class StartRequest(BaseModel):
@@ -424,6 +428,116 @@ async def answer_question(
     }
 
 
+def _json_list(raw: str) -> list[Any]:
+    try:
+        value = json.loads(raw or "[]")
+    except ValueError:
+        return []
+    return value if isinstance(value, list) else []
+
+
+@router.post("/api/interview/turn")
+async def interviewer_turn(
+    request: Request,
+    response: Response,
+    audio: UploadFile = File(...),
+    question_id: str = Form(..., max_length=40),
+    interview_type: str = Form("full", max_length=16),
+    role: str = Form("general", max_length=20),
+    level: str = Form("mid", max_length=10),
+    question_text: str | None = Form(None, max_length=cv.MAX_QUESTION_CHARS, description="A CV question's text"),
+    question_kind: str | None = Form(None, max_length=12),
+    conversation: str = Form("[]", max_length=40_000, description="JSON: what was said on this question so far"),
+    earlier: str = Form("[]", max_length=20_000, description="JSON: earlier questions and the start of each answer"),
+    follow_ups_asked: int = Form(0, ge=0, le=10),
+) -> dict[str, Any]:
+    """What the interviewer says after an answer, in a second or two, the way a real interviewer reacts.
+
+    The answer is transcribed quickly (backend.quick_transcribe) and the language model decides, like a
+    skilled interviewer, whether to follow up on something the candidate said, ask them to clarify, bring
+    them back to the question, or move on (interview.TURN_PROMPT; simple checks when it is unavailable).
+    Scoring the same answer is separate (`/api/interview/answer`) and runs while the interview goes on.
+    """
+    turn_rate_limiter.check(client_key(request))
+    if question_id in interview.BY_ID:
+        question = interview.question_view(interview.BY_ID[question_id])
+    elif question_id.startswith("cv-") and question_text and question_kind in cv.KINDS:
+        question = interview.custom_view({"id": question_id, "kind": question_kind, "text": " ".join(question_text.split())})
+    else:
+        raise HTTPException(status_code=400, detail="Unknown interview question.")
+    kind, role, level = interview.settings_for(interview_type, role, level)
+
+    timer = StageTimer()
+    suffix = validate_upload(audio)
+    with timer.stage("upload"):
+        data = await read_upload(audio, settings.max_upload_bytes)
+    # Only the words are needed here, so no noise cleanup: it costs CPU the scoring of earlier answers is using.
+    with timer.stage("decode"):
+        samples = await run_in_threadpool(decode_audio, data, suffix, settings.interview_seconds)
+        samples, _gain = await run_in_threadpool(normalize_loudness, samples)
+    seconds = round(len(samples) / quick_transcribe.SAMPLE_RATE, 1)
+    if seconds < 0.3:
+        response.headers["Server-Timing"] = timer.header()
+        move_on = {"action": "repeat", "probe": None, "reaction": None, "question": None, "missing": None}
+        return {"transcript": "", "no_speech": True, "seconds": seconds, "transcribed_by": None, "reply": None, **move_on, "source": None}
+
+    async def local_whisper(clip):
+        asr, _scorer = require_models()
+        async with runtime.asr_gate.slot():
+            return await run_in_threadpool(asr.transcribe, clip)
+
+    with timer.stage("asr"):
+        text, heard_by = await quick_transcribe.transcribe(samples, local_whisper)
+    move_on = {"action": "move_on", "probe": None, "reaction": None, "question": None, "missing": None}
+    body: dict[str, Any] = {"transcript": text, "no_speech": not text, "seconds": seconds, "transcribed_by": heard_by, "reply": None}
+    if not text:
+        response.headers["Server-Timing"] = timer.header()
+        return {**body, **move_on, "action": "repeat", "source": None}
+
+    coach = get_coach()
+    spec = interview.TYPES[kind]
+    about = {
+        "interview": spec["label"],
+        **({"role": interview.ROLES[role]} if spec["role"] else {}),
+        **({"candidate_level": interview.LEVELS[level]} if spec["level"] else {}),
+    }
+    # The candidate's own questions at the end get an answer, as they would in the room.
+    if question["kind"] == "closing":
+        reply = None
+        if coach.enabled:
+            with timer.stage("reply"):
+                reply, _source = await coach.generate(
+                    "interview_reply", interview.REPLY_PROMPT, {**about, "candidate_said": text[:1500]},
+                    interview.parse_reply, lambda: None, cache=False, effort="low",
+                )
+        response.headers["Server-Timing"] = timer.header()
+        return {**body, **move_on, "reply": reply, "source": "groq" if reply else None}
+
+    limit = interview.follow_up_limit(kind, question["kind"])
+    lines = interview.clean_conversation(_json_list(conversation))
+    lines.append({"speaker": "candidate", "text": text[: interview.MAX_TRANSCRIPT]})
+    facts = {
+        **about,
+        "your_manner": interview.STYLES.get(kind, interview.STYLES["full"]),
+        "main_question": question["text"],
+        "what_a_good_answer_covers": question["look_for"],
+        "this_question_so_far": lines,
+        "follow_ups_asked": follow_ups_asked,
+        "most_follow_ups": limit,
+        "earlier_answers": interview.clean_earlier(_json_list(earlier)),
+        "answer_seconds": seconds,
+    }
+    with timer.stage("decide"):
+        turn, source = await coach.generate(
+            "interview_turn", interview.TURN_PROMPT, facts,
+            lambda data: interview.parse_turn(data, follow_ups_asked, limit),
+            lambda: interview.turn_fallback(question, text, seconds, follow_ups_asked, limit),
+            cache=False, effort="low",
+        )
+    response.headers["Server-Timing"] = timer.header()
+    return {**body, **turn, "source": source}
+
+
 def _follow_up(question: dict[str, Any], checks: list[dict[str, Any]], rubric: dict[str, Any] | None) -> dict[str, str] | None:
     """Whether to follow up comes from the checks; the model, when it ran, words it about this answer."""
     follow = interview.follow_up_for(question, checks)
@@ -450,7 +564,9 @@ def _answer_follow_up(
         main = answers.get(str(question_index))
         if main is not None:
             stored = interview.stored_answer(question, analysed, checks, None, 1, utcnow().isoformat())
-            main["follow_up"] = {**stored, "id": question["follow_up"], "text": question["text"]}
+            follows = [*interview.follow_ups_of(main), {**stored, "id": question["follow_up"], "text": question["text"]}]
+            main["follow_ups"] = follows[-(interview.MAX_FOLLOW_UPS_BY_TYPE["behavioural"] + 1):]
+            main.pop("follow_up", None)
             save_interview_answer(db, row, question_index, main)
             saved = True
     response.headers["Server-Timing"] = timer.header()
