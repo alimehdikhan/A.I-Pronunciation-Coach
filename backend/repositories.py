@@ -15,6 +15,7 @@ from sqlalchemy import case, delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
+from backend import contributions
 from backend.database import (
     BaselineRecording,
     Dispute,
@@ -191,8 +192,12 @@ def save_attempt(
     transcription: str,
     result: dict[str, Any],
     counted: bool = True,
+    clip_id: str | None = None,
 ) -> int:
-    """Persist an evaluated attempt and its phoneme mistakes; returns the record id."""
+    """Persist an evaluated attempt and its phoneme mistakes; returns the record id.
+
+    `clip_id` names the recording kept to improve the scorer (backend.contributions), if any.
+    """
     user = find_user(db, username)
     if user is None:
         user = User(username=username, key_hash=hash_profile_key(key) if key else None)
@@ -221,6 +226,7 @@ def save_attempt(
         clarity=metrics.get("clarity"),
         wpm=(result.get("speech") or {}).get("wpm"),
         counted=counted,
+        clip_id=clip_id,
     )
     for word in result.get("words", []):
         if word.get("status") != "mispronounced":
@@ -552,9 +558,10 @@ def history_total(
 
 
 def delete_history(db: Session, user: User) -> int:
-    """Delete every attempt (the name stays claimed by its owner)."""
+    """Delete every attempt (the name stays claimed by its owner), and any recordings given to improve the scorer."""
     record_ids = select(PronunciationRecord.id).where(PronunciationRecord.user_id == user.id)
     count = db.scalar(select(func.count()).select_from(PronunciationRecord).where(PronunciationRecord.user_id == user.id))
+    contributions.stop(db, user)
     db.execute(delete(Dispute).where(Dispute.user_id == user.id).execution_options(synchronize_session=False))
     db.execute(delete(BaselineRecording).where(BaselineRecording.user_id == user.id).execution_options(synchronize_session=False))
     db.execute(delete(ShareComment).where(ShareComment.record_id.in_(record_ids)).execution_options(synchronize_session=False))
