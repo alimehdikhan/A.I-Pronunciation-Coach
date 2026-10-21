@@ -365,7 +365,8 @@ def google_callback(
         who = oauth.identity(code, pending)
     except oauth.GoogleError as failure:
         logger.warning("Google sign-in failed: %s", failure)
-        return _to_login(error="google_failed", next=pending.next)
+        reason = re.sub(r"[^a-z0-9]+", "_", str(failure).lower()).strip("_")[:40] or "unknown"
+        return _to_login(error="google_failed", reason=reason, next=pending.next)
     user = _google_account(db, who)
     if user is None:
         db.rollback()
