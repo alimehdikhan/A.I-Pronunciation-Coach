@@ -1,0 +1,137 @@
+"""“Continue with Google”: the OAuth 2.0 authorization code flow, with PKCE.
+
+The browser asks `POST /api/auth/google/start` (sending its profile key, as every request does) for
+Google's sign-in address and goes there. Google sends it back to `GET /api/auth/google/callback`,
+which trades the code for the Google account's id, email and name, finds or creates the Vocaly
+account and binds this browser's profile key to it, exactly like signing in with a password.
+
+Pending sign-ins live in memory for ten minutes: a restart in the middle of one only means trying
+again. Nothing from Google is kept but the account id (`sub`), the email and the name.
+"""
+
+from __future__ import annotations
+
+import base64
+import hashlib
+import os
+import secrets
+import threading
+import time
+from dataclasses import dataclass
+from typing import Any
+from urllib.parse import urlencode
+
+import httpx
+
+from backend.config import settings
+
+AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/v2/auth"
+TOKEN_URL = "https://oauth2.googleapis.com/token"
+USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo"
+PENDING_SECONDS = 600
+MAX_PENDING = 5000
+CALLBACK_PATH = "/api/auth/google/callback"
+
+# Stored instead of a password hash for an account made with Google: it counts as an account,
+# and no password can ever match it (backend.security.verify_password rejects it).
+GOOGLE_ONLY = "google"
+
+
+class GoogleError(Exception):
+    """Google did not confirm who this is (a network error, a bad code, missing fields)."""
+
+
+@dataclass(frozen=True)
+class Pending:
+    key: str
+    next: str
+    verifier: str
+    redirect_uri: str
+    expires: float
+
+
+_pending: dict[str, Pending] = {}
+_lock = threading.Lock()
+
+
+def enabled() -> bool:
+    return bool(settings.google_client_id and settings.google_client_secret)
+
+
+def redirect_uri(base_url: str) -> str:
+    """Where Google sends the browser back. It must match the address registered with Google."""
+    if settings.public_url:
+        base = settings.public_url
+    elif os.getenv("SPACE_HOST"):  # set by Hugging Face Spaces
+        base = f"https://{os.environ['SPACE_HOST']}"
+    else:
+        base = base_url.rstrip("/")
+    return base + CALLBACK_PATH
+
+
+def start(key: str, next_path: str, callback: str) -> str:
+    """Remember this sign-in and return Google's address for it."""
+    state = secrets.token_urlsafe(32)
+    verifier = secrets.token_urlsafe(48)
+    challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
+    now = time.monotonic()
+    with _lock:
+        for old in [s for s, p in _pending.items() if p.expires < now]:
+            del _pending[old]
+        if len(_pending) >= MAX_PENDING:
+            del _pending[next(iter(_pending))]
+        _pending[state] = Pending(key, next_path, verifier, callback, now + PENDING_SECONDS)
+    query = {
+        "client_id": settings.google_client_id,
+        "redirect_uri": callback,
+        "response_type": "code",
+        "scope": "openid email profile",
+        "state": state,
+        "code_challenge": challenge,
+        "code_challenge_method": "S256",
+        "prompt": "select_account",
+    }
+    return f"{AUTHORIZE_URL}?{urlencode(query)}"
+
+
+def take(state: str) -> Pending | None:
+    """The sign-in this `state` belongs to, once: a state can't be replayed."""
+    with _lock:
+        pending = _pending.pop(state, None)
+    if pending is None or pending.expires < time.monotonic():
+        return None
+    return pending
+
+
+def identity(code: str, pending: Pending) -> dict[str, Any]:
+    """Trade the code for the Google account's id, email and name."""
+    try:
+        with httpx.Client(timeout=10) as client:
+            token = client.post(
+                TOKEN_URL,
+                data={
+                    "code": code,
+                    "client_id": settings.google_client_id,
+                    "client_secret": settings.google_client_secret,
+                    "redirect_uri": pending.redirect_uri,
+                    "grant_type": "authorization_code",
+                    "code_verifier": pending.verifier,
+                },
+            )
+            token.raise_for_status()
+            access = token.json().get("access_token")
+            if not access:
+                raise GoogleError("Google sent no access token")
+            info = client.get(USERINFO_URL, headers={"Authorization": f"Bearer {access}"})
+            info.raise_for_status()
+            data = info.json()
+    except (httpx.HTTPError, ValueError) as error:
+        raise GoogleError(str(error)) from error
+    if not data.get("sub") or not data.get("email"):
+        raise GoogleError("Google sent no account id or email")
+    return {
+        "sub": str(data["sub"]),
+        "email": str(data["email"]).strip().lower(),
+        "email_verified": data.get("email_verified") is True,
+        "name": str(data.get("name") or "").strip(),
+    }
