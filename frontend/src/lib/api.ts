@@ -562,6 +562,13 @@ export const api = {
     request<{ available: boolean; reason: string | null }>(`/api/auth/available?username=${enc(username)}`),
 
   logout: () => request<{ signed_out: boolean }>('/api/auth/logout', { method: 'POST', headers: profileHeaders() }),
+  /** Back from Google: trade the one-time pass for signing this browser in. */
+  googleFinish: (ticket: string) =>
+    request<AccountProfile>('/api/auth/google/finish', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ticket }),
+    }),
   /** Google's sign-in address for this browser; Google sends it back to /login, signed in. */
   googleStart: (next: string) =>
     request<{ url: string }>('/api/auth/google/start', {
