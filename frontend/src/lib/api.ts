@@ -72,7 +72,11 @@ function profileHeaders(): Record<string, string> {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response
   try {
-    response = await fetch(`${BASE}${path}`, init)
+    // Every request says which browser it is from: the app needs a signed-in account.
+    response = await fetch(`${BASE}${path}`, {
+      ...init,
+      headers: { ...profileHeaders(), ...(init?.headers as Record<string, string> | undefined) },
+    })
   } catch {
     throw new ApiError(0, 'Cannot reach the server. Check your connection and try again.')
   }
@@ -86,6 +90,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     } catch {
       /* non-JSON error body */
     }
+    // Signed out on the server (another device changed the password, the account was deleted):
+    // forget the account here too, and the app sends the learner to the sign-in page.
+    if (code === 'sign_in_required' && useSettings.getState().accountEmail) useSettings.getState().signOut()
     const wait = Number(response.headers.get('Retry-After'))
     throw new ApiError(response.status, detail, code, Number.isFinite(wait) && wait > 0 ? wait : undefined)
   }
@@ -555,6 +562,13 @@ export const api = {
     request<{ available: boolean; reason: string | null }>(`/api/auth/available?username=${enc(username)}`),
 
   logout: () => request<{ signed_out: boolean }>('/api/auth/logout', { method: 'POST', headers: profileHeaders() }),
+  /** Google's sign-in address for this browser; Google sends it back to /login, signed in. */
+  googleStart: (next: string) =>
+    request<{ url: string }>('/api/auth/google/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ next }),
+    }),
 
   rename: (changes: { username?: string; display_name?: string }) =>
     request<Extract<AccountProfile, { account: true }>>('/api/auth/me', {
