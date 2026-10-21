@@ -227,7 +227,7 @@ function MobileHeader() {
   return (
     <header className="material sticky top-0 z-30 flex h-12 items-center justify-between border-b border-border px-4 lg:hidden">
       <div className="flex items-center gap-2">
-        <LogoMark className="size-7 rounded-[8px]" />
+        <LogoMark className="size-7" />
         <span className="text-[15px] font-semibold tracking-tight">Vocaly AI</span>
       </div>
       <div className="flex items-center">
