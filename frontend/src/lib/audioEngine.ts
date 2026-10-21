@@ -8,6 +8,8 @@ import { create } from 'zustand'
  *   source ─▶ output gain ─▶ analyser ─▶ speakers
  */
 
+import { useSettings } from '@/store/settings'
+
 const BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? ''
 const MAX_CACHED = 48
 
@@ -74,7 +76,10 @@ class AudioEngine {
     let pending = this.raw.get(key)
     if (!pending) {
       const choice = voice ? `&voice=${encodeURIComponent(voice)}` : ''
-      pending = fetch(`${BASE}/api/tts?text=${encodeURIComponent(text)}&rate=${rate.toFixed(2)}${choice}`).then((response) => {
+      const key = useSettings.getState().profileKey
+      pending = fetch(`${BASE}/api/tts?text=${encodeURIComponent(text)}&rate=${rate.toFixed(2)}${choice}`, {
+        headers: key ? { 'X-Profile-Key': key } : {},
+      }).then((response) => {
         if (!response.ok) throw new Error(`Speech unavailable (${response.status})`)
         return response.arrayBuffer()
       })
