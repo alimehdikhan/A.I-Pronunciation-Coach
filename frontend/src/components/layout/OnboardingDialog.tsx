@@ -108,7 +108,7 @@ export function OnboardingDialog() {
     <Dialog open={!onboarded} onOpenChange={(open) => !open && complete()}>
       <DialogContent showCloseButton={false} className="gap-0 p-8 sm:max-w-[440px]">
         <div className="flex flex-col items-center text-center">
-          <LogoMark className="size-16 rounded-[18px] shadow-[0_12px_40px_-10px_rgb(201_89_221/0.6)]" />
+          <LogoMark className="size-16 drop-shadow-[0_10px_24px_rgb(79_70_229/0.45)]" />
           <DialogTitle className="headline mt-6 text-[28px]">
             Welcome to <span className="text-ai">Vocaly AI</span>
           </DialogTitle>
