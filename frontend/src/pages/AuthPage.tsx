@@ -160,12 +160,13 @@ export default function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
     navigate(welcome ? '/before-after?welcome=1' : (next ?? '/practice'), { replace: true })
   }
 
-  // Back from Google: the server has already bound this browser to the account; pick it up.
+  // Back from Google: trade the one-time pass for signing in this browser (whatever its key is by now);
+  // without a pass, the key sent before leaving was signed in already.
   useEffect(() => {
     if (!googleReturn) return
     let cancelled = false
-    api
-      .me()
+    const ticket = params.get('ticket')
+    ;(ticket ? api.googleFinish(ticket) : api.me())
       .then((profile) => {
         if (cancelled) return
         if (profile.account) finish(profile, 'google')
@@ -174,9 +175,9 @@ export default function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
           navigate(`/login${keepNext}`, { replace: true })
         }
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         if (cancelled) return
-        setGoogleError(GOOGLE_ERRORS.google_failed)
+        setGoogleError(error instanceof ApiError && error.code === 'google_expired' ? GOOGLE_ERRORS.google_expired : GOOGLE_ERRORS.google_lost)
         navigate(`/login${keepNext}`, { replace: true })
       })
     return () => {
