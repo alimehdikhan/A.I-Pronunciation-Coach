@@ -130,6 +130,10 @@ class User(Base):
     first_language = Column(String(30), nullable=True)
     goal = Column(String(12), nullable=True)
     tip_language = Column(String(12), nullable=True)
+    # "Help improve Vocaly AI" (backend.contributions): when the learner agreed to give practice
+    # recordings, and the random id they are filed under (never the user id). NULL when off.
+    contribute_at = Column(DateTime, nullable=True)
+    contributor_id = Column(String(32), nullable=True)
 
     records = relationship("PronunciationRecord", back_populates="user", cascade="all, delete-orphan")
     keys = relationship("UserKey", back_populates="user", cascade="all, delete-orphan")
@@ -172,6 +176,8 @@ class PronunciationRecord(Base):
     # "natural speed" on, careful (slow) speech is saved with counted=False. NULL = counted.
     wpm = Column(Float, nullable=True)
     counted = Column(Boolean, nullable=True)
+    # The recording given to improve the scorer (backend.contributions), if this attempt's was kept.
+    clip_id = Column(String(32), nullable=True)
     created_at = Column(DateTime, default=utcnow)
 
     user = relationship("User", back_populates="records")
@@ -417,11 +423,30 @@ class ListenerAnswer(Base):
     created_at = Column(DateTime, default=utcnow)
 
 
+class ContributionWithdrawal(Base):
+    """A learner took back the recordings they gave (backend.contributions).
+
+    Kept in the database, not on the server's disk, so the deletion from the dataset still
+    happens after a restart. `done_at` is set once the files are gone from the dataset and its
+    history. The row itself holds only the random contributor id.
+    """
+
+    __tablename__ = "contribution_withdrawals"
+
+    id = Column(Integer, primary_key=True, index=True)
+    contributor_id = Column(String(32), nullable=False, unique=True, index=True)
+    requested_at = Column(DateTime, default=utcnow)
+    done_at = Column(DateTime, nullable=True)
+
+
 # Columns added after the first release. create_all() never alters existing
 # tables, so add any that are missing with a plain ALTER TABLE.
 ADDED_COLUMNS = {
-    "pronunciation_records": ["pronunciation", "fluency", "completeness", "clarity", "wpm", "counted"],
-    "users": ["key_hash", "email", "password_hash", "display_name", "first_language", "goal", "tip_language"],
+    "pronunciation_records": ["pronunciation", "fluency", "completeness", "clarity", "wpm", "counted", "clip_id"],
+    "users": [
+        "key_hash", "email", "password_hash", "display_name", "first_language", "goal", "tip_language",
+        "contribute_at", "contributor_id",
+    ],
     "phoneme_observations": ["tier"],
     "interview_sessions": ["interview_type"],
 }
