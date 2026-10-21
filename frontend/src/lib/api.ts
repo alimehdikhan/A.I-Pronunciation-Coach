@@ -31,6 +31,7 @@ import type {
   InterviewDetail,
   InterviewOptions,
   InterviewStart,
+  InterviewTurn,
   InterviewSummary,
   ListenerClipResult,
   ListenerWordResult,
@@ -258,6 +259,35 @@ export const api = {
   },
 
   /** Scores one spoken answer (levelled to 16 kHz WAV first); a follow-up answer names its follow-up. */
+  /** The live interviewer hears an answer and says what comes next: a follow-up, or the next question. */
+  interviewTurn: async (input: {
+    audio: Blob
+    filename: string
+    questionId: string
+    custom?: { text: string; kind: string }
+    type: string
+    role: string
+    level: string
+    conversation: { speaker: 'interviewer' | 'candidate'; text: string }[]
+    earlier: { question: string; answer: string }[]
+    followUpsAsked: number
+  }) => {
+    const prepared = await prepareRecording(input.audio, input.filename)
+    const form = new FormData()
+    form.append('audio', prepared.blob, prepared.filename)
+    form.append('question_id', input.questionId)
+    form.append('interview_type', input.type)
+    form.append('role', input.role)
+    form.append('level', input.level)
+    if (input.custom) {
+      form.append('question_text', input.custom.text)
+      form.append('question_kind', input.custom.kind)
+    }
+    form.append('conversation', JSON.stringify(input.conversation))
+    form.append('earlier', JSON.stringify(input.earlier))
+    form.append('follow_ups_asked', String(input.followUpsAsked))
+    return request<InterviewTurn>('/api/interview/turn', { method: 'POST', body: form })
+  },
   interviewAnswer: async (input: {
     audio: Blob
     filename: string
