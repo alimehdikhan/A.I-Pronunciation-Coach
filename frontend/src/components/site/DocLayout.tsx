@@ -59,11 +59,11 @@ export function PublicHeader() {
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-3 px-4">
           <Link
             to="/"
-            aria-label="AI Pronunciation Coach, home"
+            aria-label="Vocaly AI, home"
             className={cn('flex items-center gap-2.5 text-[15px] font-semibold', SITE_LINK)}
           >
             <LogoMark className="size-8 rounded-[10px]" />
-            <span className="hidden sm:inline">AI Pronunciation Coach</span>
+            <span className="hidden sm:inline">Vocaly AI</span>
           </Link>
           <nav aria-label="Site" className="hidden items-center gap-7 text-[13px] text-muted-foreground md:flex">
             <Link to="/#features" className={SITE_LINK}>
@@ -201,7 +201,7 @@ export function DocLayout({
 
   useEffect(() => {
     const previous = document.title
-    document.title = `${tabTitle ?? title} · AI Pronunciation Coach`
+    document.title = `${tabTitle ?? title} · Vocaly AI`
     return () => {
       document.title = previous
     }
