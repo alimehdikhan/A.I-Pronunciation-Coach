@@ -252,8 +252,9 @@ class FakeVoice:
     def cached(self, text, rate=1.0):
         return self.kept.get((text, rate))
 
-    def synthesize(self, text, rate=1.0, keep=True):
+    def synthesize(self, text, rate=1.0, keep=True, persist=None):
         self.calls.append((text, rate))
+        self.persist = persist
         clip = b"RIFF" + b"\x00" * 40
         if keep:
             self.kept[(text, rate)] = clip
@@ -339,7 +340,7 @@ class BrokenVoice:
     def cached(self, text, rate=1.0):
         return None
 
-    def synthesize(self, text, rate=1.0, keep=True):
+    def synthesize(self, text, rate=1.0, keep=True, persist=None):
         raise RuntimeError("kokoro exploded")
 
 
@@ -383,6 +384,17 @@ def test_one_off_speech_is_never_kept(client, monkeypatch):
 
     assert response.status_code == 200 and response.headers["cache-control"] == "private, no-store"
     assert voice.kept == {}
+
+
+def test_session_speech_is_kept_in_memory_only(client, monkeypatch):
+    voice = FakeVoice()
+    monkeypatch.setattr(runtime, "voice", voice)
+
+    response = client.get("/api/tts", params={"text": "Walk me through your background.", "store": "memory"})
+
+    assert response.status_code == 200 and voice.kept and voice.persist is False
+    assert client.get("/api/tts", params={"text": "Hello", "store": "disk"}).status_code == 200 and voice.persist is True
+    assert client.get("/api/tts", params={"text": "Hello", "store": "anywhere"}).status_code == 422
 
 
 def test_rendered_speech_comes_back_without_rendering_again(client, monkeypatch):
@@ -433,7 +445,7 @@ class ChoosyVoice:
     def cached(self, text, rate=1.0, voice=None):
         return None
 
-    def synthesize(self, text, rate=1.0, voice=None, keep=True):
+    def synthesize(self, text, rate=1.0, voice=None, keep=True, persist=None):
         self.calls.append((text, rate, voice))
         return b"RIFF" + b"\x00" * 40
 
