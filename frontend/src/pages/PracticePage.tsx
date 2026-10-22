@@ -17,6 +17,7 @@ import { useHotkeys } from '@/hooks/useHotkeys'
 import { useRecorder, type Recording } from '@/hooks/useRecorder'
 import { api } from '@/lib/api'
 import { audioEngine } from '@/lib/audioEngine'
+import { cueCoach } from '@/lib/coachCues'
 import { markMicChecked, micChecked } from '@/lib/micCheck'
 import { keys, useHealth } from '@/lib/queries'
 import { LEVELS, PHRASES, phrasesFor } from '@/lib/sentences'
@@ -73,6 +74,7 @@ export default function PracticePage() {
         return
       }
       setAttempt({ result, audioBlob: audio, audioUrl: URL.createObjectURL(audio), createdAt: Date.now() })
+      cueCoach(result.score >= 85 ? 'cheer' : 'nod')
       setOrbGuideSeen(true) // a first real result ends the orb tips
       if (result.save_error === 'profile_locked')
         toast.warning('This name is in use on another device, so this attempt wasn’t saved. Choose a different name in Settings.')
