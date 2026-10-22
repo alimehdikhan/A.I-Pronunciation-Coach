@@ -247,10 +247,17 @@ def test_spa_reloads_browsers_stuck_on_the_cached_legacy_page(tmp_path):
 class FakeVoice:
     def __init__(self):
         self.calls = []
+        self.kept = {}
 
-    def synthesize(self, text, rate=1.0):
+    def cached(self, text, rate=1.0):
+        return self.kept.get((text, rate))
+
+    def synthesize(self, text, rate=1.0, keep=True):
         self.calls.append((text, rate))
-        return b"RIFF" + b"\x00" * 40
+        clip = b"RIFF" + b"\x00" * 40
+        if keep:
+            self.kept[(text, rate)] = clip
+        return clip
 
 
 def test_tts_returns_wav_audio(client, monkeypatch):
@@ -329,7 +336,10 @@ def test_evaluate_survives_a_failing_phoneme_model(client, monkeypatch):
 
 
 class BrokenVoice:
-    def synthesize(self, text, rate=1.0):
+    def cached(self, text, rate=1.0):
+        return None
+
+    def synthesize(self, text, rate=1.0, keep=True):
         raise RuntimeError("kokoro exploded")
 
 
@@ -360,7 +370,40 @@ def test_the_fallback_is_untouched_while_the_primary_voice_works(client, monkeyp
     response = client.get("/api/tts", params={"text": "Hello there"})
 
     assert response.status_code == 200 and "x-voice-fallback" not in response.headers
-    assert "immutable" in response.headers["cache-control"]
+    # The text may be the learner's own, so only their browser may keep the clip.
+    assert response.headers["cache-control"] == "private, max-age=604800"
+
+
+def test_one_off_speech_is_never_kept(client, monkeypatch):
+    voice = FakeVoice()
+    monkeypatch.setattr(runtime, "voice", voice)
+    live = {"text": "You mentioned leading a team of four.", "once": "true"}
+
+    response = client.get("/api/tts", params=live)
+
+    assert response.status_code == 200 and response.headers["cache-control"] == "private, no-store"
+    assert voice.kept == {}
+
+
+def test_rendered_speech_comes_back_without_rendering_again(client, monkeypatch):
+    voice = FakeVoice()
+    monkeypatch.setattr(runtime, "voice", voice)
+    for _ in range(3):
+        assert client.get("/api/tts", params={"text": "Good morning"}).status_code == 200
+    assert voice.calls == [("Good morning", 1.0)]
+
+
+def test_a_full_speech_queue_says_busy(client, monkeypatch):
+    from backend.runtime import WorkGate
+
+    monkeypatch.setattr(runtime, "voice", FakeVoice())
+    gate = WorkGate(1, 0, observe=False)
+    gate.running = 1  # one render under way and no room to wait
+    monkeypatch.setattr(runtime, "tts_gate", gate)
+
+    response = client.get("/api/tts", params={"text": "Hello there"})
+
+    assert response.status_code == 503 and response.headers["retry-after"] == "5"
 
 
 def test_when_both_voices_fail_the_client_gets_a_clean_error(client, monkeypatch):
@@ -387,7 +430,10 @@ class ChoosyVoice:
     def __init__(self):
         self.calls = []
 
-    def synthesize(self, text, rate=1.0, voice=None):
+    def cached(self, text, rate=1.0, voice=None):
+        return None
+
+    def synthesize(self, text, rate=1.0, voice=None, keep=True):
         self.calls.append((text, rate, voice))
         return b"RIFF" + b"\x00" * 40
 
