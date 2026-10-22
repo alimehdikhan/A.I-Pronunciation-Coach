@@ -68,12 +68,15 @@ export function ListenButton({
   label = 'Listen',
   speakKey,
   className,
+  once = false,
 }: {
   text: string
   rate?: number
   label?: string
   speakKey: string
   className?: string
+  /** The learner's own text: the server renders it but never stores it. */
+  once?: boolean
 }) {
   const { speak, stop, prefetch, speakingKey, supported } = useSpeaker()
   const active = speakingKey === speakKey
@@ -81,9 +84,9 @@ export function ListenButton({
     <button
       type="button"
       disabled={!supported || !text}
-      onClick={() => (active ? stop() : speak(text, { key: speakKey, rate }))}
-      onPointerEnter={() => void prefetch(text, rate)}
-      onFocus={() => void prefetch(text, rate)}
+      onClick={() => (active ? stop() : speak(text, { key: speakKey, rate, once }))}
+      onPointerEnter={() => void prefetch(text, rate, undefined, once)}
+      onFocus={() => void prefetch(text, rate, undefined, once)}
       className={cn(
         'inline-flex h-9 items-center gap-2 rounded-full bg-fill px-4 text-[13px] font-medium text-foreground transition-[background-color,transform,opacity] duration-150 ease-out hover:bg-fill-strong active:scale-[0.97] disabled:opacity-40',
         active && 'bg-primary-soft text-primary',
