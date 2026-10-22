@@ -40,7 +40,7 @@ import { useHotkeys } from '@/hooks/useHotkeys'
 import { useRecorder, type Recording } from '@/hooks/useRecorder'
 import { api } from '@/lib/api'
 import { createAnalyserReader, MIC_GAIN, OUTPUT_GAIN } from '@/lib/audio'
-import { audioEngine, outputAnalyserRef, useVoiceStore } from '@/lib/audioEngine'
+import { audioEngine, outputAnalyserRef, useVoiceStore, type SpeechStore } from '@/lib/audioEngine'
 import { errorLine, showError } from '@/lib/errors'
 import {
   acknowledgement,
@@ -216,9 +216,9 @@ export function InterviewRoom({
 
   const voiceRate = fastSpeech ? 1.25 : 1
 
-  // Lines any interview says ("Okay.", the goodbye) may be kept by the server for everyone. Every other line is
-  // about this candidate or this job (their name, the role, questions worded for it, live replies), so the
-  // server renders it for this interview and stores it nowhere.
+  // Where the server may keep each line: lines any interview says ("Okay.", the goodbye) on disk, for everyone;
+  // live replies, which quote the candidate, nowhere; and the rest (their name, the role, questions worded for
+  // this job) in memory only, for this interview.
   const generic = useMemo(
     () =>
       new Set([
@@ -233,19 +233,20 @@ export function InterviewRoom({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   )
-  const once = (line: string) => !generic.has(line)
+  const live = useRef(new Set<string>())
+  const storeFor = (line: string): SpeechStore => (generic.has(line) ? 'disk' : live.current.has(line) ? 'none' : 'memory')
 
   /** Start rendering lines in the order they will be said, so each is ready as soon as it can be. */
   function renderAhead(lines: (string | null | undefined)[]): Promise<void> {
     return lines.reduce<Promise<void>>(
-      (ready, line) => (line ? ready.then(() => prefetch(line, voiceRate, undefined, once(line))) : ready),
+      (ready, line) => (line ? ready.then(() => prefetch(line, voiceRate, undefined, storeFor(line))) : ready),
       Promise.resolve(),
     )
   }
 
   /**
-   * The interviewer says `lines` in turn, always in the same voice, with live captions of each sentence as
-   * it is said. Resolves false when the interview moved on meanwhile.
+   * The interviewer says `lines` in turn, always in the same voice, with live captions of each line as it is
+   * said. Resolves false when the interview moved on meanwhile.
    */
   async function speakLines(lines: string[], mine: number): Promise<boolean> {
     if (!readAloud) {
@@ -254,10 +255,11 @@ export function InterviewRoom({
     }
     void renderAhead(lines)
     for (const [n, line] of lines.entries()) {
-      const sentences = splitForSpeech(line)
-      for (let i = 0; i < sentences.length; i++) {
-        setSpoken({ key: `${mine}-${n}`, text: sentences.slice(0, i + 1).join(' ') })
-        await say(sentences[i], { key: SPEAK_KEY, rate: voiceRate, once: once(line) })
+      // A line is one clip when it fits (see splitForSpeech); a long one is said in pieces, its caption growing.
+      const pieces = splitForSpeech(line)
+      for (let i = 0; i < pieces.length; i++) {
+        setSpoken({ key: `${mine}-${n}`, text: pieces.slice(0, i + 1).join(' ') })
+        await say(pieces[i], { key: SPEAK_KEY, rate: voiceRate, store: storeFor(line) })
         if (step.current !== mine || !alive.current) return false
       }
     }
@@ -383,7 +385,7 @@ export function InterviewRoom({
     setResults((r) => ({ ...r, [index]: { main: result } }))
     setAnswered((a) => new Set(a).add(index))
     setPhase('feedback')
-    if (result.reply && readAloud) void say(result.reply, { key: SPEAK_KEY, rate: voiceRate, once: true })
+    if (result.reply && readAloud) void say(result.reply, { key: SPEAK_KEY, rate: voiceRate, store: 'none' })
   }
 
   /**
@@ -426,8 +428,11 @@ export function InterviewRoom({
       })
       .then(async (turn) => {
         if (step.current !== mine || !alive.current) return
-        // What comes next starts rendering now, while "Okay." is still being said.
-        const upcoming = turn.no_speech || wasCut ? [] : turn.question ? [turn.reaction, turn.question] : [turn.reply ?? turn.reaction]
+        // A follow-up is said in one go, reaction and question together: as two clips the question could still
+        // be rendering when the reaction ends. What comes next starts rendering now, while "Okay." is said.
+        const followUpLine = turn.question ? [turn.reaction, turn.question].filter(Boolean).join(' ') : null
+        for (const line of [followUpLine, turn.reaction, turn.reply]) if (line) live.current.add(line)
+        const upcoming = turn.no_speech || wasCut ? [] : followUpLine ? [followUpLine] : [turn.reply ?? turn.reaction]
         const rendered = readAloud ? renderAhead(upcoming) : Promise.resolve()
         const reactionReady =
           turn.reaction && readAloud && !turn.question && !turn.reply && !wasCut
@@ -454,7 +459,7 @@ export function InterviewRoom({
           setFollowUp(next)
           setProbes(asked + 1)
           setRevealed(false)
-          void ask([turn.reaction, next.text], { followUp: true })
+          void ask(followUpLine ?? next.text, { followUp: true })
           return
         }
         // Their own questions at the end always get an answer; a reaction only when it is ready in time.
@@ -582,7 +587,7 @@ export function InterviewRoom({
   }
 
   function testSound() {
-    void say(opening.soundCheck, { key: SPEAK_KEY, rate: voiceRate, once: true })
+    void say(opening.soundCheck, { key: SPEAK_KEY, rate: voiceRate, store: storeFor(opening.soundCheck) })
   }
 
   // While the learner reads the start screen, render what the interviewer says first and then everything
@@ -595,10 +600,12 @@ export function InterviewRoom({
       const real = mode === 'interview'
       // In the order they are needed. Everything the interviewer might say at once is here: the replies to small
       // talk, "Okay." and the like, cutting in, and asking again. Only reactions and follow-ups are rendered live.
+      // The introduction and first question come before the small-talk replies: those are the same for everyone,
+      // so the server usually has them already.
       const lines = [
         ...opening.lines,
         opening.soundCheck,
-        ...(greeting ? [...smallTalkReplies(session.type), afterSmallTalkLine(plan), firstQuestionLine(first.text, session.type)] : []),
+        ...(greeting ? [afterSmallTalkLine(plan), firstQuestionLine(first.text, session.type), ...smallTalkReplies(session.type)] : []),
         ...(real ? backchannels(session.type) : []),
         ...questions.slice(startIndex + 1).flatMap((q, k) => [
           ...(real ? [] : [acknowledgement(startIndex + 1 + k, session.type)]),
@@ -610,7 +617,7 @@ export function InterviewRoom({
       void (async () => {
         for (const line of lines) {
           if (cancelled) return
-          await prefetch(line, voiceRate, undefined, once(line))
+          await prefetch(line, voiceRate, undefined, storeFor(line))
         }
       })()
     }
@@ -720,7 +727,7 @@ export function InterviewRoom({
     if (!recording || !readAloud || smallTalk || followUp) return
     const next = index + 1
     const line = next < total ? nextQuestionLine(next, total, questions[next].text) : closingLine(session.type)
-    void prefetch(line, voiceRate, undefined, once(line))
+    void prefetch(line, voiceRate, undefined, storeFor(line))
     // Only when an answer starts; the lines depend on nothing else that changes meanwhile.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recording, index])
