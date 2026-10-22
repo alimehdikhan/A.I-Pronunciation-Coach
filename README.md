@@ -194,8 +194,8 @@ flowchart LR
     H --> I["Coach card<br/>tips and a sentence to try"]
 ```
 
-1. **The browser levels the audio.** Quiet microphones are boosted by up to 24 dB with a soft limiter, then the clip is encoded as 16 kHz mono WAV, so the server rarely needs ffmpeg.
-2. **Whisper transcribes it** (faster-whisper, int8) with word timestamps and confidence. Voice activity detection drops silence, which stops Whisper from inventing words on empty clips.
+1. **The browser levels the audio.** Quiet microphones are boosted by up to 24 dB with a soft limiter, then the clip is encoded as 16 kHz mono WAV, so the server rarely needs ffmpeg. Recordings of 10 seconds or more (answers) are uploaded as the browser recorded them, in Opus or AAC, about half the size, and levelled on the server.
+2. **Whisper transcribes it.** With a Groq key, Groq's hosted Whisper large (`whisper-large-v3`, `backend/groq_asr.py`) returns the words and their timings in a second or two, and no Whisper model runs on this server. Silero voice activity detection runs here first: a clip with no speech is never sent, and a word placed where nobody was speaking (Whisper invents "Thank you." over silence) is dropped. Groq reports no confidence per word, so the parts of scoring that use it are left out. Without a key the local faster-whisper (int8) transcribes instead, with word confidences.
 3. **A phoneme model hears the sounds.** wav2vec 2.0 fine-tuned for espeak IPA runs on ONNX Runtime and returns a probability for every sound in every 20 ms frame. It has no language model, so it does not "correct" a wrong sound into the right word the way Whisper tends to.
 4. **Goodness of pronunciation per sound.** For each expected sound the scorer computes how likely it is, given everything else in the sentence, against every alternative, including "dropped". The strongest alternative becomes the diagnosis (`/θ/ came out as /s/`). The method is the alignment-free GOP of Cao et al. (Interspeech 2024).
 5. **Words are aligned** with a weighted edit distance, so one skipped word does not shift the rest. Numbers are spelled out and homophones count as correct. Each word's score blends what Whisper heard with what the audio sounded like.
@@ -844,7 +844,7 @@ flowchart LR
 
     subgraph Server["FastAPI"]
         API[/api/evaluate/] --> Gate[Work gate<br/>bounded queue]
-        Gate --> Whisper[faster-whisper + VAD]
+        Gate --> Whisper[Whisper large on Groq + VAD]
         Gate --> Phon[wav2vec 2.0 phonemes<br/>ONNX int8]
         Whisper --> Scorer[Scorer<br/>word alignment + GOP]
         Phon --> Scorer
@@ -867,7 +867,7 @@ flowchart LR
 |---|---|
 | Frontend | React 19, TypeScript, Vite, Tailwind CSS v4, shadcn/ui (Radix), Motion, GSAP, Three.js (orb), TanStack Query, Zustand, Recharts |
 | Backend | Python 3.11, FastAPI, Uvicorn, Pydantic, SQLAlchemy, Prometheus client |
-| Speech | faster-whisper (CTranslate2, Silero VAD), wav2vec 2.0 phoneme model on ONNX Runtime, Kokoro and Piper TTS, NLTK CMUDict, FFmpeg |
+| Speech | Whisper large on Groq (faster-whisper locally without a key; Silero VAD), wav2vec 2.0 phoneme model on ONNX Runtime, Kokoro and Piper TTS, NLTK CMUDict, FFmpeg |
 | Coaching | Groq chat API (optional), Gemini Live for spoken conversations (optional), built-in knowledge base of 41 sounds, 50 substitution tips and 16 deletion tips |
 | Sound model | Logistic regression and gradient-boosted trees in scikit-learn, exported to JSON and run with NumPy |
 | Data | PostgreSQL (for example Neon) in production, SQLite locally, a private Hugging Face dataset for given recordings |
@@ -1164,7 +1164,8 @@ backend/
   api/                Routes: health, speech, library, progress, coach, auth
   runtime.py          Loaded models and the bounded transcription queue
   audio.py            Upload validation, WAV fast path, hardened ffmpeg, loudness
-  asr.py              faster-whisper wrapper (VAD, word timestamps)
+  groq_asr.py         Speech recognition on Groq's Whisper large (VAD guard, word timestamps)
+  asr.py              Local faster-whisper wrapper, used without a Groq key
   phoneme_model.py    wav2vec 2.0 phoneme recogniser on ONNX Runtime
   gop.py              Alignment-free goodness of pronunciation from CTC posteriors
   acoustic.py         Per-word acoustic evidence and the score blend
