@@ -46,10 +46,11 @@ COPY backend/requirements.txt backend/
 RUN pip install --upgrade pip \
     && pip install -r backend/requirements.txt
 
-# Bake CMUDict, the Whisper weights and the coach's neural voice into the
-# image for fast cold starts. PRELOAD_WHISPER defaults to WHISPER_MODEL_SIZE;
-# pass PRELOAD_WHISPER=none or an empty PRELOAD_VOICE to skip a download.
-ARG PRELOAD_WHISPER=
+# Bake CMUDict and the coach's neural voice into the
+# image for fast cold starts; pass an empty PRELOAD_VOICE to skip that download.
+# Speech is recognised on Groq when GROQ_API_KEY is set (backend.groq_asr), so no Whisper model is baked
+# in by default; without a key the app downloads one at start. PRELOAD_WHISPER=base (or medium) bakes it in.
+ARG PRELOAD_WHISPER=none
 ARG PRELOAD_VOICE=en_US-lessac-medium
 RUN python -m nltk.downloader -q -d "$NLTK_DATA" cmudict \
     && model="${PRELOAD_WHISPER:-$WHISPER_MODEL_SIZE}" \
