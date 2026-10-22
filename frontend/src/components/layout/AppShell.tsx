@@ -26,6 +26,7 @@ import { Background } from './Background'
 import { HealthPill } from './HealthPill'
 import { Logo, LogoMark } from './Logo'
 import { NAV } from './nav'
+import { NavTile } from './NavTile'
 
 // Overlays aren't needed for first paint; load them on demand.
 const CommandMenu = lazy(() => import('./CommandMenu').then((m) => ({ default: m.CommandMenu })))
@@ -180,8 +181,8 @@ function Sidebar() {
       </div>
 
       <nav className="mt-5 flex flex-col gap-0.5 px-3">
-        {NAV.map(({ to, label, icon: IconComp }) => (
-          <NavLink key={to} to={to} end={to === '/practice'}>
+        {NAV.map((item) => (
+          <NavLink key={item.to} to={item.to} end={item.to === '/practice'}>
             {({ isActive }) => (
               <div
                 className={cn(
@@ -196,8 +197,8 @@ function Sidebar() {
                     transition={{ type: 'spring', bounce: 0.12, duration: 0.45 }}
                   />
                 )}
-                <IconComp size={17} weight={isActive ? 'fill' : 'regular'} className={cn('relative', isActive && 'text-primary')} />
-                <span className="relative">{label}</span>
+                <NavTile item={item} className="relative" />
+                <span className="relative">{item.label}</span>
               </div>
             )}
           </NavLink>
