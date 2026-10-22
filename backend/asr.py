@@ -73,7 +73,10 @@ class WhisperASR:
     def warm_up(self) -> None:
         """Run one tiny inference so the first user request doesn't pay for kernel setup."""
         noise = (np.random.default_rng(0).standard_normal(SAMPLE_RATE) * 0.01).astype(np.float32)
-        segments, _ = self.model.transcribe(noise, language="en", beam_size=1, vad_filter=False, without_timestamps=True)
+        segments, _ = self.model.transcribe(
+            noise, language="en", beam_size=self.beam_size, word_timestamps=True, condition_on_previous_text=False,
+            vad_filter=True, vad_parameters={"min_silence_duration_ms": 500, "speech_pad_ms": 300},
+        )
         list(segments)
 
     def transcribe(self, audio: np.ndarray, language: str = "en", prompt: str | None = None) -> dict[str, Any]:
