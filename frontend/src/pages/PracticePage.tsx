@@ -33,6 +33,7 @@ export default function PracticePage() {
   const setLevel = useSettings((s) => s.setLevel)
   const username = useSettings((s) => s.username)
   const signedIn = useSettings((s) => !!s.accountEmail)
+  const setOrbGuideSeen = useSettings((s) => s.setOrbGuideSeen)
   const { target, setTarget, attempt, setAttempt, clearAttempt, scoreHistory } = usePractice()
   const setLibraryOpen = useUI((s) => s.setLibraryOpen)
   const setMicCheckOpen = useUI((s) => s.setMicCheckOpen)
@@ -65,6 +66,7 @@ export default function PracticePage() {
         return
       }
       setAttempt({ result, audioBlob: audio, audioUrl: URL.createObjectURL(audio), createdAt: Date.now() })
+      setOrbGuideSeen(true) // a first real result ends the orb tips
       if (result.save_error === 'profile_locked')
         toast.warning('This name is in use on another device, so this attempt wasn’t saved. Choose a different name in Settings.')
       if (username) {
@@ -115,13 +117,15 @@ export default function PracticePage() {
   useEffect(() => {
     if (!health?.tts_ready) return
     let current = true
-    void prefetch(target.text).then(() => {
-      if (current) void prefetch(target.text, SLOW_RATE)
+    // The learner's own text is rendered for them but never stored on the server.
+    const once = target.source === 'custom'
+    void prefetch(target.text, 1, undefined, once).then(() => {
+      if (current) void prefetch(target.text, SLOW_RATE, undefined, once)
     })
     return () => {
       current = false
     }
-  }, [health?.tts_ready, target.text, prefetch])
+  }, [health?.tts_ready, target.text, target.source, prefetch])
 
   // Never let the coach's voice bleed into the microphone.
   const toggleRecording = useCallback(() => {
@@ -154,7 +158,7 @@ export default function PracticePage() {
     n: () => go(1),
     arrowright: () => go(1),
     arrowleft: () => go(-1),
-    l: () => speak(target.text, { key: 'stage-normal' }),
+    l: () => speak(target.text, { key: 'stage-normal', once: target.source === 'custom' }),
     m: () => setMicCheckOpen(true),
   })
 
