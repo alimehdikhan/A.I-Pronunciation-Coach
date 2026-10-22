@@ -40,6 +40,8 @@ interface SettingsState {
   /** What to show under each word: plain letters ("uh-BOWT"), IPA symbols, or nothing. */
   phoneticStyle: 'simple' | 'ipa' | 'off'
   onboarded: boolean
+  /** The learner finished (or skipped) the tips that show how the Practice orb records. */
+  orbGuideSeen: boolean
   profileKey: string
   /** Set while this browser is signed in to an account. */
   accountEmail: string | null
@@ -63,6 +65,7 @@ interface SettingsState {
   setShowIpa: (show: boolean) => void
   setPhoneticStyle: (style: 'simple' | 'ipa' | 'off') => void
   completeOnboarding: (username?: string) => void
+  setOrbGuideSeen: (seen: boolean) => void
   continueAsGuest: () => void
   /** Adopt the account's name after signing in or signing up. */
   signIn: (account: { username: string; displayName: string; email: string }) => void
@@ -89,6 +92,7 @@ export const useSettings = create<SettingsState>()(
       showIpa: true,
       phoneticStyle: 'simple',
       onboarded: false,
+      orbGuideSeen: false,
       profileKey: newProfileKey(),
       accountEmail: null,
       displayName: '',
@@ -110,6 +114,7 @@ export const useSettings = create<SettingsState>()(
       setPhoneticStyle: (phoneticStyle) => set({ phoneticStyle }),
       completeOnboarding: (username) =>
         set((s) => ({ onboarded: true, username: username !== undefined ? username.trim().slice(0, 40) : s.username })),
+      setOrbGuideSeen: (orbGuideSeen) => set({ orbGuideSeen }),
       continueAsGuest: () => set({ guestChosen: true }),
       signIn: ({ username, displayName, email }) =>
         set({ username, displayName, accountEmail: email, onboarded: true, guestChosen: true }),
