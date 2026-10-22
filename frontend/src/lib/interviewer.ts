@@ -66,6 +66,30 @@ export function smallTalkLine({ name, type, company }: { name: string; type: Int
   return `${hello}, I'm ${INTERVIEWER.name}. Thanks for coming in today. How are you doing?`
 }
 
+/** How the candidate answered the greeting, as the server heard it (backend/interview.py SMALL_TALK_MOODS). */
+export type SmallTalkMood = 'good_and_asked' | 'asked_back' | 'good' | 'nervous' | 'not_great' | 'busy' | 'other'
+
+const SMALL_TALK_REPLIES: Record<SmallTalkMood, string> = {
+  good_and_asked: "Glad to hear it. I'm doing well, thanks for asking.",
+  asked_back: "I'm doing well, thanks for asking.",
+  good: 'Good to hear.',
+  nervous: "That's completely normal. Just take your time.",
+  not_great: 'Sorry to hear that. Thanks for making the time today.',
+  busy: "I'll keep it brief, then.",
+  other: 'Okay, great.',
+}
+
+/** The interviewer's answer to the candidate's small talk (a phone screen asked whether now is a good time). */
+export function smallTalkReply(mood: SmallTalkMood | null | undefined, type: InterviewType): string | null {
+  if (!mood) return null
+  if (type === 'phone' && mood === 'good') return 'Great, thanks.'
+  return SMALL_TALK_REPLIES[mood]
+}
+
+/** Every small-talk reply, rendered before the interview starts so the answer comes at once. */
+export const smallTalkReplies = (type: InterviewType) =>
+  [...new Set((Object.keys(SMALL_TALK_REPLIES) as SmallTalkMood[]).map((mood) => smallTalkReply(mood, type)!))]
+
 /** After the small talk: who the interviewer is and what comes next. The first question follows. */
 export const afterSmallTalkLine = (plan: Plan) => `Alright. ${introLine(plan)}`
 
@@ -78,6 +102,15 @@ export const firstQuestionLine = (question: string, type?: InterviewType) => (ty
 
 /** When the learner comes back to an interview they left. */
 export const resumeLine = (question: string) => `Welcome back. Let's pick up where we left off. ${question}`
+
+const BACKCHANNELS = ['Okay.', 'Right.', 'I see.', 'Got it.', 'Okay, thanks.', 'Alright.']
+
+/**
+ * What the interviewer says the moment an answer ends, as people do, while they decide what to say next.
+ * Rendered before the interview starts, so it plays at once. A visa officer just says "Okay."
+ */
+export const backchannel = (n: number, type?: InterviewType) => (type === 'visa' ? 'Okay.' : BACKCHANNELS[n % BACKCHANNELS.length])
+export const backchannels = (type?: InterviewType) => (type === 'visa' ? ['Okay.'] : BACKCHANNELS)
 
 const ACKNOWLEDGEMENTS = ['Okay, thank you.', 'Thanks.', 'Got it.', 'Alright, thanks.', 'I see. Thank you.', 'Okay.']
 
@@ -101,3 +134,6 @@ export const RETRY_LINE = "Sorry, I didn't catch that. Could you say that again?
 
 /** Placeholders in the clearer answer ("[result with a number]") are read as a pause, not as words. */
 export const speakable = (text: string) => text.replace(/\s*\[[^\]]*\]\s*/g, ', … ')
+
+/** The question id for the reply to the greeting (backend/interview.py SMALL_TALK_ID). */
+export const SMALL_TALK_ID = 'small-talk'
