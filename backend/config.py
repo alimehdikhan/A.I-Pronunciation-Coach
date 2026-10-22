@@ -92,6 +92,9 @@ class Settings:
     asr_engine: str = field(default_factory=lambda: os.getenv("PRONUNCIATION_COACH_ASR_ENGINE", "auto").strip().lower())
     groq_asr_model: str = field(default_factory=lambda: os.getenv("PRONUNCIATION_COACH_GROQ_ASR_MODEL", "whisper-large-v3").strip())
     whisper_model_size: str = field(default_factory=lambda: os.getenv("WHISPER_MODEL_SIZE", "base"))
+    # With Groq, the local Whisper only stands in when Groq fails: a small model, loaded only then (the
+    # Docker image bakes this one in).
+    asr_fallback_model: str = field(default_factory=lambda: os.getenv("PRONUNCIATION_COACH_FALLBACK_WHISPER", "base").strip())
     asr_device: str = field(default_factory=lambda: os.getenv("PRONUNCIATION_COACH_ASR_DEVICE", "auto"))
     asr_compute_type: str = field(default_factory=lambda: os.getenv("PRONUNCIATION_COACH_ASR_COMPUTE_TYPE", "auto"))
     asr_threads: int = field(default_factory=lambda: _int("PRONUNCIATION_COACH_ASR_THREADS", 0))
