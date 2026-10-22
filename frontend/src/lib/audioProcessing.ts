@@ -16,10 +16,22 @@ const MAX_SECONDS = 60
 const FRAME = RATE / 50 // 20 ms
 
 export interface PreparedRecording {
+  /** The levelled clip (16 kHz WAV), for playback. */
   blob: Blob
   filename: string
   gainDb: number
+  /** What is sent to the server: the levelled WAV, or the compressed recording when it is long (see UPLOAD_AS_RECORDED_FROM). */
+  upload: Blob
+  uploadName: string
 }
+
+/**
+ * From this length a recording is uploaded as the browser recorded it (Opus or AAC, about half the size of
+ * the WAV) and the server levels it: a minute of speech is 1 MB instead of 1.9 MB, and a mock interview
+ * sends each answer twice. Shorter clips go as WAV, which the server reads without ffmpeg.
+ */
+const UPLOAD_AS_RECORDED_FROM = 10
+const COMPRESSED = /^(audio|video)\/(webm|ogg|mp4|aac|mpeg|x-m4a)/
 
 // One recording is often sent twice (a mock interview answer goes to the interviewer and to scoring):
 // it is decoded and encoded once, and the second send reuses the result.
@@ -36,18 +48,25 @@ export function prepareRecording(blob: Blob, filename: string): Promise<Prepared
 async function prepare(blob: Blob, filename: string): Promise<PreparedRecording> {
   try {
     const samples = await decodeMono16k(blob)
-    if (samples.length < FRAME * 5 || samples.length > RATE * MAX_SECONDS) return { blob, filename, gainDb: 0 }
+    if (samples.length < FRAME * 5 || samples.length > RATE * MAX_SECONDS) return asRecorded(blob, filename)
     const gain = normalize(samples)
+    const wav = encodeWav(samples, RATE)
+    const wavName = `${filename.replace(/\.[^.]*$/, '') || 'recording'}.wav`
+    const long = samples.length >= RATE * UPLOAD_AS_RECORDED_FROM && COMPRESSED.test(blob.type)
     return {
-      blob: encodeWav(samples, RATE),
-      filename: `${filename.replace(/\.[^.]*$/, '') || 'recording'}.wav`,
+      blob: wav,
+      filename: wavName,
       gainDb: Math.round(20 * Math.log10(gain) * 10) / 10,
+      upload: long ? blob : wav,
+      uploadName: long ? filename : wavName,
     }
   } catch {
     // Undecodable here (rare codec): the server decodes and normalises it instead.
-    return { blob, filename, gainDb: 0 }
+    return asRecorded(blob, filename)
   }
 }
+
+const asRecorded = (blob: Blob, filename: string): PreparedRecording => ({ blob, filename, gainDb: 0, upload: blob, uploadName: filename })
 
 async function decodeMono16k(blob: Blob): Promise<Float32Array> {
   // An offline context at 16 kHz makes the browser's decoder resample for us.
