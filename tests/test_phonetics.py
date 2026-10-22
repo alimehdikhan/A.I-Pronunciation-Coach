@@ -89,3 +89,12 @@ def test_weak_forms_never_change_a_consonant():
         citation = consonants(phonetics.primary_pronunciation(word).phonemes)
         for weak in variants:
             assert consonants(phonetics._from_arpabet(weak.split()).phonemes) == citation or word == "and", (word, weak)  # "and" may drop its d (ən)
+
+
+def test_a_sequence_aligned_with_itself_matches_every_word():
+    words = "the quick brown fox jumps over the lazy dog".split()
+    ops, cost = phonetics.align(words, list(words), phonetics.word_cost)
+    assert cost == 0.0 and ops == [("equal", i, i) for i in range(len(words))]
+    # Not identical: the full alignment still runs.
+    ops, cost = phonetics.align(words, words[:3] + ["box"] + words[4:], phonetics.word_cost)
+    assert [op[0] for op in ops].count("replace") == 1 and cost > 0
