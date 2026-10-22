@@ -83,6 +83,56 @@ def _candidates(word: str, inventory: gop.Inventory, accent: str = "american") -
     return out
 
 
+def choose_pronunciations(
+    options: Sequence[Sequence[Sequence[int]]], scores: np.ndarray, blank: np.ndarray
+) -> tuple[list[int | None], list[int]] | None:
+    """For each word, the pronunciation the audio supports best: each word's alternatives are tried in turn,
+    left to right, and one is kept when the whole sequence becomes more likely.
+
+    `options[w]` lists word w's pronunciations as label sequences (empty when it has none). Returns the
+    choice per word and the chosen labels, or None when the audio can't be explained at all. A trial
+    changes one word only, so its likelihood comes from the current sequence's alpha and beta
+    (gop.replaced_log_likelihood) instead of a pass over the whole answer per trial.
+    """
+    choice: list[int | None] = [0 if opts else None for opts in options]
+    first = [label for opts in options if opts for label in opts[0]]
+    # Everything after the word being tried is still the first choice, so one backward pass serves them all.
+    alpha, beta, best = gop.ctc_forward_backward(first, scores, blank)
+    if not np.isfinite(best):
+        return None
+    longest = sum(max(len(labels) for labels in opts) for opts in options if opts)
+    forward = gop.ForwardPass(first, scores, blank, alpha, longest)
+    start = 0  # where the word being tried begins, in the current labels
+    end_first = 0  # where it ends, in the first choice's labels
+    for w, opts in enumerate(options):
+        if not opts:
+            continue
+        end_first += len(opts[0])
+        after = first[end_first] if end_first < len(first) else None
+        out_of = beta[:, 2 * end_first + 1] if after is not None else None
+        for k in range(1, len(opts)):
+            current = choice[w]
+            assert current is not None
+            likelihood = gop.stretch_log_likelihood(
+                opts[k],
+                scores,
+                blank,
+                best,
+                into_blank=forward.column(2 * start),
+                into_label=forward.column(2 * start - 1) if start > 0 else None,
+                before=forward.labels[start - 1] if start > 0 else None,
+                out_of=out_of,
+                after=after,
+            )
+            if likelihood > best:
+                forward.replace(start, start + len(opts[current]), opts[k])
+                best, choice[w] = likelihood, k
+        chosen = choice[w]
+        assert chosen is not None
+        start += len(opts[chosen])
+    return choice, forward.labels
+
+
 def analyse(
     words: Sequence[str],
     log_probs: np.ndarray,
@@ -97,24 +147,12 @@ def analyse(
     Returns None when the audio can't be explained at all (e.g. far too short).
     """
     options = [_candidates(word, inventory, accent) for word in words]
-    choice = [0 if opts else None for opts in options]
     scores, blank = inventory.emissions(log_probs)
-
-    def flatten(selection: list[int | None]) -> list[int]:
-        return [label for opts, k in zip(options, selection, strict=True) if k is not None for label in opts[k][1]]
-
-    best = gop.sequence_log_likelihood(flatten(choice), scores, blank)
-    if not np.isfinite(best):
+    chosen = choose_pronunciations([[labels for _pron, labels in opts] for opts in options], scores, blank)
+    if chosen is None:
         return None
-    for w, opts in enumerate(options):
-        for k in range(1, len(opts)):
-            trial = list(choice)
-            trial[w] = k
-            likelihood = gop.sequence_log_likelihood(flatten(trial), scores, blank)
-            if likelihood > best:
-                best, choice = likelihood, trial
+    choice, labels = chosen
 
-    labels = flatten(choice)
     results = gop.score_sequence(labels, log_probs, inventory, emissions=(scores, blank))
     probabilities = model.score(results) if model is not None else [acceptance(r.gop) for r in results]
     out: list[WordAcoustics | None] = []
