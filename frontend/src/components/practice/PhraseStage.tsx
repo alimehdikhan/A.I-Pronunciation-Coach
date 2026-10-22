@@ -123,8 +123,8 @@ export function PhraseStage({
             })}
           </p>
           <div className="mt-7 flex items-center justify-center gap-2">
-            <ListenButton text={target.text} speakKey="stage-normal" label="Listen" />
-            <ListenButton text={target.text} speakKey="stage-slow" rate={SLOW_RATE} label="Slowly" />
+            <ListenButton text={target.text} speakKey="stage-normal" label="Listen" once={target.source === 'custom'} />
+            <ListenButton text={target.text} speakKey="stage-slow" rate={SLOW_RATE} label="Slowly" once={target.source === 'custom'} />
             {target.source === 'custom' && (
               <Button variant="ghost" size="sm" onClick={onBrowse} className="h-9">
                 <PencilSimpleIcon weight="bold" /> Edit
