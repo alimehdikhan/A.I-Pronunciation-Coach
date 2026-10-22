@@ -15,6 +15,7 @@ from __future__ import annotations
 import logging
 import math
 import re
+import threading
 import unicodedata
 from dataclasses import dataclass
 from functools import lru_cache
@@ -151,7 +152,19 @@ _cmudict_cache: dict[str, list[list[str]]] | None = None
 _epitran_state: dict[str, object] = {"instance": None, "disabled": False, "language": "eng-Latn"}
 
 
+# CMUDict and the common-word index are large: each is built once, however many threads ask at the same time.
+_cmudict_lock = threading.Lock()
+_word_index_lock = threading.Lock()
+
+
 def _cmudict() -> dict[str, list[list[str]]]:
+    if _cmudict_cache is not None:
+        return _cmudict_cache
+    with _cmudict_lock:
+        return _load_cmudict()
+
+
+def _load_cmudict() -> dict[str, list[list[str]]]:
     global _cmudict_cache
     if _cmudict_cache is not None:
         return _cmudict_cache
@@ -180,7 +193,8 @@ def warm_up(language: str = "eng-Latn") -> None:
 
 
 def dictionary_available() -> bool:
-    return bool(_cmudict())
+    """Whether the dictionary is loaded. Never loads it: the health check must not block while it loads."""
+    return bool(_cmudict_cache)
 
 
 def _from_arpabet(arpabet: Sequence[str]) -> Pronunciation:
@@ -360,20 +374,26 @@ def word_with_sounds(phonemes: Sequence[str]) -> str | None:
     """
     global _word_index
     if _word_index is None:
-        index: dict[tuple[str, ...], str] = {}
-        try:
-            lines = COMMON_WORDS_FILE.read_text(encoding="utf-8").splitlines()
-        except OSError:
-            logger.warning("Common word list missing; slips will not be checked for changed words.")
-            lines = []
-        cmu = _cmudict()
-        for word in (line.strip() for line in lines):  # most frequent first: the first claim wins
-            if not word or word.startswith("#"):
-                continue
-            for entry in cmu.get(word, ()):
-                index.setdefault(_from_arpabet(entry).phonemes, word)
-        _word_index = index
+        with _word_index_lock:
+            if _word_index is None:
+                _word_index = _build_word_index()
     return _word_index.get(tuple(phonemes))
+
+
+def _build_word_index() -> dict[tuple[str, ...], str]:
+    index: dict[tuple[str, ...], str] = {}
+    try:
+        lines = COMMON_WORDS_FILE.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        logger.warning("Common word list missing; slips will not be checked for changed words.")
+        lines = []
+    cmu = _cmudict()
+    for word in (line.strip() for line in lines):  # most frequent first: the first claim wins
+        if not word or word.startswith("#"):
+            continue
+        for entry in cmu.get(word, ()):
+            index.setdefault(_from_arpabet(entry).phonemes, word)
+    return index
 
 
 ACCENTS = ("american", "british")
@@ -503,8 +523,14 @@ def align(
     Returns ``(ops, total_cost)`` where each op is ``(kind, ref_index,
     hyp_index)`` and kind is ``equal``, ``replace``, ``delete`` or ``insert``.
     Diagonal moves win ties so near-matches pair up instead of splitting.
+    Costs must not be negative.
     """
     n, m = len(ref), len(hyp)
+    # Free speech is scored against its own transcript: when every pair on the diagonal costs nothing, that
+    # is the best alignment (no cost is negative) and the one the backtrace below would pick, so the
+    # n x m table is skipped. It grows with the square of the length.
+    if n == m and all(sub_cost(r, h) == 0 for r, h in zip(ref, hyp, strict=True)):
+        return [("equal", i, i) for i in range(n)], 0.0
     costs = [[sub_cost(r, h) for h in hyp] for r in ref]
     dp = [[0.0] * (m + 1) for _ in range(n + 1)]
     for i in range(1, n + 1):
