@@ -32,11 +32,12 @@ logger = logging.getLogger("pronunciation_coach.runtime")
 
 
 class WorkGate:
-    """Bounded concurrency with a bounded wait queue."""
+    """Bounded concurrency with a bounded wait queue. `observe`: count it in the ASR metrics."""
 
-    def __init__(self, concurrency: int, queue_limit: int):
+    def __init__(self, concurrency: int, queue_limit: int, observe: bool = True):
         self.concurrency = max(1, concurrency)
         self.queue_limit = max(0, queue_limit)
+        self.observe = observe
         self.waiting = 0
         self.running = 0
         self._semaphore: asyncio.Semaphore | None = None
@@ -53,25 +54,77 @@ class WorkGate:
     async def slot(self) -> AsyncIterator[None]:
         semaphore = self._get_semaphore()
         if self.running >= self.concurrency and self.waiting >= self.queue_limit:
-            ASR_REJECTED.inc()
+            if self.observe:
+                ASR_REJECTED.inc()
             raise CodedHTTPException(
                 503, "The coach is busy right now. Please try again in a few seconds.", "busy", {"Retry-After": "5"}
             )
         self.waiting += 1
-        ASR_WAITING.inc()
+        if self.observe:
+            ASR_WAITING.inc()
         try:
             await semaphore.acquire()
         finally:
             self.waiting -= 1
-            ASR_WAITING.dec()
+            if self.observe:
+                ASR_WAITING.dec()
         self.running += 1
-        ASR_RUNNING.inc()
+        if self.observe:
+            ASR_RUNNING.inc()
         try:
             yield
         finally:
             self.running -= 1
-            ASR_RUNNING.dec()
+            if self.observe:
+                ASR_RUNNING.dec()
             semaphore.release()
+
+
+class VoiceFirst:
+    """The interviewer's voice goes before background scoring.
+
+    On a small CPU, rendering a line and scoring an answer at the same time makes both about twice as
+    slow, and the candidate hears the slowness as a silence. While a line is being rendered, background
+    scoring waits before each heavy step (for at most ``max_wait`` seconds: a line takes a second or two).
+    """
+
+    def __init__(self, max_wait: float = 4.0):
+        self.max_wait = max_wait
+        self.rendering = 0
+        self._idle: asyncio.Event | None = None
+        self._loop: asyncio.AbstractEventLoop | None = None
+
+    def _event(self) -> asyncio.Event:
+        loop = asyncio.get_running_loop()
+        if self._idle is None or self._loop is not loop:
+            self._idle = asyncio.Event()
+            self._loop = loop
+            if self.rendering == 0:
+                self._idle.set()
+        return self._idle
+
+    @asynccontextmanager
+    async def speaking(self) -> AsyncIterator[None]:
+        """Hold while a line is rendered."""
+        idle = self._event()
+        self.rendering += 1
+        idle.clear()
+        try:
+            yield
+        finally:
+            self.rendering -= 1
+            if self.rendering == 0:
+                idle.set()
+
+    async def wait(self) -> None:
+        """Before a heavy step of background work: let any line being rendered finish first."""
+        idle = self._event()
+        if idle.is_set():
+            return
+        try:
+            await asyncio.wait_for(idle.wait(), self.max_wait)
+        except asyncio.TimeoutError:
+            pass
 
 
 @dataclass
@@ -87,6 +140,9 @@ class Runtime:
     db_ready: bool = False
     load_error: str | None = None
     asr_gate: WorkGate = field(default_factory=lambda: WorkGate(settings.asr_concurrency, settings.asr_queue_limit))
+    voice_first: VoiceFirst = field(default_factory=VoiceFirst)
+    # Rendering speech, one clip at a time (the voice renders one at a time anyway); clips already rendered skip it.
+    tts_gate: WorkGate = field(default_factory=lambda: WorkGate(1, settings.tts_queue_limit, observe=False))
 
     @property
     def models_loaded(self) -> bool:
