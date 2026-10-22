@@ -80,13 +80,14 @@ export function ListenButton({
 }) {
   const { speak, stop, prefetch, speakingKey, supported } = useSpeaker()
   const active = speakingKey === speakKey
+  const store = once ? 'none' : 'disk'
   return (
     <button
       type="button"
       disabled={!supported || !text}
-      onClick={() => (active ? stop() : speak(text, { key: speakKey, rate, once }))}
-      onPointerEnter={() => void prefetch(text, rate, undefined, once)}
-      onFocus={() => void prefetch(text, rate, undefined, once)}
+      onClick={() => (active ? stop() : speak(text, { key: speakKey, rate, store }))}
+      onPointerEnter={() => void prefetch(text, rate, undefined, store)}
+      onFocus={() => void prefetch(text, rate, undefined, store)}
       className={cn(
         'inline-flex h-9 items-center gap-2 rounded-full bg-fill px-4 text-[13px] font-medium text-foreground transition-[background-color,transform,opacity] duration-150 ease-out hover:bg-fill-strong active:scale-[0.97] disabled:opacity-40',
         active && 'bg-primary-soft text-primary',
