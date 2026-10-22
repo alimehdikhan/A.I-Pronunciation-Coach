@@ -201,6 +201,31 @@
   }
 }
 
+/* Rings spreading from the Practice orb while its first-time tip says "tap" (transform and opacity only). */
+@keyframes orb-pulse {
+  from {
+    transform: scale(1);
+    opacity: 0.55;
+  }
+  to {
+    transform: scale(1.3);
+    opacity: 0;
+  }
+}
+
+/* With reduced motion the ring stays put and only fades in and out. */
+@keyframes orb-pulse-still {
+  0%,
+  100% {
+    transform: scale(1.1);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 0.5;
+  }
+}
+
 @keyframes shimmer {
   from {
     background-position: -200% 0;
@@ -274,6 +299,18 @@
   .ai-glow {
     background: conic-gradient(from var(--glow-angle), #0894ff, #c959dd, #ff2e54, #ff9004, #0894ff);
     animation: glow-spin 4s linear infinite;
+  }
+  .orb-pulse {
+    opacity: 0;
+    animation: orb-pulse 2.4s cubic-bezier(0.23, 1, 0.32, 1) infinite;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .orb-pulse {
+      animation-name: orb-pulse-still;
+    }
+    .orb-pulse + .orb-pulse {
+      display: none;
+    }
   }
   .skeleton-shimmer {
     background: linear-gradient(90deg, var(--fill) 25%, var(--fill-strong) 50%, var(--fill) 75%);
