@@ -48,38 +48,75 @@ def ensure_voice_files(voice_name: str = DEFAULT_VOICE) -> Path:
     return model
 
 
+class ClipCache:
+    """Rendered clips kept in memory, least recently used dropped first, bounded by their total size
+    (a clip may be a word or a 300-character paragraph, so a count says little about memory)."""
+
+    def __init__(self, max_bytes: int):
+        self.max_bytes = max_bytes
+        self.size = 0
+        self._clips: OrderedDict[tuple, bytes] = OrderedDict()
+        self._lock = threading.Lock()
+
+    def get(self, key: tuple) -> bytes | None:
+        with self._lock:
+            clip = self._clips.get(key)
+            if clip is not None:
+                self._clips.move_to_end(key)
+            return clip
+
+    def put(self, key: tuple, clip: bytes) -> None:
+        if len(clip) > self.max_bytes:
+            return
+        with self._lock:
+            old = self._clips.pop(key, None)
+            self.size += len(clip) - (len(old) if old is not None else 0)
+            self._clips[key] = clip
+            while self.size > self.max_bytes:
+                _key, dropped = self._clips.popitem(last=False)
+                self.size -= len(dropped)
+
+
+# Memory for rendered clips: Piper's are 22 kHz, Kokoro's 24 kHz (about 48 KB a second).
+PIPER_CACHE_BYTES = 32 * 1024 * 1024
+KOKORO_CACHE_BYTES = 64 * 1024 * 1024
+
+
 class CoachVoice:
     """Thread-safe Piper voice with an LRU cache of rendered WAV audio."""
 
-    def __init__(self, voice_name: str = DEFAULT_VOICE, cache_size: int = 256):
+    def __init__(self, voice_name: str = DEFAULT_VOICE, cache_bytes: int = PIPER_CACHE_BYTES):
         from piper import PiperVoice
 
         model = ensure_voice_files(voice_name)
         self.voice_name = voice_name
         self.voice = PiperVoice.load(model)
         self._synth_lock = threading.Lock()  # one synthesis at a time per voice
-        self._cache_lock = threading.Lock()
-        self._cache: OrderedDict[tuple[str, float], bytes] = OrderedDict()
-        self._cache_size = cache_size
+        self._cache = ClipCache(cache_bytes)
         logger.info("Piper voice %s loaded.", voice_name)
 
-    def synthesize(self, text: str, rate: float = 1.0) -> bytes:
-        """Render `text` as 16-bit mono WAV. `rate` > 1 speaks faster."""
+    def cached(self, text: str, rate: float = 1.0) -> bytes | None:
+        """The clip when it is already rendered; never renders."""
+        clip = self._cache.get((text, round(min(MAX_RATE, max(MIN_RATE, rate)), 2)))
+        if clip is not None:
+            TTS_CACHE.labels("hit").inc()
+        return clip
+
+    def synthesize(self, text: str, rate: float = 1.0, keep: bool = True) -> bytes:
+        """Render `text` as 16-bit mono WAV. `rate` > 1 speaks faster. `keep`: cache it (False for one-off text)."""
         from piper import SynthesisConfig
 
         rate = round(min(MAX_RATE, max(MIN_RATE, rate)), 2)
         key = (text, rate)
-        cached = self._lookup(key)
+        cached = self.cached(text, rate)
         if cached is not None:
-            TTS_CACHE.labels("hit").inc()
             return cached
 
         # Cache hits never wait behind a synthesis in progress, and concurrent
         # requests for the same phrase are rendered once.
         with self._synth_lock:
-            cached = self._lookup(key)
+            cached = self.cached(text, rate)
             if cached is not None:
-                TTS_CACHE.labels("hit").inc()
                 return cached
             TTS_CACHE.labels("miss").inc()
             buffer = io.BytesIO()
@@ -87,18 +124,9 @@ class CoachVoice:
                 self.voice.synthesize_wav(text, wav_file, syn_config=SynthesisConfig(length_scale=1.0 / rate))
             audio = buffer.getvalue()
 
-        with self._cache_lock:
-            self._cache[key] = audio
-            while len(self._cache) > self._cache_size:
-                self._cache.popitem(last=False)
+        if keep:
+            self._cache.put(key, audio)
         return audio
-
-    def _lookup(self, key: tuple[str, float]) -> bytes | None:
-        with self._cache_lock:
-            cached = self._cache.get(key)
-            if cached is not None:
-                self._cache.move_to_end(key)
-            return cached
 
 
 # ---------------------------------------------------------------------------
@@ -147,7 +175,7 @@ class KokoroVoice:
     """
 
     def __init__(self, voice_name: str = "af_heart", directory: Path | None = None, cache_dir: Path | None = None,
-                 cache_size: int = 256, threads: int = 0):
+                 cache_bytes: int = KOKORO_CACHE_BYTES, threads: int = 0):
         import onnxruntime as ort
         from kokoro_onnx import Kokoro
 
@@ -166,9 +194,7 @@ class KokoroVoice:
         self.cache_dir = cache_dir if cache_dir is not None else directory / "clips"
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self._synth_lock = threading.Lock()
-        self._cache_lock = threading.Lock()
-        self._cache: OrderedDict[tuple[str, str, float], bytes] = OrderedDict()
-        self._cache_size = cache_size
+        self._cache = ClipCache(cache_bytes)
         logger.info("Kokoro voice %s loaded (%s).", voice_name, model.name)
 
     def warm_up(self) -> None:
@@ -191,45 +217,53 @@ class KokoroVoice:
     def has_clip(self, text: str, rate: float = 1.0, voice: str | None = None) -> bool:
         return self._clip_path(text, round(min(MAX_RATE, max(MIN_RATE, rate)), 2), voice).is_file()
 
-    def synthesize(self, text: str, rate: float = 1.0, voice: str | None = None) -> bytes:
+    def cached(self, text: str, rate: float = 1.0, voice: str | None = None) -> bytes | None:
+        """The clip when it is already rendered (in memory or on disk); never renders."""
+        rate = round(min(MAX_RATE, max(MIN_RATE, rate)), 2)
+        name = self._voice(voice)
+        clip = self._cache.get((name, text, rate))
+        if clip is None:
+            path = self._clip_path(text, rate, name)
+            if path.is_file():
+                clip = path.read_bytes()
+                self._cache.put((name, text, rate), clip)
+        if clip is not None:
+            TTS_CACHE.labels("hit").inc()
+        return clip
+
+    def synthesize(self, text: str, rate: float = 1.0, voice: str | None = None, keep: bool = True) -> bytes:
+        """`keep`: cache the clip in memory and on disk. False for one-off text (an interviewer's live
+        reaction, which quotes the candidate): it is rendered for that moment and never stored."""
         import numpy as np
 
         rate = round(min(MAX_RATE, max(MIN_RATE, rate)), 2)
         name = self._voice(voice)
         lang = "en-gb" if name[:1] == "b" else "en-us"
         key = (name, text, rate)
-        with self._cache_lock:
-            cached = self._cache.get(key)
-            if cached is not None:
-                self._cache.move_to_end(key)
-                TTS_CACHE.labels("hit").inc()
-                return cached
+        cached = self.cached(text, rate, name)
+        if cached is not None:
+            return cached
 
         path = self._clip_path(text, rate, name)
-        if path.is_file():
-            audio = path.read_bytes()
-            TTS_CACHE.labels("hit").inc()
-        else:
-            with self._synth_lock:
-                if path.is_file():
-                    audio = path.read_bytes()
-                else:
-                    TTS_CACHE.labels("miss").inc()
-                    samples, sample_rate = self.engine.create(text, voice=name, speed=rate, lang=lang)
-                    pcm = (np.clip(samples, -1.0, 1.0) * 32767).astype("<i2")
-                    buffer = io.BytesIO()
-                    with wave.open(buffer, "wb") as wav_file:
-                        wav_file.setnchannels(1)
-                        wav_file.setsampwidth(2)
-                        wav_file.setframerate(int(sample_rate))
-                        wav_file.writeframes(pcm.tobytes())
-                    audio = buffer.getvalue()
-                    tmp = path.with_suffix(".tmp")
+        with self._synth_lock:
+            if path.is_file():
+                audio = path.read_bytes()
+            else:
+                TTS_CACHE.labels("miss").inc()
+                samples, sample_rate = self.engine.create(text, voice=name, speed=rate, lang=lang)
+                pcm = (np.clip(samples, -1.0, 1.0) * 32767).astype("<i2")
+                buffer = io.BytesIO()
+                with wave.open(buffer, "wb") as wav_file:
+                    wav_file.setnchannels(1)
+                    wav_file.setsampwidth(2)
+                    wav_file.setframerate(int(sample_rate))
+                    wav_file.writeframes(pcm.tobytes())
+                audio = buffer.getvalue()
+                if keep:
+                    tmp = path.with_suffix(f".{threading.get_ident()}.tmp")
                     tmp.write_bytes(audio)
                     tmp.replace(path)  # atomic: a half-written clip is never served
 
-        with self._cache_lock:
-            self._cache[key] = audio
-            while len(self._cache) > self._cache_size:
-                self._cache.popitem(last=False)
+        if keep:
+            self._cache.put(key, audio)
         return audio
