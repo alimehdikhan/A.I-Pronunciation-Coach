@@ -20,6 +20,8 @@ logger = logging.getLogger("pronunciation_coach.api.library")
 router = APIRouter()
 
 CACHEABLE = "public, max-age=3600, stale-while-revalidate=86400"
+# For answers that repeat what the learner typed: only their own browser may keep them.
+PRIVATE_CACHEABLE = "private, max-age=3600"
 
 
 @router.get("/api/pronounce")
@@ -41,7 +43,7 @@ def pronounce_text(
             "respelling": " ".join(r for r in spelled if r) or None,
             "tokens": details,
         })
-    response.headers["Cache-Control"] = CACHEABLE
+    response.headers["Cache-Control"] = PRIVATE_CACHEABLE
     return {"text": text, "words": words}
 
 
@@ -74,5 +76,5 @@ def get_tutor_card(
     except Exception as exc:
         logger.exception("Error generating tutor card")
         raise HTTPException(status_code=500, detail="Error generating tutor card") from exc
-    response.headers["Cache-Control"] = CACHEABLE
+    response.headers["Cache-Control"] = PRIVATE_CACHEABLE
     return card
