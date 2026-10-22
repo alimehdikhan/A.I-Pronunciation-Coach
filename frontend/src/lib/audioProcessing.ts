@@ -21,7 +21,19 @@ export interface PreparedRecording {
   gainDb: number
 }
 
-export async function prepareRecording(blob: Blob, filename: string): Promise<PreparedRecording> {
+// One recording is often sent twice (a mock interview answer goes to the interviewer and to scoring):
+// it is decoded and encoded once, and the second send reuses the result.
+const prepared = new WeakMap<Blob, Map<string, Promise<PreparedRecording>>>()
+
+export function prepareRecording(blob: Blob, filename: string): Promise<PreparedRecording> {
+  let byName = prepared.get(blob)
+  if (!byName) prepared.set(blob, (byName = new Map()))
+  let result = byName.get(filename)
+  if (!result) byName.set(filename, (result = prepare(blob, filename)))
+  return result
+}
+
+async function prepare(blob: Blob, filename: string): Promise<PreparedRecording> {
   try {
     const samples = await decodeMono16k(blob)
     if (samples.length < FRAME * 5 || samples.length > RATE * MAX_SECONDS) return { blob, filename, gainDb: 0 }
