@@ -6,7 +6,7 @@ import wave
 import numpy as np
 import pytest
 
-from backend.tts import KokoroVoice
+from backend.tts import ClipCache, KokoroVoice
 
 
 class FakeEngine:
@@ -21,7 +21,6 @@ class FakeEngine:
 def make_voice(cache_dir, engine, name="af_heart"):
     voice = object.__new__(KokoroVoice)  # skip loading real model files
     import threading
-    from collections import OrderedDict
 
     voice.engine = engine
     voice.voice_name = name
@@ -29,9 +28,7 @@ def make_voice(cache_dir, engine, name="af_heart"):
     voice.model_file = "fake.onnx"
     voice.cache_dir = cache_dir
     voice._synth_lock = threading.Lock()
-    voice._cache_lock = threading.Lock()
-    voice._cache = OrderedDict()
-    voice._cache_size = 8
+    voice._cache = ClipCache(1 << 20)
     return voice
 
 
@@ -139,3 +136,33 @@ def test_warm_up_renders_once_without_caching_and_never_raises(tmp_path):
             raise RuntimeError("no session")
 
     make_voice(tmp_path, Broken()).warm_up()  # start-up must survive a failed warm-up
+
+
+def test_one_off_text_is_rendered_but_never_kept(tmp_path):
+    engine = FakeEngine()
+    voice = make_voice(tmp_path, engine)
+    live = "You mentioned leading a team of four."
+    voice.synthesize(live, 1.0, keep=False)
+    assert not voice.has_clip(live, 1.0) and list(tmp_path.iterdir()) == []
+    assert voice.cached(live, 1.0) is None
+    voice.synthesize(live, 1.0, keep=False)
+    assert len(engine.calls) == 2  # nothing kept, so it renders again
+
+
+def test_a_cache_lookup_never_renders(tmp_path):
+    engine = FakeEngine()
+    voice = make_voice(tmp_path, engine)
+    assert voice.cached("Not rendered yet.", 1.0) is None and engine.calls == []
+    voice.synthesize("Not rendered yet.", 1.0)
+    assert voice.cached("Not rendered yet.", 1.0) is not None and len(engine.calls) == 1
+
+
+def test_the_memory_cache_is_bounded_by_size():
+    cache = ClipCache(max_bytes=10)
+    cache.put(("a",), b"12345")
+    cache.put(("b",), b"12345")
+    assert cache.get(("a",)) == b"12345"  # used: now the newest
+    cache.put(("c",), b"123")
+    assert cache.get(("b",)) is None and cache.get(("a",)) is not None and cache.size <= 10
+    cache.put(("huge",), b"x" * 11)  # larger than the whole cache: never kept
+    assert cache.get(("huge",)) is None
