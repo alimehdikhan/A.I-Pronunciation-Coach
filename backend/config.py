@@ -87,7 +87,10 @@ def _cache_dir() -> Path:
 
 @dataclass(frozen=True)
 class Settings:
-    # Speech recognition
+    # Speech recognition: Groq's hosted Whisper large when a Groq key is set ("auto"), so no Whisper model is
+    # loaded here; the local faster-whisper model only without a key, or when asked for ("local").
+    asr_engine: str = field(default_factory=lambda: os.getenv("PRONUNCIATION_COACH_ASR_ENGINE", "auto").strip().lower())
+    groq_asr_model: str = field(default_factory=lambda: os.getenv("PRONUNCIATION_COACH_GROQ_ASR_MODEL", "whisper-large-v3").strip())
     whisper_model_size: str = field(default_factory=lambda: os.getenv("WHISPER_MODEL_SIZE", "base"))
     asr_device: str = field(default_factory=lambda: os.getenv("PRONUNCIATION_COACH_ASR_DEVICE", "auto"))
     asr_compute_type: str = field(default_factory=lambda: os.getenv("PRONUNCIATION_COACH_ASR_COMPUTE_TYPE", "auto"))
