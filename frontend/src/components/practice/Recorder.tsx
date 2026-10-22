@@ -1,13 +1,15 @@
-import { UploadSimpleIcon } from '@phosphor-icons/react'
+import { QuestionIcon, UploadSimpleIcon } from '@phosphor-icons/react'
 import { AnimatePresence, motion } from 'motion/react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { LazySiriOrb as SiriOrb } from '@/components/orb/LazySiriOrb'
 import type { OrbState } from '@/components/orb/SiriOrb'
+import { OrbGuide, OrbPulse, type OrbGuideStep } from '@/components/practice/OrbGuide'
 import { Kbd } from '@/components/ui/kbd'
 import { recordingSupported, type Recording, type RecorderState } from '@/hooks/useRecorder'
 import { createAnalyserReader, MIC_GAIN, OUTPUT_GAIN } from '@/lib/audio'
 import { outputAnalyserRef, useVoiceStore } from '@/lib/audioEngine'
 import { cn, formatDuration } from '@/lib/utils'
+import { useSettings } from '@/store/settings'
 
 const ANALYSIS_STEPS = ['Uploading', 'Transcribing with Whisper', 'Aligning phonemes', 'Scoring your delivery']
 
@@ -67,6 +69,23 @@ export function Recorder({
   const getAudioFrame = recording ? readMic : voiceActive ? readOutput : undefined
   const interactive = recording || (!disabled && !busy)
 
+  // First-time tips that follow the learner through one real recording.
+  const guideSeen = useSettings((s) => s.orbGuideSeen)
+  const setGuideSeen = useSettings((s) => s.setOrbGuideSeen)
+  const guideId = useId()
+  const guideStep: OrbGuideStep | null =
+    guideSeen || !recordingSupported
+      ? null
+      : analyzing
+        ? 'wait'
+        : recording
+          ? 'speak'
+          : state === 'requesting'
+            ? 'allow'
+            : disabled
+              ? null
+              : 'tap'
+
   const label = analyzing ? (
     <AnalyzingLabel />
   ) : recording ? (
@@ -81,11 +100,14 @@ export function Recorder({
 
   return (
     <div className="flex flex-col items-center gap-5">
+      <OrbGuide step={guideStep} id={guideId} onSkip={() => setGuideSeen(true)} />
+
       <motion.button
         type="button"
         onClick={interactive ? onToggle : undefined}
         disabled={!interactive}
         aria-label={recording ? 'Stop recording' : analyzing ? 'Analysing' : 'Start recording'}
+        aria-describedby={guideStep ? guideId : undefined}
         className={cn(
           'relative rounded-full outline-none focus-visible:ring-4 focus-visible:ring-ring/40 focus-visible:ring-offset-4 focus-visible:ring-offset-card',
           !interactive && (analyzing ? 'cursor-progress' : 'cursor-not-allowed'),
@@ -96,6 +118,7 @@ export function Recorder({
         transition={{ type: 'spring', bounce: 0.3, duration: 0.5 }}
       >
         <SiriOrb size={ORB_SIZE} state={orbState} getAudioFrame={getAudioFrame} />
+        {guideStep === 'tap' && <OrbPulse size={ORB_SIZE} />}
       </motion.button>
 
       <div className="flex min-h-11 flex-col items-center gap-1.5 text-center">
@@ -133,6 +156,18 @@ export function Recorder({
                       if (file) onUpload({ blob: file, filename: file.name, duration: 0 })
                     }}
                   />
+                </>
+              )}
+              {recordingSupported && !guideStep && (
+                <>
+                  <span className="size-[3px] rounded-full bg-subtle" />
+                  <button
+                    type="button"
+                    onClick={() => setGuideSeen(false)}
+                    className="inline-flex items-center gap-1 font-medium text-primary transition-opacity hover:opacity-80"
+                  >
+                    <QuestionIcon size={13} weight="bold" /> How it works
+                  </button>
                 </>
               )}
             </div>
