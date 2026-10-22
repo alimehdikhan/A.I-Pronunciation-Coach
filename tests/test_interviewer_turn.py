@@ -114,6 +114,57 @@ def test_an_unknown_question_is_refused(client):
     assert response.status_code == 400
 
 
+# --- small talk: the reply to the greeting -----------------------------------------------------------
+
+GREETING = "Hi Sam, I'm Alex. Thanks for coming in today. How are you doing?"
+
+
+def small_talk(client):
+    response = client.post(
+        "/api/interview/turn",
+        files={"audio": ("hello.wav", wav_bytes(seconds=2.0), "audio/wav")},
+        data={
+            "question_id": interview.SMALL_TALK_ID,
+            "interview_type": "full",
+            "conversation": json.dumps([{"speaker": "interviewer", "text": GREETING}]),
+        },
+    )
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def test_small_talk_is_answered_without_the_model(client, fake_asr):
+    say(fake_asr, "I'm good, thanks. How are you?")
+    body = small_talk(client)
+    assert body["mood"] == "good_and_asked" and body["source"] == "template"
+    assert body["action"] == "move_on" and body["question"] is None
+
+
+def test_plain_phrases_decide_the_small_talk_reply():
+    assert interview.small_talk_mood("I'm a little nervous, to be honest.") == "nervous"
+    assert interview.small_talk_mood("Fine, and you?") == "good_and_asked"
+    assert interview.small_talk_mood("How are you?") == "asked_back"
+    assert interview.small_talk_mood("Pretty tired today.") == "not_great"
+    assert interview.small_talk_mood("Actually, it's not a good time.") == "busy"
+    assert interview.small_talk_mood("Yes, sure.") == "good"
+    assert interview.small_talk_mood("Thanks for having me.") == "other"
+
+
+def test_the_model_reads_the_small_talk(client, fake_asr, monkeypatch):
+    coach = StandInCoach({"mood": "nervous"})
+    monkeypatch.setattr(interview_api, "get_coach", lambda: coach)
+    say(fake_asr, "Honestly my hands are shaking a bit.")
+    body = small_talk(client)
+    assert body["mood"] == "nervous" and body["source"] == "groq"
+    assert coach.facts["you_said"] == GREETING and coach.facts["candidate_said"] == "Honestly my hands are shaking a bit."
+
+
+def test_an_unknown_mood_from_the_model_falls_back_to_the_phrases(client, fake_asr, monkeypatch):
+    monkeypatch.setattr(interview_api, "get_coach", lambda: StandInCoach({"mood": "ecstatic"}))
+    say(fake_asr, "Fine, and you?")
+    assert small_talk(client)["mood"] == "good_and_asked"
+
+
 # --- with the model --------------------------------------------------------------------------------
 
 
@@ -219,3 +270,43 @@ async def test_quick_transcription_falls_back_to_the_local_whisper(monkeypatch):
         assert await quick_transcribe.transcribe(np.zeros(16000, dtype=np.float32), local) == ("heard locally", "local")
     finally:
         object.__setattr__(settings, "groq_api_key", "")
+
+
+# --- the interviewer's voice goes before background scoring -----------------------------------------
+
+
+@pytest.mark.anyio
+async def test_background_work_waits_while_a_line_renders():
+    import asyncio
+
+    from backend.runtime import VoiceFirst
+
+    gate = VoiceFirst(max_wait=2.0)
+    await asyncio.wait_for(gate.wait(), 0.1)  # nothing rendering: no wait at all
+    order = []
+
+    async def render():
+        async with gate.speaking():
+            await asyncio.sleep(0.2)
+            order.append("voice")
+
+    async def score():
+        await asyncio.sleep(0.01)
+        await gate.wait()
+        order.append("score")
+
+    await asyncio.gather(render(), score())
+    assert order == ["voice", "score"]
+
+
+@pytest.mark.anyio
+async def test_background_work_never_waits_long_for_the_voice():
+    import time
+
+    from backend.runtime import VoiceFirst
+
+    gate = VoiceFirst(max_wait=0.1)
+    async with gate.speaking():
+        started = time.perf_counter()
+        await gate.wait()
+        assert time.perf_counter() - started < 0.5
