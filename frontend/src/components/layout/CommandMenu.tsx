@@ -17,6 +17,7 @@ import { usePractice } from '@/store/practice'
 import { useSettings } from '@/store/settings'
 import { useUI } from '@/store/ui'
 import { NAV } from './nav'
+import { NavTile } from './NavTile'
 
 /** ⌘K palette: jump to pages, phrases and sounds. */
 export function CommandMenu() {
@@ -42,10 +43,10 @@ export function CommandMenu() {
       <CommandList className="max-h-[420px]">
         <CommandEmpty>No results.</CommandEmpty>
         <CommandGroup heading="Go to">
-          {NAV.map(({ to, label, icon: IconComp }) => (
-            <CommandItem key={to} value={`page ${label}`} onSelect={() => run(() => navigate(to))}>
-              <IconComp />
-              {label}
+          {NAV.map((item) => (
+            <CommandItem key={item.to} value={`page ${item.label}`} onSelect={() => run(() => navigate(item.to))}>
+              <NavTile item={item} size={22} />
+              {item.label}
             </CommandItem>
           ))}
         </CommandGroup>
