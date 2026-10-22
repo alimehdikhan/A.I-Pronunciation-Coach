@@ -13,7 +13,7 @@ from backend.api.deps import require_models
 from backend.api.speech import audio_rate_limiter, transcribe_upload
 from backend.config import settings
 from backend.observability import StageTimer
-from backend.runtime import get_coach
+from backend.runtime import get_coach, runtime
 from backend.security import client_key
 from backend.sound_model import SoundModel
 
@@ -47,7 +47,13 @@ def speaking_prompts() -> dict[str, Any]:
 
 
 async def analyse_free_answer(
-    audio: UploadFile, timer: StageTimer, *, max_seconds: float, endpoint: str, sound_model: SoundModel | None = None
+    audio: UploadFile,
+    timer: StageTimer,
+    *,
+    max_seconds: float,
+    endpoint: str,
+    sound_model: SoundModel | None = None,
+    background: bool = False,
 ) -> dict[str, Any]:
     """Transcribe an answer given in the learner's own words and measure it.
 
@@ -56,11 +62,14 @@ async def analyse_free_answer(
     score when the acoustic model ran. Silence comes back with `delivery` None. `upload` holds the
     uploaded bytes and their type, for the one feature that keeps them with consent (Day 1 vs Day 30);
     nothing else stores them. Shared by Speak freely, mock interviews and group discussions; the caller
-    checks the rate limit first. `sound_model` is the learner's trained sound model, if any.
+    checks the rate limit first. `sound_model` is the learner's trained sound model, if any. `background`:
+    scored while something else goes on (a mock interview), so the interviewer's voice renders first.
     """
     asr, scorer = require_models()
     try:
-        heard = await transcribe_upload(audio, asr, timer, phonemes=True, max_seconds=max_seconds, prompt=speaking.FILLER_PROMPT)
+        heard = await transcribe_upload(
+            audio, asr, timer, phonemes=True, max_seconds=max_seconds, prompt=speaking.FILLER_PROMPT, background=background
+        )
     except HTTPException:
         raise
     except Exception as exc:
@@ -78,6 +87,8 @@ async def analyse_free_answer(
     delivery["fillers"]["approximate"] = True
     target = speaking.strip_fillers(text)
     scored_words = [w for w in words if speaking.strip_fillers(str(w.get("word", "")))]
+    if background:
+        await runtime.voice_first.wait()
     with timer.stage("score"):
         scored = await run_in_threadpool(
             scorer.score_pronunciation, target, target, "intermediate", scored_words, heard.get("duration"),
