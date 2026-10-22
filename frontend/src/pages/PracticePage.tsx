@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowRightIcon, MicrophoneIcon } from '@phosphor-icons/react'
+import { ArrowRightIcon, LeafIcon, MicrophoneIcon, MountainsIcon, TreeIcon } from '@phosphor-icons/react'
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router'
 import { toast } from 'sonner'
@@ -25,6 +25,13 @@ import type { Level } from '@/lib/types'
 import { usePractice } from '@/store/practice'
 import { useSettings } from '@/store/settings'
 import { useUI } from '@/store/ui'
+
+// The same growth icons as the coach's sentence writer: a leaf, a tree, mountains.
+const LEVEL_ICON: Record<Level, React.ReactNode> = {
+  beginner: <LeafIcon weight="bold" />,
+  intermediate: <TreeIcon weight="bold" />,
+  advanced: <MountainsIcon weight="bold" />,
+}
 
 const PhraseLibrary = lazy(() => import('@/components/practice/PhraseLibrary').then((m) => ({ default: m.PhraseLibrary })))
 
@@ -181,7 +188,7 @@ export default function PracticePage() {
               layoutId="level"
               value={level}
               onChange={changeLevel}
-              options={LEVELS.map((l) => ({ value: l.id, label: l.label }))}
+              options={LEVELS.map((l) => ({ value: l.id, label: l.label, icon: LEVEL_ICON[l.id] }))}
             />
           </div>
         }
