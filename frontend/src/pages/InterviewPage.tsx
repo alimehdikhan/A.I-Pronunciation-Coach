@@ -53,8 +53,7 @@ export type InterviewTab = 'mock' | 'cv' | 'group'
 const HEADERS: Record<InterviewTab, { title: string; description: string }> = {
   mock: {
     title: 'Rehearse your interview.',
-    description:
-      'Choose the kind of interview, your role and experience. The interviewer asks every question aloud, follows up like a real one, and shows you what to improve.',
+    description: 'Alex asks every question out loud and follows up like a real interviewer. Your feedback comes at the end.',
   },
   cv: {
     title: 'An interview about you.',
