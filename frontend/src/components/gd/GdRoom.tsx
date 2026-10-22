@@ -154,7 +154,7 @@ export function GdRoom({
     return api
       .gdTurn({ topic_id: topic.id, speaker, user_name: userName, turns: turnsRef.current })
       .then((reply) => {
-        void prefetch(reply.text, 1, voiceOf(speaker))
+        void prefetch(reply.text, 1, voiceOf(speaker), true)
         return reply.text
       })
       .catch(() => null)
@@ -185,7 +185,7 @@ export function GdRoom({
     aiTurns.current += 1
     setCaption({ speaker, text })
     prepareNext()
-    await say(text, { key: SPEAK_KEY, voice: voiceOf(speaker) })
+    await say(text, { key: SPEAK_KEY, voice: voiceOf(speaker), once: true })
     if (step.current !== mine || !alive.current) return
     hold(null)
     if (await wait(GAP_MS, mine)) next()
@@ -207,7 +207,7 @@ export function GdRoom({
     hold('Alex')
     setCaption({ speaker: 'Alex', text })
     push({ speaker: 'Alex', text, you: false })
-    await say(text, { key: SPEAK_KEY })
+    await say(text, { key: SPEAK_KEY, once: true })
     return step.current === mine && alive.current
   }
 
