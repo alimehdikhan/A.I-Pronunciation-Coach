@@ -44,10 +44,10 @@ class StandInClient:
         return response
 
 
-def groq(monkeypatch, *responses, speech=((0.0, 2.0),)):
+def groq(monkeypatch, *responses, speech=((0.0, 2.0),), local=None):
     monkeypatch.setattr(groq_asr, "speech_spans", lambda audio: list(speech))
     monkeypatch.setattr(groq_asr.time, "sleep", lambda seconds: None)
-    hosted = groq_asr.GroqWhisper("whisper-large-v3", "test-key")
+    hosted = groq_asr.GroqWhisper("whisper-large-v3", "test-key", fallback=lambda: local)
     hosted._client = StandInClient(*responses)
     return hosted
 
@@ -83,16 +83,63 @@ def test_a_busy_groq_is_asked_once_more(monkeypatch):
     assert len(hosted._client.calls) == 2
 
 
-def test_when_groq_cannot_answer_the_learner_is_told_to_try_again(monkeypatch):
-    hosted = groq(monkeypatch, httpx.ConnectError("down"), httpx.Response(503))
+def test_when_groq_cannot_answer_the_local_whisper_does(monkeypatch):
+    local = FakeASR("I think so", timed_words("I think so"))
+    hosted = groq(monkeypatch, httpx.ConnectError("down"), httpx.Response(503), local=local)
+    result = hosted.transcribe(np.zeros(16000 * 2, np.float32), prompt="Um")
+    assert result["text"] == "I think so" and len(local.calls) == 1 and local.prompts == ["Um"]
+    assert result["words"][0]["probability"] is not None  # the local Whisper's confidences are kept
+    # For a while Groq is left alone: the next recording goes straight to the local Whisper.
+    hosted.transcribe(np.zeros(16000 * 2, np.float32))
+    assert len(hosted._client.calls) == 2 and len(local.calls) == 2
+
+
+def test_a_lasting_limit_is_not_asked_again_and_pauses_groq_for_as_long(monkeypatch):
+    local = FakeASR()
+    hosted = groq(monkeypatch, httpx.Response(429, headers={"retry-after": "120"}), local=local)
+    hosted.transcribe(np.zeros(16000 * 2, np.float32))
+    assert len(hosted._client.calls) == 1 and len(local.calls) == 1
+    assert hosted._paused_until - groq_asr.time.monotonic() > 100
+
+
+def test_groq_is_asked_again_once_the_pause_is_over(monkeypatch):
+    local = FakeASR()
+    hosted = groq(monkeypatch, httpx.Response(401), httpx.Response(200, json=GROQ_REPLY), local=local)
+    hosted.transcribe(np.zeros(16000 * 2, np.float32))  # a refused request (a bad key) is not asked again
+    assert len(hosted._client.calls) == 1 and len(local.calls) == 1
+    hosted._paused_until = 0.0
+    assert hosted.transcribe(np.zeros(16000 * 2, np.float32))["text"] == "I think so."
+
+
+def test_without_a_local_whisper_the_learner_is_told_to_try_again(monkeypatch):
+    hosted = groq(monkeypatch, httpx.ConnectError("down"), httpx.Response(503), local=None)
     with pytest.raises(CodedHTTPException) as raised:
         hosted.transcribe(np.zeros(16000 * 2, np.float32))
     assert raised.value.status_code == 503 and raised.value.code == "busy"
-    # A refused request (a bad key) is not asked again.
-    hosted = groq(monkeypatch, httpx.Response(401))
-    with pytest.raises(CodedHTTPException):
-        hosted.transcribe(np.zeros(16000 * 2, np.float32))
-    assert len(hosted._client.calls) == 1
+
+
+def test_the_local_whisper_loads_once_and_only_when_asked(monkeypatch):
+    built = []
+    monkeypatch.setattr(runtime_module, "_build_local_asr", lambda: built.append(1) or FakeASR())
+    monkeypatch.setattr(runtime_module, "_local_asr_missing", False)
+    monkeypatch.setattr(runtime, "local_asr", None)
+    assert built == []
+    first, second = runtime_module.get_local_asr(), runtime_module.get_local_asr()
+    assert first is second and built == [1]
+
+
+def test_a_local_whisper_that_cannot_load_is_not_tried_on_every_request(monkeypatch):
+    attempts = []
+
+    def broken():
+        attempts.append(1)
+        raise RuntimeError("model files missing")
+
+    monkeypatch.setattr(runtime_module, "_build_local_asr", broken)
+    monkeypatch.setattr(runtime_module, "_local_asr_missing", False)
+    monkeypatch.setattr(runtime, "local_asr", None)
+    assert runtime_module.get_local_asr() is None and runtime_module.get_local_asr() is None
+    assert attempts == [1]
 
 
 @pytest.mark.parametrize(
@@ -135,3 +182,29 @@ def test_a_busy_recogniser_reaches_the_learner_as_busy(client, monkeypatch):
     monkeypatch.setattr(runtime, "asr", BusyASR())
     response = client.post("/api/evaluate", data={"target_text": "Hello"}, files={"audio": ("a.wav", wav_bytes(), "audio/wav")})
     assert response.status_code == 503 and response.json()["code"] == "busy"
+
+
+def test_with_groq_the_fallback_is_the_small_whisper(monkeypatch):
+    import backend.asr
+
+    sizes = []
+
+    class Recorder:
+        def __init__(self, model_size, **kwargs):
+            sizes.append(model_size)
+
+        def warm_up(self):
+            pass
+
+    monkeypatch.setattr(backend.asr, "WhisperASR", Recorder)
+    before = (settings.groq_api_key, settings.whisper_model_size)
+    object.__setattr__(settings, "whisper_model_size", "medium")  # a Space variable left over from before
+    try:
+        object.__setattr__(settings, "groq_api_key", "k")
+        runtime_module._build_local_asr()
+        object.__setattr__(settings, "groq_api_key", "")
+        runtime_module._build_local_asr()
+    finally:
+        object.__setattr__(settings, "groq_api_key", before[0])
+        object.__setattr__(settings, "whisper_model_size", before[1])
+    assert sizes == ["base", "medium"]
