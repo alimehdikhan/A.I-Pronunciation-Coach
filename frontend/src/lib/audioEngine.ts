@@ -12,6 +12,10 @@ import { useSettings } from '@/store/settings'
 
 const BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? ''
 const MAX_CACHED = 48
+/** How long to wait before asking again when the server is busy rendering other clips. */
+const BUSY_RETRY_MS = 1500
+
+const wait = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms))
 
 interface VoiceState {
   /** Which control started the current playback (for button states). */
@@ -70,19 +74,25 @@ class AudioEngine {
     return `${voice}|${rate.toFixed(2)}|${text}`
   }
 
-  /** Fetch (and cache) neural speech audio for `text`. */
-  fetchSpeech(text: string, rate = 1, voice = ''): Promise<ArrayBuffer> {
+  /**
+   * Fetch (and cache for this page) neural speech audio for `text`. `once`: one-off text, such as a live
+   * reply that quotes the learner; the server renders it for this moment and stores it nowhere.
+   */
+  fetchSpeech(text: string, rate = 1, voice = '', once = false): Promise<ArrayBuffer> {
     const key = this.cacheKey(text, rate, voice)
     let pending = this.raw.get(key)
-    if (!pending) {
-      const choice = voice ? `&voice=${encodeURIComponent(voice)}` : ''
-      const key = useSettings.getState().profileKey
-      pending = fetch(`${BASE}/api/tts?text=${encodeURIComponent(text)}&rate=${rate.toFixed(2)}${choice}`, {
-        headers: key ? { 'X-Profile-Key': key } : {},
-      }).then((response) => {
-        if (!response.ok) throw new Error(`Speech unavailable (${response.status})`)
-        return response.arrayBuffer()
-      })
+    if (pending) remember(this.raw, key, pending) // in use: kept longest
+    else {
+      const url = `${BASE}/api/tts?text=${encodeURIComponent(text)}&rate=${rate.toFixed(2)}${voice ? `&voice=${encodeURIComponent(voice)}` : ''}${once ? '&once=true' : ''}`
+      const profileKey = useSettings.getState().profileKey
+      const request = () => fetch(url, { headers: profileKey ? { 'X-Profile-Key': profileKey } : {} })
+      pending = request()
+        // Busy (a queue of clips to render): wait a moment and ask once more, rather than change voice.
+        .then((response) => (response.status === 503 ? wait(BUSY_RETRY_MS).then(request) : response))
+        .then((response) => {
+          if (!response.ok) throw new Error(`Speech unavailable (${response.status})`)
+          return response.arrayBuffer()
+        })
       pending.catch(() => this.raw.delete(key))
       remember(this.raw, key, pending)
     }
@@ -90,11 +100,12 @@ class AudioEngine {
   }
 
   /** Fetch and decode speech once; every later play of the same phrase reuses the buffer. */
-  private loadSpeech(context: AudioContext, text: string, rate: number, voice: string): Promise<AudioBuffer> {
+  private loadSpeech(context: AudioContext, text: string, rate: number, voice: string, once = false): Promise<AudioBuffer> {
     const key = this.cacheKey(text, rate, voice)
     let pending = this.decoded.get(key)
-    if (!pending) {
-      pending = this.fetchSpeech(text, rate, voice).then((bytes) => context.decodeAudioData(bytes.slice(0)))
+    if (pending) remember(this.decoded, key, pending) // in use: kept longest
+    else {
+      pending = this.fetchSpeech(text, rate, voice, once).then((bytes) => context.decodeAudioData(bytes.slice(0)))
       pending.catch(() => this.decoded.delete(key))
       remember(this.decoded, key, pending)
     }
@@ -106,8 +117,8 @@ class AudioEngine {
    * unlocked the clip is decoded too, so playback needs no work at all.
    * Resolves when the clip is ready (or could not be loaded); never rejects.
    */
-  prefetch(text: string, rate = 1, voice = ''): Promise<void> {
-    const ready = this.context ? this.loadSpeech(this.context, text, rate, voice) : this.fetchSpeech(text, rate, voice)
+  prefetch(text: string, rate = 1, voice = '', once = false): Promise<void> {
+    const ready = this.context ? this.loadSpeech(this.context, text, rate, voice, once) : this.fetchSpeech(text, rate, voice, once)
     return ready.then(
       () => undefined,
       () => undefined,
@@ -119,14 +130,17 @@ class AudioEngine {
    * the audio plays to the end and false when it is interrupted; rejects if
    * speech is unavailable so the caller can fall back.
    */
-  async speak(text: string, { key, rate = 1, voice = '' }: { key: string; rate?: number; voice?: string }): Promise<boolean> {
+  async speak(
+    text: string,
+    { key, rate = 1, voice = '', once = false }: { key: string; rate?: number; voice?: string; once?: boolean },
+  ): Promise<boolean> {
     const context = this.ensure()
     this.stop()
     const token = ++this.token
     useVoiceStore.setState({ speakingKey: key, active: false, preparing: true })
 
     try {
-      const buffer = await this.loadSpeech(context, text, rate, voice)
+      const buffer = await this.loadSpeech(context, text, rate, voice, once)
       if (token !== this.token) return false
 
       const source = context.createBufferSource()
