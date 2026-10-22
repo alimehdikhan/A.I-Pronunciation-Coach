@@ -166,3 +166,14 @@ def test_the_memory_cache_is_bounded_by_size():
     assert cache.get(("b",)) is None and cache.get(("a",)) is not None and cache.size <= 10
     cache.put(("huge",), b"x" * 11)  # larger than the whole cache: never kept
     assert cache.get(("huge",)) is None
+
+
+def test_session_speech_stays_in_memory_and_off_disk(tmp_path):
+    engine = FakeEngine()
+    voice = make_voice(tmp_path, engine)
+    question = "Walk me through your background at Acme."
+    voice.synthesize(question, 1.0, keep=True, persist=False)
+    assert not voice.has_clip(question, 1.0) and list(tmp_path.iterdir()) == []
+    assert voice.cached(question, 1.0) is not None
+    voice.synthesize(question, 1.0, keep=True, persist=False)
+    assert len(engine.calls) == 1  # the second time comes from memory
