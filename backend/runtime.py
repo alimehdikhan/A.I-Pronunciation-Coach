@@ -166,12 +166,27 @@ def get_coach() -> CoachService:
     return runtime.coach
 
 
+def asr_engine() -> str:
+    """"groq" (hosted Whisper large, nothing loaded here) when a Groq key is set, unless "local" is asked for."""
+    if settings.asr_engine == "local" or not settings.groq_api_key or not settings.groq_asr_model:
+        return "local"
+    return "groq"
+
+
 def load_asr() -> None:
     if runtime.asr is not None:
         return
+    started = time.perf_counter()
+    if asr_engine() == "groq":
+        from backend.groq_asr import GroqWhisper
+
+        hosted = GroqWhisper(settings.groq_asr_model, settings.groq_api_key)
+        hosted.warm_up()
+        runtime.asr = hosted
+        logger.info("Speech recognition: Groq %s (no local Whisper loaded), ready in %.1fs.", settings.groq_asr_model, time.perf_counter() - started)
+        return
     from backend.asr import WhisperASR
 
-    started = time.perf_counter()
     asr = WhisperASR(
         model_size=settings.whisper_model_size,
         device=settings.asr_device,
