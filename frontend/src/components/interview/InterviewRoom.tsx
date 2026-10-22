@@ -39,13 +39,14 @@ import { PATIENCE_MS, useEndOfTurn } from '@/hooks/useEndOfTurn'
 import { useHotkeys } from '@/hooks/useHotkeys'
 import { useRecorder, type Recording } from '@/hooks/useRecorder'
 import { api } from '@/lib/api'
-import { useVoiceCatalog } from '@/lib/queries'
 import { createAnalyserReader, MIC_GAIN, OUTPUT_GAIN } from '@/lib/audio'
 import { audioEngine, outputAnalyserRef, useVoiceStore } from '@/lib/audioEngine'
 import { errorLine, showError } from '@/lib/errors'
 import {
   acknowledgement,
   afterSmallTalkLine,
+  backchannel,
+  backchannels,
   closingLine,
   cutInLine,
   firstQuestionLine,
@@ -54,9 +55,13 @@ import {
   openingLine,
   resumeLine,
   RETRY_LINE,
+  SMALL_TALK_ID,
   smallTalkLine,
+  smallTalkReplies,
+  smallTalkReply,
+  type SmallTalkMood,
 } from '@/lib/interviewer'
-import { useSpeaker } from '@/lib/speech'
+import { splitForSpeech, useSpeaker } from '@/lib/speech'
 import type { FollowUpId, InterviewAnswerResult, InterviewStart } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { useInterviewPrefs } from '@/store/interview'
@@ -73,8 +78,16 @@ const FOLLOW_UP_SECONDS: [number, number] = [15, 60]
 const SPEAK_KEY = 'interviewer'
 /** Silence this long while answering brings up phrases that buy time. */
 const SILENCE_HINT_MS = 6000
-/** Hands-free: how long a line may take to be ready in the natural voice before the quick voice says it instead. */
-const READY_WAIT_MS = 1200
+/**
+ * How long the interviewer's live reaction to an answer may take to be ready. Later than this it is left out,
+ * and the next question (rendered while the candidate answered) follows at once: a real interviewer doesn't
+ * leave a long silence, and the interviewer never changes voice.
+ */
+const REACTION_WAIT_MS = 1500
+
+const wait = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms))
+/** How long a pause ends the reply to "How are you doing?". */
+const SMALL_TALK_PAUSE_MS = 1200
 /** Small talk is a sentence or two. */
 const SMALL_TALK_SECONDS: [number, number] = [2, 15]
 
@@ -132,8 +145,6 @@ export function InterviewRoom({
   const displayName = useSettings((s) => s.displayName)
   const signedIn = useSettings((s) => !!s.accountEmail)
   const { say, stop: stopVoice, prefetch } = useSpeaker()
-  // The near-instant voice (Piper), when the server has it.
-  const quickVoice = useVoiceCatalog().data?.voices.find((v) => v.speed === 'instant')?.id
   const voiceActive = useVoiceStore((s) => s.active)
   const voicePreparing = useVoiceStore((s) => s.preparing && s.speakingKey === SPEAK_KEY)
 
@@ -161,12 +172,17 @@ export function InterviewRoom({
   const cutIn = useRef(false)
   // Answers waiting to be scored, sent one after another (the server scores one at a time anyway).
   const queue = useRef<Promise<unknown>>(Promise.resolve())
-  const [pending, setPending] = useState(0)
   // What was said on the current question, and notes of earlier answers: the interviewer's memory.
   const conversation = useRef<Line[]>([])
   const earlier = useRef<{ question: string; answer: string }[]>([])
   // The whole conversation, shown under the call.
   const [log, setLog] = useState<LogEntry[]>([])
+  // Live captions: what the interviewer is saying now, one line at a time, growing sentence by sentence.
+  const [spoken, setSpoken] = useState<{ key: string; text: string } | null>(null)
+  // Whether the candidate's voice was heard in the answer just given (the interviewer only says "Okay." to an answer).
+  const heard = useRef(false)
+  // How many times the interviewer has said "Okay." or the like, so it varies.
+  const backchanneled = useRef(0)
   // Nothing is said until the learner presses Start: sound can only be switched on inside a tap.
   const [begun, setBegun] = useState(false)
   const setMicCheckOpen = useUI((s) => s.setMicCheckOpen)
@@ -189,8 +205,7 @@ export function InterviewRoom({
   const recorder = useRecorder({
     maxSeconds: session.max_seconds,
     minSeconds: 0.5,
-    // Small talk is never sent anywhere: the interview simply begins.
-    onRecorded: (recording) => (smallTalk ? beginAfterSmallTalk() : submit(recording)),
+    onRecorded: (recording) => (smallTalk ? replyToSmallTalk(recording) : submit(recording)),
     onError: (message) => {
       toast.error(message)
       setPhase('ready')
@@ -199,22 +214,54 @@ export function InterviewRoom({
   const recording = recorder.state === 'recording'
   const requesting = recorder.state === 'requesting'
 
-  /** The interviewer says `text`; then it is the learner's turn. */
+  const voiceRate = fastSpeech ? 1.25 : 1
+
+  // Lines any interview says ("Okay.", the goodbye) may be kept by the server for everyone. Every other line is
+  // about this candidate or this job (their name, the role, questions worded for it, live replies), so the
+  // server renders it for this interview and stores it nowhere.
+  const generic = useMemo(
+    () =>
+      new Set([
+        ...backchannels(session.type),
+        ...smallTalkReplies(session.type),
+        ...questions.map((_q, i) => acknowledgement(i, session.type)),
+        cutInLine(session.type),
+        RETRY_LINE,
+        closingLine(session.type),
+      ]),
+    // Fixed for the interview.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  )
+  const once = (line: string) => !generic.has(line)
+
+  /** Start rendering lines in the order they will be said, so each is ready as soon as it can be. */
+  function renderAhead(lines: (string | null | undefined)[]): Promise<void> {
+    return lines.reduce<Promise<void>>(
+      (ready, line) => (line ? ready.then(() => prefetch(line, voiceRate, undefined, once(line))) : ready),
+      Promise.resolve(),
+    )
+  }
+
   /**
-   * The interviewer says `text`. Hands-free never waits on the voice: lines are rendered ahead of time,
-   * and one that still isn't ready after READY_WAIT_MS is said with the quick voice instead.
+   * The interviewer says `lines` in turn, always in the same voice, with live captions of each sentence as
+   * it is said. Resolves false when the interview moved on meanwhile.
    */
-  async function interviewerSays(text: string): Promise<void> {
-    const rate = fastSpeech ? 1.25 : 1
-    let voice: string | undefined
-    if (handsFree && quickVoice) {
-      const ready = await Promise.race([
-        prefetch(text, rate).then(() => true),
-        new Promise<boolean>((resolve) => window.setTimeout(() => resolve(false), READY_WAIT_MS)),
-      ])
-      if (!ready) voice = quickVoice
+  async function speakLines(lines: string[], mine: number): Promise<boolean> {
+    if (!readAloud) {
+      setSpoken({ key: `${mine}`, text: lines.join(' ') })
+      return true
     }
-    await say(text, { key: SPEAK_KEY, rate, voice })
+    void renderAhead(lines)
+    for (const [n, line] of lines.entries()) {
+      const sentences = splitForSpeech(line)
+      for (let i = 0; i < sentences.length; i++) {
+        setSpoken({ key: `${mine}-${n}`, text: sentences.slice(0, i + 1).join(' ') })
+        await say(sentences[i], { key: SPEAK_KEY, rate: voiceRate, once: once(line) })
+        if (step.current !== mine || !alive.current) return false
+      }
+    }
+    return true
   }
 
   /** The interviewer says `text` (one line, or several in turn), then it is the learner's turn. */
@@ -224,15 +271,7 @@ export function InterviewRoom({
     setPhase('speaking')
     setTipsOpen(false)
     if (remember) setLog((l) => [...l, { who: 'interviewer', text: lines.join(' '), followUp: probing }])
-    if (readAloud) {
-      const rate = fastSpeech ? 1.25 : 1
-      // A later line renders while the first one plays.
-      for (const line of lines.slice(1)) void prefetch(line, rate)
-      for (const line of lines) {
-        await interviewerSays(line)
-        if (step.current !== mine || !alive.current) return
-      }
-    }
+    if (!(await speakLines(lines, mine))) return
     if (mode === 'practice' && thinkSeconds > 0) {
       setThinkLeft(thinkSeconds)
       setPhase('thinking')
@@ -251,28 +290,55 @@ export function InterviewRoom({
     void recorder.start()
   }
 
-  function beginAfterSmallTalk() {
+  /** The interviewer answers the candidate's small talk (with a line rendered ahead), then the interview begins. */
+  function beginAfterSmallTalk(mood?: SmallTalkMood | null) {
     setSmallTalk(null)
     conversation.current = [{ speaker: 'interviewer', text: questions[startIndex].text }]
-    void ask(`${afterSmallTalkLine(plan)} ${firstQuestionLine(questions[startIndex].text, session.type)}`)
+    void ask([smallTalkReply(mood, session.type), afterSmallTalkLine(plan), firstQuestionLine(questions[startIndex].text, session.type)])
   }
 
-  /** `lead`: what the interviewer says first (a reply to the candidate's questions, or a cut-in). */
+  /** A real interviewer listens to the reply to "How are you doing?" and answers it. */
+  async function replyToSmallTalk(clip: Recording) {
+    const greeting = smallTalk
+    const mine = ++step.current
+    setPhase('turn')
+    let mood: SmallTalkMood | null = null
+    try {
+      const turn = await api.interviewTurn({
+        audio: clip.blob,
+        filename: clip.filename,
+        questionId: SMALL_TALK_ID,
+        type: session.type,
+        role: session.role,
+        level: session.level,
+        conversation: greeting ? [{ speaker: 'interviewer', text: greeting }] : [],
+        earlier: [],
+        followUpsAsked: 0,
+      })
+      mood = turn.mood ?? null
+      if (turn.transcript) setLog((l) => [...l, { who: 'you', text: turn.transcript }])
+    } catch {
+      // Not heard (offline, busy): the interviewer simply carries on.
+    }
+    if (step.current === mine && alive.current) beginAfterSmallTalk(mood)
+  }
+
+  /** `lead`: what the interviewer says first (a reply to the candidate's questions, or a reaction). */
   async function finish(lead?: string | null) {
     const mine = ++step.current
     setPhase('closing')
-    const goodbye = closingLine(session.type)
-    setLog((l) => [...l, { who: 'interviewer', text: [lead, goodbye].filter(Boolean).join(' ') }])
-    if (readAloud) {
-      if (lead) await interviewerSays(lead)
-      if (step.current === mine && alive.current) await interviewerSays(goodbye)
-    }
+    const lines = [lead, closingLine(session.type)].filter((line): line is string => !!line)
+    setLog((l) => [...l, { who: 'interviewer', text: lines.join(' ') }])
+    await speakLines(lines, mine)
     // The report covers every answer, so it waits for any still being scored.
     await queue.current
     if (step.current === mine && alive.current) onFinish()
   }
 
-  /** `lead`: the interviewer's reaction to the last answer, said before the next question. */
+  /**
+   * `lead`: the interviewer's reaction to the last answer, said before the next question. Left out (undefined),
+   * the interviewer acknowledges the answer plainly; null means it already did ("Okay." as the answer ended).
+   */
   function advance(lead?: string | null) {
     const next = index + 1
     setFollowUp(null)
@@ -286,7 +352,7 @@ export function InterviewRoom({
     setIndex(next)
     conversation.current = [{ speaker: 'interviewer', text: questions[next].text }]
     // The question was rendered while the learner answered; the reaction plays first.
-    void ask([lead ?? acknowledgement(next, session.type), nextQuestionLine(next, total, questions[next].text)])
+    void ask([lead === undefined ? acknowledgement(next, session.type) : lead, nextQuestionLine(next, total, questions[next].text)])
   }
 
   /** Keep a note of an answer, so a later follow-up can pick up on it (or on a clash with it). */
@@ -317,7 +383,7 @@ export function InterviewRoom({
     setResults((r) => ({ ...r, [index]: { main: result } }))
     setAnswered((a) => new Set(a).add(index))
     setPhase('feedback')
-    if (result.reply && readAloud) void say(result.reply, { key: SPEAK_KEY, rate: fastSpeech ? 1.25 : 1 })
+    if (result.reply && readAloud) void say(result.reply, { key: SPEAK_KEY, rate: voiceRate, once: true })
   }
 
   /**
@@ -334,6 +400,15 @@ export function InterviewRoom({
     setPhase('turn')
     setFailed(null)
     const q = questions[at]
+    // The moment the answer ends the interviewer responds, as people do ("Okay.", or cutting in politely),
+    // while deciding what to say next. Both lines were rendered before the interview began.
+    const firstWords = wasCut
+      ? cutInLine(session.type)
+      : heard.current && readAloud
+        ? backchannel(backchanneled.current++, session.type)
+        : null
+    if (wasCut) setLog((l) => [...l, { who: 'interviewer', text: cutInLine(session.type) }])
+    const said = firstWords ? speakLines([firstWords], mine) : Promise.resolve(true)
     api
       .interviewTurn({
         audio: clip.blob,
@@ -349,7 +424,16 @@ export function InterviewRoom({
         earlier: earlier.current.filter((note) => note.question !== q.text),
         followUpsAsked: asked,
       })
-      .then((turn) => {
+      .then(async (turn) => {
+        if (step.current !== mine || !alive.current) return
+        // What comes next starts rendering now, while "Okay." is still being said.
+        const upcoming = turn.no_speech || wasCut ? [] : turn.question ? [turn.reaction, turn.question] : [turn.reply ?? turn.reaction]
+        const rendered = readAloud ? renderAhead(upcoming) : Promise.resolve()
+        const reactionReady =
+          turn.reaction && readAloud && !turn.question && !turn.reply && !wasCut
+            ? Promise.race([rendered.then(() => true), wait(REACTION_WAIT_MS).then(() => false)])
+            : Promise.resolve(true)
+        await said
         if (step.current !== mine || !alive.current) return
         if (turn.no_speech) {
           setNoSpeech(true)
@@ -358,7 +442,8 @@ export function InterviewRoom({
           return
         }
         setNoSpeech(false)
-        void scoreInBackground(clip, at, probe)
+        // Scoring waits until the interviewer's reply is rendered: sharing the CPU would make the reply slower.
+        void scoreInBackground(clip, at, probe, rendered)
         setAnswered((a) => new Set(a).add(at))
         conversation.current = [...conversation.current, { speaker: 'candidate', text: turn.transcript }]
         setLog((l) => [...l, { who: 'you', text: turn.transcript }])
@@ -372,7 +457,14 @@ export function InterviewRoom({
           void ask([turn.reaction, next.text], { followUp: true })
           return
         }
-        advance(wasCut ? cutInLine(session.type) : (turn.reply ?? turn.reaction))
+        // Their own questions at the end always get an answer; a reaction only when it is ready in time.
+        if (wasCut) advance(null)
+        else if (turn.reply) advance(turn.reply)
+        else {
+          const ready = await reactionReady
+          if (step.current !== mine || !alive.current) return
+          advance(turn.reaction && ready ? turn.reaction : firstWords ? null : undefined)
+        }
       })
       .catch((error) => {
         if (step.current !== mine || !alive.current) return
@@ -398,10 +490,17 @@ export function InterviewRoom({
     }
   }
 
-  /** Score an answer in the background, after any still waiting; a failed send is retried twice. */
-  function scoreInBackground(clip: Recording, at: number, follow: FollowUp | null): Promise<InterviewAnswerResult | null> {
+  /**
+   * Score an answer in the background, after any still waiting and once `after` settles; a failed send is
+   * retried twice. It is queued at once, so the report never misses it.
+   */
+  function scoreInBackground(
+    clip: Recording,
+    at: number,
+    follow: FollowUp | null,
+    after: Promise<unknown> = Promise.resolve(),
+  ): Promise<InterviewAnswerResult | null> {
     const q = questions[at]
-    setPending((n) => n + 1)
     const run = async (): Promise<InterviewAnswerResult | null> => {
       for (let attempt = 0; ; attempt++) {
         try {
@@ -423,7 +522,7 @@ export function InterviewRoom({
         }
       }
     }
-    const done = queue.current.then(run).finally(() => setPending((n) => n - 1))
+    const done = queue.current.then(() => after).then(run)
     queue.current = done.catch(() => null)
     return done
   }
@@ -459,11 +558,13 @@ export function InterviewRoom({
     const name = (displayName || username).trim().split(/\s+/)[0] ?? ''
     const greeting =
       startIndex === 0 && mode === 'interview' && readAloud ? smallTalkLine({ name, type: session.type, company: plan.company }) : null
-    const line =
-      greeting ??
-      (startIndex === 0 ? `${openingLine({ name, ...plan })} ${firstQuestionLine(first.text, session.type)}` : resumeLine(first.text))
+    const lines = greeting
+      ? [greeting]
+      : startIndex === 0
+        ? [openingLine({ name, ...plan }), firstQuestionLine(first.text, session.type)]
+        : [resumeLine(first.text)]
     const soundCheck = `Hi${name ? ` ${name}` : ''}, I'm ${INTERVIEWER.name}. If you can hear me clearly, you're all set.`
-    return { first, greeting, line, soundCheck }
+    return { first, greeting, lines, soundCheck }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -476,12 +577,12 @@ export function InterviewRoom({
       void ask(opening.greeting)
     } else {
       conversation.current = [{ speaker: 'interviewer', text: opening.first.text }]
-      void ask(opening.line)
+      void ask(opening.lines)
     }
   }
 
   function testSound() {
-    void say(opening.soundCheck, { key: SPEAK_KEY, rate: fastSpeech ? 1.25 : 1 })
+    void say(opening.soundCheck, { key: SPEAK_KEY, rate: voiceRate, once: true })
   }
 
   // While the learner reads the start screen, render what the interviewer says first and then everything
@@ -491,21 +592,25 @@ export function InterviewRoom({
     const { first, greeting } = opening
     let cancelled = false
     if (readAloud) {
-      const rate = fastSpeech ? 1.25 : 1
+      const real = mode === 'interview'
+      // In the order they are needed. Everything the interviewer might say at once is here: the replies to small
+      // talk, "Okay." and the like, cutting in, and asking again. Only reactions and follow-ups are rendered live.
       const lines = [
-        opening.line,
+        ...opening.lines,
         opening.soundCheck,
-        ...(greeting ? [`${afterSmallTalkLine(plan)} ${firstQuestionLine(first.text, session.type)}`] : []),
+        ...(greeting ? [...smallTalkReplies(session.type), afterSmallTalkLine(plan), firstQuestionLine(first.text, session.type)] : []),
+        ...(real ? backchannels(session.type) : []),
         ...questions.slice(startIndex + 1).flatMap((q, k) => [
-          acknowledgement(startIndex + 1 + k, session.type),
+          ...(real ? [] : [acknowledgement(startIndex + 1 + k, session.type)]),
           nextQuestionLine(startIndex + 1 + k, total, q.text),
         ]),
+        ...(real ? [cutInLine(session.type), RETRY_LINE] : []),
         closingLine(session.type),
       ]
       void (async () => {
         for (const line of lines) {
           if (cancelled) return
-          await prefetch(line, rate)
+          await prefetch(line, voiceRate, undefined, once(line))
         }
       })()
     }
@@ -601,10 +706,12 @@ export function InterviewRoom({
   const readLevel = useMemo(() => createAnalyserReader(recorder.analyserRef, MIC_GAIN), [recorder.analyserRef])
 
   // Hands-free: a pause after speaking ends the answer (small talk is a sentence, so it ends sooner).
+  // Small talk ("Good, thanks!") is shorter than a second, so it ends on less speech and a shorter pause.
   const { finishing } = useEndOfTurn({
     active: recording && handsFree,
     readLevel,
-    patienceMs: smallTalk ? PATIENCE_MS.short : PATIENCE_MS[patience],
+    patienceMs: smallTalk ? SMALL_TALK_PAUSE_MS : PATIENCE_MS[patience],
+    minSpeechMs: smallTalk ? 300 : undefined,
     onEnd: () => recorder.stop(),
   })
 
@@ -612,7 +719,8 @@ export function InterviewRoom({
   useEffect(() => {
     if (!recording || !readAloud || smallTalk || followUp) return
     const next = index + 1
-    void prefetch(next < total ? nextQuestionLine(next, total, questions[next].text) : closingLine(session.type), fastSpeech ? 1.25 : 1)
+    const line = next < total ? nextQuestionLine(next, total, questions[next].text) : closingLine(session.type)
+    void prefetch(line, voiceRate, undefined, once(line))
     // Only when an answer starts; the lines depend on nothing else that changes meanwhile.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recording, index])
@@ -624,16 +732,26 @@ export function InterviewRoom({
       setStuck(false)
       return
     }
+    heard.current = false
     let lastVoice = performance.now()
     const timer = window.setInterval(() => {
-      if ((readLevel()?.level ?? 0) > 0.1) lastVoice = performance.now()
+      if ((readLevel()?.level ?? 0) > 0.1) {
+        lastVoice = performance.now()
+        heard.current = true
+      }
       setStuck(performance.now() - lastVoice > SILENCE_HINT_MS)
     }, 250)
     return () => window.clearInterval(timer)
   }, [recording, readLevel])
   const readOutput = useMemo(() => createAnalyserReader(outputAnalyserRef, OUTPUT_GAIN), [])
-  const orbState: OrbState =
-    phase === 'scoring' || phase === 'turn' || voicePreparing ? 'thinking' : recording ? 'listening' : voiceActive ? 'speaking' : 'idle'
+  // While the interviewer speaks (even "Okay." as it decides what to say next), the orb follows its voice.
+  const orbState: OrbState = recording
+    ? 'listening'
+    : voiceActive
+      ? 'speaking'
+      : phase === 'scoring' || phase === 'turn' || voicePreparing
+        ? 'thinking'
+        : 'idle'
 
   const status = !begun
     ? 'Waiting to start'
@@ -669,6 +787,11 @@ export function InterviewRoom({
       : `Question ${index + 1} · ${KIND_LABEL[question.kind] ?? 'Question'}${question.about ? ` · ${question.about}` : ''}`
   const busy = phase === 'turn' || phase === 'scoring' || phase === 'closing'
   const canAct = !(recording || requesting || busy)
+  // A real interview looks like a call: captions of what the interviewer says, and nothing that counts or times you.
+  const realCall = mode === 'interview'
+  const caption = realCall
+    ? { key: spoken?.key ?? 'none', label: INTERVIEWER.name, text: spoken?.text ?? '' }
+    : { key: `${index}-${followUp?.id ?? 'main'}-${smallTalk ? 'hello' : 'q'}`, label, text: askedText }
 
   return (
     <div className="space-y-5">
@@ -687,27 +810,25 @@ export function InterviewRoom({
             {/* Counts from the moment the interview starts. */}
             {begun && <CallTimer />}
           </div>
-          <div className="flex items-center gap-3">
-            {pending > 0 && phase !== 'scoring' && (
-              <span className="flex items-center gap-1.5 text-[12px] text-white/55" title="Your answers are scored while the interview goes on">
-                <SpinnerGapIcon className="motion-safe:animate-spin" /> Noting {pending} answer{pending === 1 ? '' : 's'}
+          {/* A real interview gives no count of the questions; practice shows where you are. */}
+          {!realCall && (
+            <div className="flex items-center gap-3">
+              <span className="text-[13px] font-medium text-white/70 tabular-nums">
+                {index + 1} of {total}
               </span>
-            )}
-            <span className="text-[13px] font-medium text-white/70 tabular-nums">
-              {index + 1} of {total}
-            </span>
-            <span className="hidden gap-1 sm:flex" aria-hidden>
-              {questions.map((q, i) => (
-                <span
-                  key={q.index ?? i}
-                  className={cn(
-                    'h-1 w-5 rounded-full transition-colors duration-300',
-                    answered.has(i) ? 'bg-primary' : i === index ? 'bg-white/45' : 'bg-white/15',
-                  )}
-                />
-              ))}
-            </span>
-          </div>
+              <span className="hidden gap-1 sm:flex" aria-hidden>
+                {questions.map((q, i) => (
+                  <span
+                    key={q.index ?? i}
+                    className={cn(
+                      'h-1 w-5 rounded-full transition-colors duration-300',
+                      answered.has(i) ? 'bg-primary' : i === index ? 'bg-white/45' : 'bg-white/15',
+                    )}
+                  />
+                ))}
+              </span>
+            </div>
+          )}
         </div>
 
         <div className="relative mx-2 overflow-hidden rounded-[22px] bg-[radial-gradient(120%_90%_at_50%_0%,#202026_0%,#0e0e11_70%)] sm:mx-3">
@@ -770,33 +891,42 @@ export function InterviewRoom({
             <span className="text-white/55">Interviewer</span>
           </div>
 
-          {/* Captions: what the interviewer is asking. */}
+          {/* Captions. A real interview: what the interviewer is saying, as it is said. Practice: the question. */}
           <div className="absolute inset-x-3 bottom-14 flex justify-center sm:inset-x-8 sm:bottom-16">
             <AnimatePresence mode="wait" initial={false}>
-              <motion.div
-                key={`${index}-${followUp?.id ?? 'main'}-${smallTalk ? 'hello' : 'q'}`}
-                initial={{ opacity: 0, transform: 'translateY(8px)' }}
-                animate={{ opacity: 1, transform: 'translateY(0px)' }}
-                exit={{ opacity: 0, transform: 'translateY(-4px)' }}
-                transition={{ duration: 0.25, ease: [0.23, 1, 0.32, 1] }}
-                className="max-w-3xl rounded-2xl bg-black/65 px-4 py-3 text-center backdrop-blur-md sm:px-6"
-              >
-                <div className="flex items-center justify-center gap-1.5 text-[12px] font-medium text-white/60">
-                  {followUp && <ArrowBendDownRightIcon weight="bold" />}
-                  {label}
-                </div>
-                {showQuestion ? (
-                  <p className="mt-1 text-[17px] leading-snug font-semibold text-balance text-white sm:text-[22px]">{askedText}</p>
-                ) : (
-                  <p className="mt-1 text-[15px] text-white/75">Captions are off. Listen to {INTERVIEWER.name}.</p>
-                )}
-              </motion.div>
+              {(caption.text || !showQuestion) && (
+                <motion.div
+                  key={showQuestion ? caption.key : 'off'}
+                  initial={{ opacity: 0, transform: 'translateY(8px)' }}
+                  animate={{ opacity: 1, transform: 'translateY(0px)' }}
+                  exit={{ opacity: 0, transform: 'translateY(-4px)' }}
+                  transition={{ duration: 0.25, ease: [0.23, 1, 0.32, 1] }}
+                  className="max-w-3xl rounded-2xl bg-black/65 px-4 py-3 text-center backdrop-blur-md sm:px-6"
+                >
+                  <div className="flex items-center justify-center gap-1.5 text-[12px] font-medium text-white/60">
+                    {!realCall && followUp && <ArrowBendDownRightIcon weight="bold" />}
+                    {caption.label}
+                  </div>
+                  {showQuestion ? (
+                    <p
+                      className={cn(
+                        'mt-1 leading-snug font-semibold text-balance text-white',
+                        caption.text.length > 140 ? 'text-[15px] sm:text-[18px]' : 'text-[17px] sm:text-[22px]',
+                      )}
+                    >
+                      {caption.text}
+                    </p>
+                  ) : (
+                    <p className="mt-1 text-[15px] text-white/75">Captions are off. Listen to {INTERVIEWER.name}.</p>
+                  )}
+                </motion.div>
+              )}
             </AnimatePresence>
           </div>
         </div>
 
         <div className={cn('px-4 pt-5 pb-5 sm:px-8 sm:pb-6', !begun && 'hidden')}>
-          {phase !== 'feedback' && phase !== 'closing' && !smallTalk && (
+          {!realCall && phase !== 'feedback' && phase !== 'closing' && !smallTalk && (
             <AnswerTimer elapsed={recording ? recorder.elapsed : 0} target={target} max={session.max_seconds} active={recording} />
           )}
 
@@ -874,7 +1004,7 @@ export function InterviewRoom({
 
           <div className="mx-auto mt-4 max-w-2xl space-y-3 text-center">
             <AnimatePresence>
-              {recording && stuck && (
+              {recording && stuck && !smallTalk && (
                 <motion.p
                   initial={{ opacity: 0, transform: 'translateY(4px)' }}
                   animate={{ opacity: 1, transform: 'translateY(0px)' }}
