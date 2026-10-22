@@ -130,6 +130,8 @@ class VoiceFirst:
 @dataclass
 class Runtime:
     asr: WhisperASR | None = None
+    # The local faster-whisper model: the recogniser without a Groq key, and Groq's fallback (get_local_asr).
+    local_asr: WhisperASR | None = None
     scorer: PronunciationScorer | None = None
     voice: CoachVoice | None = None
     voice_engine: str | None = None
@@ -173,22 +175,13 @@ def asr_engine() -> str:
     return "groq"
 
 
-def load_asr() -> None:
-    if runtime.asr is not None:
-        return
-    started = time.perf_counter()
-    if asr_engine() == "groq":
-        from backend.groq_asr import GroqWhisper
-
-        hosted = GroqWhisper(settings.groq_asr_model, settings.groq_api_key)
-        hosted.warm_up()
-        runtime.asr = hosted
-        logger.info("Speech recognition: Groq %s (no local Whisper loaded), ready in %.1fs.", settings.groq_asr_model, time.perf_counter() - started)
-        return
+def _build_local_asr() -> WhisperASR:
     from backend.asr import WhisperASR
 
+    started = time.perf_counter()
+    size = settings.asr_fallback_model if asr_engine() == "groq" else settings.whisper_model_size
     asr = WhisperASR(
-        model_size=settings.whisper_model_size,
+        model_size=size,
         device=settings.asr_device,
         compute_type=settings.asr_compute_type,
         cpu_threads=settings.asr_threads,
@@ -197,8 +190,48 @@ def load_asr() -> None:
         beam_size=settings.asr_beam_size,
     )
     asr.warm_up()
-    runtime.asr = asr
-    logger.info("Speech recognition ready in %.1fs.", time.perf_counter() - started)
+    logger.info("Local Whisper %s ready in %.1fs.", size, time.perf_counter() - started)
+    return asr
+
+
+_local_asr_lock = threading.Lock()
+_local_asr_missing = False
+
+
+def get_local_asr() -> WhisperASR | None:
+    """The local faster-whisper model, loaded on first use: the recogniser without a Groq key, and the fallback
+    when Groq fails or its limit is reached. It takes no memory while Groq works. None when it can't load."""
+    global _local_asr_missing
+    if runtime.local_asr is not None or _local_asr_missing:
+        return runtime.local_asr
+    with _local_asr_lock:
+        if runtime.local_asr is None and not _local_asr_missing:
+            try:
+                runtime.local_asr = _build_local_asr()
+            except Exception:
+                _local_asr_missing = True
+                logger.exception("The local Whisper can't load, so nothing can stand in for Groq.")
+        return runtime.local_asr
+
+
+def load_asr() -> None:
+    if runtime.asr is not None:
+        return
+    if asr_engine() == "groq":
+        from backend.groq_asr import GroqWhisper
+
+        started = time.perf_counter()
+        hosted = GroqWhisper(settings.groq_asr_model, settings.groq_api_key, fallback=get_local_asr)
+        hosted.warm_up()
+        runtime.asr = hosted
+        logger.info(
+            "Speech recognition: Groq %s, ready in %.1fs; the local Whisper loads only if Groq fails.",
+            settings.groq_asr_model, time.perf_counter() - started,
+        )
+        return
+    runtime.asr = get_local_asr()
+    if runtime.asr is None:
+        raise RuntimeError("No speech recognition: set GROQ_API_KEY, or install faster-whisper and its model.")
 
 
 def load_phonemes() -> None:
