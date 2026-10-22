@@ -132,10 +132,10 @@ export const api = {
     })
   },
 
-  /** Levels the clip (16 kHz WAV), then scores it; returns the audio that was scored. */
+  /** Levels the clip (16 kHz WAV), then scores it; returns the levelled audio, for playback. */
   evaluateRecording: async (input: EvaluateInput) => {
     const prepared = await prepareRecording(input.audio, input.filename)
-    const result = await api.evaluate({ ...input, audio: prepared.blob, filename: prepared.filename })
+    const result = await api.evaluate({ ...input, audio: prepared.upload, filename: prepared.uploadName })
     return { result, audio: prepared.blob }
   },
 
@@ -150,7 +150,7 @@ export const api = {
   }) => {
     const prepared = await prepareRecording(input.audio, input.filename)
     const form = new FormData()
-    form.append('audio', prepared.blob, prepared.filename)
+    form.append('audio', prepared.upload, prepared.uploadName)
     form.append('word', input.word)
     form.append('phonemes', input.phonemes.join(','))
     if (input.recordId != null) form.append('record_id', String(input.recordId))
@@ -168,7 +168,7 @@ export const api = {
   baselineRecord: async (username: string, input: { audio: Blob; filename: string; sentenceIndex: number; consent: boolean }) => {
     const prepared = await prepareRecording(input.audio, input.filename)
     const form = new FormData()
-    form.append('audio', prepared.blob, prepared.filename)
+    form.append('audio', prepared.upload, prepared.uploadName)
     form.append('sentence_index', String(input.sentenceIndex))
     form.append('consent', input.consent ? 'true' : 'false')
     return request<{ id: number; round: number; score: number | null; transcription: string; status: BaselineStatus }>(
@@ -227,7 +227,7 @@ export const api = {
   speakEvaluate: async (input: { audio: Blob; filename: string; promptId: string | null }) => {
     const prepared = await prepareRecording(input.audio, input.filename)
     const form = new FormData()
-    form.append('audio', prepared.blob, prepared.filename)
+    form.append('audio', prepared.upload, prepared.uploadName)
     if (input.promptId) form.append('prompt_id', input.promptId)
     return request<SpeakResult>('/api/speak/evaluate', { method: 'POST', body: form })
   },
@@ -284,7 +284,7 @@ export const api = {
   }) => {
     const prepared = await prepareRecording(input.audio, input.filename)
     const form = new FormData()
-    form.append('audio', prepared.blob, prepared.filename)
+    form.append('audio', prepared.upload, prepared.uploadName)
     form.append('question_id', input.questionId)
     form.append('interview_type', input.type)
     form.append('role', input.role)
@@ -316,7 +316,7 @@ export const api = {
   }) => {
     const prepared = await prepareRecording(input.audio, input.filename)
     const form = new FormData()
-    form.append('audio', prepared.blob, prepared.filename)
+    form.append('audio', prepared.upload, prepared.uploadName)
     form.append('question_id', input.questionId)
     form.append('interview_type', input.type)
     form.append('role', input.role)
@@ -371,7 +371,7 @@ export const api = {
   gdContribution: async (input: { audio: Blob; filename: string }) => {
     const prepared = await prepareRecording(input.audio, input.filename)
     const form = new FormData()
-    form.append('audio', prepared.blob, prepared.filename)
+    form.append('audio', prepared.upload, prepared.uploadName)
     return request<GdContribution>('/api/gd/contribution', { method: 'POST', body: form })
   },
 
@@ -425,7 +425,7 @@ export const api = {
   day30Record: async (username: string, input: { audio: Blob; filename: string; promptId: string; consent: boolean }) => {
     const prepared = await prepareRecording(input.audio, input.filename)
     const form = new FormData()
-    form.append('audio', prepared.blob, prepared.filename)
+    form.append('audio', prepared.upload, prepared.uploadName)
     form.append('prompt_id', input.promptId)
     form.append('consent', input.consent ? 'true' : 'false')
     return request<Day30Status>(`/api/day30/${enc(username)}/record`, { method: 'POST', body: form, headers: profileHeaders() })
