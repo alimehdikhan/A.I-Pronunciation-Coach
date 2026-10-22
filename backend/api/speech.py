@@ -35,8 +35,11 @@ class _VoiceChoice:
     def __init__(self, engine: Any, voice: str):
         self.engine, self.voice = engine, voice
 
-    def synthesize(self, text: str, rate: float) -> bytes:
-        return self.engine.synthesize(text, rate, self.voice)
+    def cached(self, text: str, rate: float) -> bytes | None:
+        return self.engine.cached(text, rate, self.voice)
+
+    def synthesize(self, text: str, rate: float, keep: bool = True) -> bytes:
+        return self.engine.synthesize(text, rate, self.voice, keep=keep)
 
 audio_rate_limiter = RateLimiter(settings.rate_limit_per_minute, name="audio")
 # Speech is cheap to serve (cached) and requested often by listen buttons.
@@ -79,15 +82,19 @@ async def transcribe_upload(
     phonemes: bool = False,
     max_seconds: float | None = None,
     prompt: str | None = None,
+    background: bool = False,
 ) -> dict[str, Any]:
     """Read, decode, level and transcribe an upload inside the ASR work gate.
 
     With ``phonemes=True`` the acoustic phoneme posteriors are added to the
     result as ``phoneme_log_probs`` (when the recogniser is loaded and speech
     was heard). ``max_seconds`` overrides the recording limit (free speaking only);
-    ``prompt`` is passed to Whisper (never the target sentence).
+    ``prompt`` is passed to Whisper (never the target sentence). ``background`` work (a mock interview's
+    answers, scored while the interview goes on) lets the interviewer's voice render first.
     """
     suffix = validate_upload(audio)
+    if background:
+        await runtime.voice_first.wait()  # before taking the ASR slot, so nobody else waits on the voice
     async with runtime.asr_gate.slot():
         with timer.stage("upload"):
             data = await read_upload(audio, settings.max_upload_bytes)
@@ -96,6 +103,8 @@ async def transcribe_upload(
         with timer.stage("asr"):
             result = await (run_in_threadpool(asr.transcribe, samples, prompt=prompt) if prompt else run_in_threadpool(asr.transcribe, samples))
         if phonemes and runtime.phonemes is not None and str(result.get("text", "")).strip():
+            if background:
+                await runtime.voice_first.wait()
             with timer.stage("phonemes"):
                 result["phoneme_log_probs"] = await run_in_threadpool(_phoneme_posteriors, samples)
     result["input_gain_db"] = gain_db
@@ -355,8 +364,15 @@ async def text_to_speech(
     text: str = Query(..., min_length=1, max_length=settings.max_tts_chars),
     rate: float = Query(1.0, ge=MIN_RATE, le=MAX_RATE),
     voice_id: str | None = Query(None, alias="voice", pattern=r"^[a-z0-9_]{2,24}$"),
+    once: bool = Query(False, description="One-off text (a live reply): rendered, never cached"),
 ) -> Response:
-    """The coach's voice as real audio (WAV), so the UI can analyse what it plays."""
+    """The coach's voice as real audio (WAV), so the UI can analyse what it plays.
+
+    Clips already rendered come straight back. A new one waits its turn to render (runtime.tts_gate,
+    503 when the queue is full) and goes before background scoring (runtime.VoiceFirst). Only reusable
+    text is kept: `once` text is rendered for that moment and stored nowhere, and no clip may be kept
+    by a shared cache, since the text can be the learner's own.
+    """
     voice = runtime.voice
     if voice is None:
         raise HTTPException(status_code=503, detail="The neural voice is not available.")
@@ -369,16 +385,22 @@ async def text_to_speech(
     if not phonetics.tokenize(clean):
         raise HTTPException(status_code=400, detail="text must contain at least one word.")
     tts_rate_limiter.check(client_key(request))
-    headers = {"Cache-Control": "public, max-age=604800, immutable"}
+    headers = {"Cache-Control": "private, no-store" if once else "private, max-age=604800"}
+    audio = voice.cached(clean, rate)
+    if audio is not None:
+        return Response(content=audio, media_type="audio/wav", headers=headers)
     try:
-        audio = await run_in_threadpool(voice.synthesize, clean, rate)
+        async with runtime.tts_gate.slot(), runtime.voice_first.speaking():
+            audio = await run_in_threadpool(voice.synthesize, clean, rate, keep=not once)
+    except HTTPException:
+        raise  # busy: the browser tries again shortly
     except Exception as exc:
         logger.exception("Speech synthesis failed with the %s voice", runtime.voice_engine)
         fallback = await run_in_threadpool(get_fallback_voice)
         if fallback is None:
             raise HTTPException(status_code=500, detail="Speech synthesis failed.") from exc
         try:
-            audio = await run_in_threadpool(fallback.synthesize, clean, rate)
+            audio = await run_in_threadpool(fallback.synthesize, clean, rate, keep=not once)
         except Exception as fallback_exc:
             logger.exception("Fallback voice failed too")
             raise HTTPException(status_code=500, detail="Speech synthesis failed.") from fallback_exc
