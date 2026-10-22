@@ -235,7 +235,7 @@ async def interview_from_cv(
     if cv_file is not None and cv_file.filename:
         data = await cv_file.read(cv.MAX_FILE_BYTES + 1)
         try:
-            text = cv.extract_text(data, cv_file.filename)
+            text = await run_in_threadpool(cv.extract_text, data, cv_file.filename)
         except cv.CVError as exc:
             raise CodedHTTPException(400, str(exc), exc.code) from exc
     if len(text) < cv.MIN_CV_CHARS and cv_text:
@@ -245,7 +245,7 @@ async def interview_from_cv(
     job = cv.clean(job_ad or "")[: cv.MAX_JOB_CHARS]
     level = interview.clean_level(level)
     count = count if count in cv.COUNTS else 5
-    found = cv.read_profile(text, job)
+    found = await run_in_threadpool(cv.read_profile, text, job)
 
     coach = get_coach()
     if coach.enabled:
@@ -382,7 +382,8 @@ async def answer_question(
     audio_rate_limiter.check(client_key(request))
     timer = StageTimer()
     analysed = await analyse_free_answer(
-        audio, timer, max_seconds=settings.interview_seconds, endpoint="/api/interview/answer", sound_model=model
+        audio, timer, max_seconds=settings.interview_seconds, endpoint="/api/interview/answer", sound_model=model,
+        background=True,
     )
     body: dict[str, Any] = {
         "question": {**question, "index": question_index},
@@ -499,7 +500,12 @@ async def interviewer_turn(
     Scoring the same answer is separate (`/api/interview/answer`) and runs while the interview goes on.
     """
     turn_rate_limiter.check(client_key(request))
-    if question_id in interview.BY_ID:
+    # The candidate's reply to the greeting: the interviewer answers it, and the interview begins.
+    small_talk = question_id == interview.SMALL_TALK_ID
+    question: dict[str, Any] = {"kind": "small_talk"}
+    if small_talk:
+        pass  # no question to look up
+    elif question_id in interview.BY_ID:
         question = interview.question_view(interview.BY_ID[question_id])
         asked = " ".join((question_text or "").split())
         if 12 <= len(asked) <= cv.MAX_QUESTION_CHARS:
@@ -539,6 +545,16 @@ async def interviewer_turn(
 
     coach = get_coach()
     spec = interview.TYPES[kind]
+    if small_talk:
+        greeting = next((line["text"] for line in interview.clean_conversation(_json_list(conversation)) if line["speaker"] == "interviewer"), "")
+        with timer.stage("reply"):
+            mood, source = await coach.generate(
+                "interview_small_talk", interview.SMALL_TALK_PROMPT,
+                {"interview": spec["label"], "you_said": greeting, "candidate_said": text[:600]},
+                interview.parse_mood, lambda: interview.small_talk_mood(text), cache=False, effort="low",
+            )
+        response.headers["Server-Timing"] = timer.header()
+        return {**body, **move_on, "mood": mood, "source": source}
     about = {
         "interview": spec["label"],
         **({"role": interview.ROLES[role]} if spec["role"] else {}),
