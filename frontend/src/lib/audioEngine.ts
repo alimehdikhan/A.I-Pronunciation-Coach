@@ -11,7 +11,8 @@ import { create } from 'zustand'
 import { useSettings } from '@/store/settings'
 
 const BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? ''
-const MAX_CACHED = 48
+// Enough for every clip of a long mock interview (its lines are rendered before they are needed).
+const MAX_CACHED = 96
 /** How long to wait before asking again when the server is busy rendering other clips. */
 const BUSY_RETRY_MS = 1500
 
@@ -25,6 +26,13 @@ interface VoiceState {
   /** True while speech is being fetched/decoded before it starts. */
   preparing: boolean
 }
+
+/**
+ * Where the server may keep a rendered clip: `disk` for text any learner may hear again, `memory` for text
+ * reused within one session (an interview's questions), `none` for one-off text (a live reply that quotes
+ * the learner, the learner's own sentence).
+ */
+export type SpeechStore = 'disk' | 'memory' | 'none'
 
 export const useVoiceStore = create<VoiceState>()(() => ({ speakingKey: null, active: false, preparing: false }))
 
@@ -74,16 +82,13 @@ class AudioEngine {
     return `${voice}|${rate.toFixed(2)}|${text}`
   }
 
-  /**
-   * Fetch (and cache for this page) neural speech audio for `text`. `once`: one-off text, such as a live
-   * reply that quotes the learner; the server renders it for this moment and stores it nowhere.
-   */
-  fetchSpeech(text: string, rate = 1, voice = '', once = false): Promise<ArrayBuffer> {
+  /** Fetch (and cache for this page) neural speech audio for `text`; `store` says where the server may keep it. */
+  fetchSpeech(text: string, rate = 1, voice = '', store: SpeechStore = 'disk'): Promise<ArrayBuffer> {
     const key = this.cacheKey(text, rate, voice)
     let pending = this.raw.get(key)
     if (pending) remember(this.raw, key, pending) // in use: kept longest
     else {
-      const url = `${BASE}/api/tts?text=${encodeURIComponent(text)}&rate=${rate.toFixed(2)}${voice ? `&voice=${encodeURIComponent(voice)}` : ''}${once ? '&once=true' : ''}`
+      const url = `${BASE}/api/tts?text=${encodeURIComponent(text)}&rate=${rate.toFixed(2)}${voice ? `&voice=${encodeURIComponent(voice)}` : ''}${store === 'disk' ? '' : `&store=${store}`}`
       const profileKey = useSettings.getState().profileKey
       const request = () => fetch(url, { headers: profileKey ? { 'X-Profile-Key': profileKey } : {} })
       pending = request()
@@ -100,12 +105,12 @@ class AudioEngine {
   }
 
   /** Fetch and decode speech once; every later play of the same phrase reuses the buffer. */
-  private loadSpeech(context: AudioContext, text: string, rate: number, voice: string, once = false): Promise<AudioBuffer> {
+  private loadSpeech(context: AudioContext, text: string, rate: number, voice: string, store: SpeechStore = 'disk'): Promise<AudioBuffer> {
     const key = this.cacheKey(text, rate, voice)
     let pending = this.decoded.get(key)
     if (pending) remember(this.decoded, key, pending) // in use: kept longest
     else {
-      pending = this.fetchSpeech(text, rate, voice, once).then((bytes) => context.decodeAudioData(bytes.slice(0)))
+      pending = this.fetchSpeech(text, rate, voice, store).then((bytes) => context.decodeAudioData(bytes.slice(0)))
       pending.catch(() => this.decoded.delete(key))
       remember(this.decoded, key, pending)
     }
@@ -117,8 +122,8 @@ class AudioEngine {
    * unlocked the clip is decoded too, so playback needs no work at all.
    * Resolves when the clip is ready (or could not be loaded); never rejects.
    */
-  prefetch(text: string, rate = 1, voice = '', once = false): Promise<void> {
-    const ready = this.context ? this.loadSpeech(this.context, text, rate, voice, once) : this.fetchSpeech(text, rate, voice, once)
+  prefetch(text: string, rate = 1, voice = '', store: SpeechStore = 'disk'): Promise<void> {
+    const ready = this.context ? this.loadSpeech(this.context, text, rate, voice, store) : this.fetchSpeech(text, rate, voice, store)
     return ready.then(
       () => undefined,
       () => undefined,
@@ -132,7 +137,7 @@ class AudioEngine {
    */
   async speak(
     text: string,
-    { key, rate = 1, voice = '', once = false }: { key: string; rate?: number; voice?: string; once?: boolean },
+    { key, rate = 1, voice = '', store = 'disk' }: { key: string; rate?: number; voice?: string; store?: SpeechStore },
   ): Promise<boolean> {
     const context = this.ensure()
     this.stop()
@@ -140,7 +145,7 @@ class AudioEngine {
     useVoiceStore.setState({ speakingKey: key, active: false, preparing: true })
 
     try {
-      const buffer = await this.loadSpeech(context, text, rate, voice, once)
+      const buffer = await this.loadSpeech(context, text, rate, voice, store)
       if (token !== this.token) return false
 
       const source = context.createBufferSource()
