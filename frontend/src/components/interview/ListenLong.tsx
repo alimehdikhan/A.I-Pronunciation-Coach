@@ -10,7 +10,7 @@ export function ListenLong({ text, speakKey, label = 'Listen', className }: { te
     <button
       type="button"
       disabled={!text}
-      onClick={() => (active ? stop() : void say(text, { key: speakKey, once: true }))}
+      onClick={() => (active ? stop() : void say(text, { key: speakKey, store: 'none' }))}
       aria-pressed={active}
       className={cn(
         'inline-flex h-8 items-center gap-1.5 rounded-full bg-card px-3 text-[13px] font-medium text-foreground shadow-[0_1px_2px_rgb(0_0_0/0.08)] transition-[background-color,color,transform] duration-150 ease-out hover:bg-fill active:scale-[0.97] disabled:opacity-40',
