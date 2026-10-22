@@ -195,7 +195,7 @@ flowchart LR
 ```
 
 1. **The browser levels the audio.** Quiet microphones are boosted by up to 24 dB with a soft limiter, then the clip is encoded as 16 kHz mono WAV, so the server rarely needs ffmpeg. Recordings of 10 seconds or more (answers) are uploaded as the browser recorded them, in Opus or AAC, about half the size, and levelled on the server.
-2. **Whisper transcribes it.** With a Groq key, Groq's hosted Whisper large (`whisper-large-v3`, `backend/groq_asr.py`) returns the words and their timings in a second or two, and no Whisper model runs on this server. Silero voice activity detection runs here first: a clip with no speech is never sent, and a word placed where nobody was speaking (Whisper invents "Thank you." over silence) is dropped. Groq reports no confidence per word, so the parts of scoring that use it are left out. Without a key the local faster-whisper (int8) transcribes instead, with word confidences.
+2. **Whisper transcribes it.** With a Groq key, Groq's hosted Whisper large (`whisper-large-v3`, `backend/groq_asr.py`) returns the words and their timings in a second or two, and no Whisper model runs on this server. Silero voice activity detection runs here first: a clip with no speech is never sent, and a word placed where nobody was speaking (Whisper invents "Thank you." over silence) is dropped. Groq reports no confidence per word, so the parts of scoring that use it are left out. If Groq fails or its limit is reached, the local faster-whisper (int8, `base`) takes over, loaded only then, and Groq is left alone for at least 30 seconds; without a key it is the recogniser, with word confidences.
 3. **A phoneme model hears the sounds.** wav2vec 2.0 fine-tuned for espeak IPA runs on ONNX Runtime and returns a probability for every sound in every 20 ms frame. It has no language model, so it does not "correct" a wrong sound into the right word the way Whisper tends to.
 4. **Goodness of pronunciation per sound.** For each expected sound the scorer computes how likely it is, given everything else in the sentence, against every alternative, including "dropped". The strongest alternative becomes the diagnosis (`/θ/ came out as /s/`). The method is the alignment-free GOP of Cao et al. (Interspeech 2024).
 5. **Words are aligned** with a weighted edit distance, so one skipped word does not shift the rest. Numbers are spelled out and homophones count as correct. Each word's score blends what Whisper heard with what the audio sounded like.
@@ -1165,7 +1165,7 @@ backend/
   runtime.py          Loaded models and the bounded transcription queue
   audio.py            Upload validation, WAV fast path, hardened ffmpeg, loudness
   groq_asr.py         Speech recognition on Groq's Whisper large (VAD guard, word timestamps)
-  asr.py              Local faster-whisper wrapper, used without a Groq key
+  asr.py              Local faster-whisper wrapper: Groq's fallback, and the recogniser without a key
   phoneme_model.py    wav2vec 2.0 phoneme recogniser on ONNX Runtime
   gop.py              Alignment-free goodness of pronunciation from CTC posteriors
   acoustic.py         Per-word acoustic evidence and the score blend
