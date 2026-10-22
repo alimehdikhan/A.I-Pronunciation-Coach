@@ -1,11 +1,12 @@
 import { useSoundName } from '@/lib/soundNames'
-import { ArrowClockwiseIcon, ArrowLeftIcon, ArrowRightIcon, CheckCircleIcon, ListChecksIcon, LockKeyIcon, MicrophoneIcon, QuestionIcon, SparkleIcon, StopIcon, TrendDownIcon, TrendUpIcon, WaveformIcon, XCircleIcon } from '@phosphor-icons/react'
+import { ArrowClockwiseIcon, ArrowLeftIcon, ArrowRightIcon, CheckCircleIcon, ListChecksIcon, LockKeyIcon, QuestionIcon, SparkleIcon, TrendDownIcon, TrendUpIcon, WaveformIcon, XCircleIcon } from '@phosphor-icons/react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
 import { EmptyState, Pill, SectionLabel } from '@/components/common'
 import { PageHeader } from '@/components/layout/AppShell'
+import { MicDisc } from '@/components/practice/MicDisc'
 import { SignInActions } from '@/components/auth/SignInGate'
 import { PracticeWriter } from '@/components/coach/PracticeWriter'
 import { ListenDrill } from '@/components/drills/ListenDrill'
@@ -129,12 +130,9 @@ function Practiser({
         disabled={busy}
         onClick={() => recorder.toggle()}
         aria-label={recording ? 'Stop recording' : `Record “${text}”`}
-        className={cn(
-          'grid size-11 shrink-0 place-items-center rounded-full text-white transition-transform active:scale-95 disabled:opacity-50',
-          recording ? 'bg-[#ff3b30]' : 'bg-primary',
-        )}
+        className="group shrink-0 rounded-full outline-none transition-transform active:scale-95 focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-50"
       >
-        {recording ? <StopIcon size={18} weight="fill" /> : <MicrophoneIcon size={20} weight="fill" />}
+        <MicDisc size={44} recording={recording} />
       </button>
 
       <div className="min-w-0 flex-1">
