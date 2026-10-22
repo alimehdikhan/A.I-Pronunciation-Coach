@@ -118,9 +118,9 @@ export default function PracticePage() {
     if (!health?.tts_ready) return
     let current = true
     // The learner's own text is rendered for them but never stored on the server.
-    const once = target.source === 'custom'
-    void prefetch(target.text, 1, undefined, once).then(() => {
-      if (current) void prefetch(target.text, SLOW_RATE, undefined, once)
+    const store = target.source === 'custom' ? 'none' : 'disk'
+    void prefetch(target.text, 1, undefined, store).then(() => {
+      if (current) void prefetch(target.text, SLOW_RATE, undefined, store)
     })
     return () => {
       current = false
@@ -158,7 +158,7 @@ export default function PracticePage() {
     n: () => go(1),
     arrowright: () => go(1),
     arrowleft: () => go(-1),
-    l: () => speak(target.text, { key: 'stage-normal', once: target.source === 'custom' }),
+    l: () => speak(target.text, { key: 'stage-normal', store: target.source === 'custom' ? 'none' : 'disk' }),
     m: () => setMicCheckOpen(true),
   })
 
