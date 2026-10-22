@@ -161,12 +161,8 @@ def _lse(*arrays: np.ndarray) -> np.ndarray:
     return result
 
 
-def ctc_forward_backward(labels: Sequence[int], scores: np.ndarray, blank: np.ndarray) -> tuple[np.ndarray, np.ndarray, float]:
-    """Log-space CTC forward (alpha) and backward (beta) over states [blank, l0, blank, l1, ..., blank].
-
-    alpha[t, s] includes the emission at t; beta[t, s] covers frames t..T-1
-    including the emission at t, so log P = logsumexp(alpha[t] + beta[t] - emit[t]).
-    """
+def _states(labels: Sequence[int], scores: np.ndarray, blank: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Each state's emission per frame, and which label states may skip the blank before them."""
     frames = scores.shape[0]
     n_states = 2 * len(labels) + 1
     emit = np.empty((frames, n_states))
@@ -177,7 +173,11 @@ def ctc_forward_backward(labels: Sequence[int], scores: np.ndarray, blank: np.nd
     skip = np.zeros(n_states, dtype=bool)
     for i in range(1, len(labels)):
         skip[2 * i + 1] = labels[i] != labels[i - 1]
+    return emit, skip
 
+
+def _forward(labels: Sequence[int], emit: np.ndarray, skip: np.ndarray) -> tuple[np.ndarray, float]:
+    frames, n_states = emit.shape
     alpha = np.full((frames, n_states), NEG_INF)
     alpha[0, 0] = emit[0, 0]
     if labels:
@@ -185,26 +185,234 @@ def ctc_forward_backward(labels: Sequence[int], scores: np.ndarray, blank: np.nd
     for t in range(1, frames):
         prev = alpha[t - 1]
         stay_or_step = np.logaddexp(prev, np.concatenate(([NEG_INF], prev[:-1])))
-        skipped = np.where(skip, np.concatenate(([NEG_INF, NEG_INF], prev[:-2])), NEG_INF)
+        # (Sliced to the state count: with no labels there is a single state.)
+        skipped = np.where(skip, np.concatenate(([NEG_INF, NEG_INF], prev[:-2]))[:n_states], NEG_INF)
         alpha[t] = emit[t] + np.logaddexp(stay_or_step, skipped)
+    final = alpha[-1, -1] if not labels else np.logaddexp(alpha[-1, -1], alpha[-1, -2])
+    return alpha, float(final)
+
+
+def ctc_forward_backward(labels: Sequence[int], scores: np.ndarray, blank: np.ndarray) -> tuple[np.ndarray, np.ndarray, float]:
+    """Log-space CTC forward (alpha) and backward (beta) over states [blank, l0, blank, l1, ..., blank].
+
+    alpha[t, s] includes the emission at t; beta[t, s] covers frames t..T-1
+    including the emission at t, so log P = logsumexp(alpha[t] + beta[t] - emit[t]).
+    """
+    emit, skip = _states(labels, scores, blank)
+    frames, n_states = emit.shape
+    alpha, final = _forward(labels, emit, skip)
 
     beta = np.full((frames, n_states), NEG_INF)
     beta[-1, -1] = emit[-1, -1]
     if labels:
         beta[-1, -2] = emit[-1, -2]
-    skip_from = np.concatenate((skip[2:], [False, False]))  # state s may jump to s+2
+    skip_from = np.concatenate((skip[2:], [False, False]))[:n_states]  # state s may jump to s+2
     for t in range(frames - 2, -1, -1):
         nxt = beta[t + 1]
         stay_or_step = np.logaddexp(nxt, np.concatenate((nxt[1:], [NEG_INF])))
-        skipped = np.where(skip_from, np.concatenate((nxt[2:], [NEG_INF, NEG_INF])), NEG_INF)
+        skipped = np.where(skip_from, np.concatenate((nxt[2:], [NEG_INF, NEG_INF]))[:n_states], NEG_INF)
         beta[t] = emit[t] + np.logaddexp(stay_or_step, skipped)
 
-    final = alpha[-1, -1] if not labels else np.logaddexp(alpha[-1, -1], alpha[-1, -2])
-    return alpha, beta, float(final)
+    return alpha, beta, final
 
 
 def sequence_log_likelihood(labels: Sequence[int], scores: np.ndarray, blank: np.ndarray) -> float:
-    return ctc_forward_backward(labels, scores, blank)[2]
+    """log P of `labels` (the forward pass alone)."""
+    emit, skip = _states(labels, scores, blank)
+    return _forward(labels, emit, skip)[1]
+
+
+# Paths through a replaced stretch that carry less than exp(-REPLACE_MARGIN) of the reference are left
+# out of `replaced_log_likelihood`. Even all of them together are far below what a double can add to the
+# reference, so the result is the same as computing the whole sequence again.
+REPLACE_MARGIN = 60.0
+
+
+def replaced_log_likelihood(
+    labels: Sequence[int],
+    alpha: np.ndarray,
+    beta: np.ndarray,
+    start: int,
+    end: int,
+    segment: Sequence[int],
+    scores: np.ndarray,
+    blank: np.ndarray,
+    reference: float,
+    margin: float = REPLACE_MARGIN,
+) -> float:
+    """log P of `labels` with positions [start, end) replaced by `segment`, from the alpha and beta of `labels`.
+
+    Nothing before or after the replaced stretch changes, so the forward variables of the states before it
+    (alpha) and the backward variables of the states after it (beta) are reused, and only the stretch's own
+    states are computed: over the frames where a path through it can come within `margin` of `reference`
+    (each path's mass is at most what it carries in and out, since emissions are probabilities). A result
+    far below `reference` may be underestimated, never overestimated; one near or above it is exact.
+    Returns -inf when no frame qualifies.
+    """
+    n = len(labels)
+    return stretch_log_likelihood(
+        segment,
+        scores,
+        blank,
+        reference,
+        into_blank=alpha[:, 2 * start],
+        into_label=alpha[:, 2 * start - 1] if start > 0 else None,
+        before=labels[start - 1] if start > 0 else None,
+        out_of=beta[:, 2 * end + 1] if end < n else None,
+        after=labels[end] if end < n else None,
+        margin=margin,
+    )
+
+
+def stretch_log_likelihood(
+    segment: Sequence[int],
+    scores: np.ndarray,
+    blank: np.ndarray,
+    reference: float,
+    *,
+    into_blank: np.ndarray,
+    into_label: np.ndarray | None,
+    before: int | None,
+    out_of: np.ndarray | None,
+    after: int | None,
+    margin: float = REPLACE_MARGIN,
+) -> float:
+    """The core of `replaced_log_likelihood`, from the columns it reads: the alpha of the blank before the
+    stretch (`into_blank`) and of the label before it (`into_label`, label `before`; None at the start),
+    and the beta of the first label after it (`out_of`, label `after`; None at the end)."""
+    m = len(segment)
+    if m == 0:
+        raise ValueError("the replacement needs at least one label")
+    frames = scores.shape[0]
+    floor = reference - margin
+    seg = np.asarray(segment)
+    start_of_sequence = into_label is None
+    end_of_sequence = out_of is None
+
+    # What steps into the stretch: the blank before it, or (skipping that blank) a different label before it.
+    if into_label is not None and segment[0] == before:
+        into_label = None
+    source = into_blank if into_label is None else np.logaddexp(into_blank, into_label)
+    # What it steps out to: the first label after it (from its last blank, or skipping that blank).
+    skip_out = not end_of_sequence and segment[-1] != after
+
+    # The first frame: a path must leave the prefix late enough to still come within the margin.
+    if start_of_sequence:
+        lo = 0
+    else:
+        reach = np.zeros(frames) if end_of_sequence else np.maximum.accumulate(out_of[::-1])[::-1]
+        later = reach if end_of_sequence else np.concatenate((reach[1:], [NEG_INF]))
+        ok = np.nonzero(source + later >= floor)[0]
+        if ok.size == 0 or ok[0] + 1 >= frames:
+            return NEG_INF
+        lo = int(ok[0]) + 1
+    # The last frame: a path must enter the suffix early enough.
+    if out_of is None:
+        hi = frames - 1
+    else:
+        so_far = np.zeros(frames) if start_of_sequence else np.concatenate(([NEG_INF], np.maximum.accumulate(source)[:-1]))
+        ok = np.nonzero(so_far[:-1] + out_of[1:] >= floor)[0]
+        ok = ok[ok >= lo]
+        if ok.size == 0:
+            return NEG_INF
+        hi = int(ok[-1])
+    if hi < lo:
+        return NEG_INF
+
+    width = 2 * m
+    emit = np.empty((hi - lo + 1, width))
+    emit[:, 0::2] = scores[lo : hi + 1][:, seg]
+    emit[:, 1::2] = blank[lo : hi + 1, None]
+    skip = np.zeros(width, dtype=bool)
+    skip[2::2] = seg[1:] != seg[:-1]
+
+    total = NEG_INF
+    prev = np.full(width, NEG_INF)
+    for t in range(lo, hi + 1):
+        if t == 0:
+            cur = np.full(width, NEG_INF)
+            cur[0] = emit[0, 0]  # a path may start on the first label
+        else:
+            step = np.concatenate(([into_blank[t - 1]], prev[:-1]))
+            skipped = np.where(skip, np.concatenate(([NEG_INF, NEG_INF], prev[:-2])), NEG_INF)
+            if into_label is not None:
+                skipped[0] = into_label[t - 1]
+            cur = emit[t - lo] + np.logaddexp(np.logaddexp(prev, step), skipped)
+        if out_of is not None and t < frames - 1:
+            leaving = np.logaddexp(cur[-1], cur[-2]) if skip_out else cur[-1]
+            total = np.logaddexp(total, leaving + out_of[t + 1])
+        prev = cur
+    if out_of is None:
+        total = np.logaddexp(prev[-1], prev[-2])
+    return float(total)
+
+
+class ForwardPass:
+    """The alpha of a label sequence, filled in only as far as it is read.
+
+    Changing the labels from some position on keeps every state before it (alpha there depends only on
+    what comes before), so a search that changes one word at a time, left to right, computes each state
+    about once instead of a whole pass per change. Filled states equal `ctc_forward_backward`'s alpha.
+    """
+
+    def __init__(
+        self,
+        labels: Sequence[int],
+        scores: np.ndarray,
+        blank: np.ndarray,
+        alpha: np.ndarray | None = None,
+        longest: int | None = None,
+    ):
+        """`alpha`: the sequence's full alpha when it is already known (from `ctc_forward_backward`).
+        `longest`: the most labels the sequence will ever hold, so changing it never moves what is kept."""
+        self.scores, self.blank = scores, blank
+        self.labels = list(labels)
+        states = 2 * max(len(self.labels), longest or 0) + 1
+        self.alpha = np.full((scores.shape[0], states), NEG_INF)
+        self.done = -1  # states up to here are filled
+        if alpha is not None:
+            self.alpha[:, : alpha.shape[1]] = alpha
+            self.done = alpha.shape[1] - 1
+
+    def column(self, state: int) -> np.ndarray:
+        self._fill(state)
+        return self.alpha[:, state]
+
+    def replace(self, start: int, end: int, segment: Sequence[int]) -> None:
+        """Positions [start, end) become `segment`; states up to the blank before `start` are kept."""
+        self.labels = self.labels[:start] + list(segment) + self.labels[end:]
+        if 2 * len(self.labels) + 1 > self.alpha.shape[1]:
+            grown = np.full((self.alpha.shape[0], 2 * len(self.labels) + 1), NEG_INF)
+            grown[:, : self.alpha.shape[1]] = self.alpha
+            self.alpha = grown
+        self.done = min(self.done, 2 * start)
+
+    def _fill(self, upto: int) -> None:
+        if upto <= self.done:
+            return
+        a, b = self.done + 1, upto + 1
+        alpha = self.alpha
+        # Emissions and skips of just these states (state 2i+1 is label i, even states are blanks).
+        emit = np.empty((alpha.shape[0], b - a))
+        skip = np.zeros(b - a, dtype=bool)
+        for k, s in enumerate(range(a, b)):
+            if s % 2 == 0:
+                emit[:, k] = self.blank
+            else:
+                i = s // 2
+                emit[:, k] = self.scores[:, self.labels[i]]
+                skip[k] = i > 0 and self.labels[i] != self.labels[i - 1]
+        for s in range(a, b):
+            alpha[0, s] = emit[0, s - a] if s <= 1 else NEG_INF  # paths start on the first blank or label
+        # Each state reads itself and the two before it, so only those columns are read, never the whole row.
+        lo = max(a - 2, 0)
+        pad = np.full(2 - (a - lo), NEG_INF)
+        for t in range(1, alpha.shape[0]):
+            prev = alpha[t - 1, lo:b] if pad.size == 0 else np.concatenate((pad, alpha[t - 1, lo:b]))
+            stay_or_step = np.logaddexp(prev[2:], prev[1:-1])
+            skipped = np.where(skip, prev[:-2], NEG_INF)
+            alpha[t, a:b] = emit[t] + np.logaddexp(stay_or_step, skipped)
+        self.done = upto
 
 
 def score_sequence(
@@ -230,19 +438,22 @@ def score_sequence(
 
     lab = np.asarray(labels)
     idx = np.arange(n)
-    # Alternatives' emissions at each position: (n, K, T), counting only sounds
-    # the expected phoneme doesn't accept.
-    alt_emit = exclusive[lab]
-    prev_lab = np.concatenate(([-1], lab[:-1]))
-    next_lab = np.concatenate((lab[1:], [-1]))
-    alts = np.arange(n_alt)
-    can_skip_in = (alts[None, :] != prev_lab[:, None]) & (idx[:, None] > 0)  # from label i-1
-    can_skip_out = (alts[None, :] != next_lab[:, None]) & (idx[:, None] < n - 1)  # to label i+1
+    # Alternatives' emissions, frame by frame: (T, K, K), counting only sounds the expected phoneme doesn't
+    # accept. Taken per frame for the positions, never all at once: (n, K, T) grows with the square of the length.
+    by_frame = np.ascontiguousarray(np.moveaxis(exclusive, 2, 0))
 
     blank_before = 2 * idx  # state index of the blank before position i
     label_before = 2 * idx - 1
     blank_after = 2 * idx + 2
     label_after = 2 * idx + 3
+
+    # Entering or leaving position i, an alternative may skip the neighbouring blank unless it is the
+    # neighbouring label itself: per position that is one value for every alternative but (at most) one.
+    # Computed per position and spread out, which equals the elementwise sum (logaddexp(x, -inf) is x).
+    rows_in = idx[1:]
+    cols_in = lab[:-1]
+    rows_out = idx[:-1]
+    cols_out = lab[1:]
 
     # gamma[i, a]: paths in the substituted label state at time t.
     gamma = np.full((n, n_alt), NEG_INF)
@@ -251,16 +462,22 @@ def score_sequence(
         if t == 0:
             enter = np.where(idx[:, None] == 0, 0.0, NEG_INF) * np.ones((1, n_alt))
         else:
-            via_blank = alpha[t - 1, blank_before][:, None]
-            via_label = np.where(idx > 0, alpha[t - 1, np.maximum(label_before, 0)], NEG_INF)[:, None]
-            enter = np.logaddexp(via_blank, np.where(can_skip_in, via_label, NEG_INF))
-        gamma = alt_emit[:, :, t] + np.logaddexp(enter, gamma)
+            via_blank = alpha[t - 1, blank_before]
+            via_label = np.where(idx > 0, alpha[t - 1, np.maximum(label_before, 0)], NEG_INF)
+            enter = np.empty((n, n_alt))
+            enter[:] = np.logaddexp(via_blank, via_label)[:, None]
+            enter[0] = via_blank[0]  # the first position has no label before it
+            enter[rows_in, cols_in] = via_blank[1:]
+        gamma = by_frame[t][lab] + np.logaddexp(enter, gamma)
         if t == frames - 1:
             leave = np.where(idx[:, None] == n - 1, 0.0, NEG_INF) * np.ones((1, n_alt))
         else:
-            via_blank = beta[t + 1, blank_after][:, None]
-            via_label = np.where(idx < n - 1, beta[t + 1, np.minimum(label_after, 2 * n)], NEG_INF)[:, None]
-            leave = np.logaddexp(via_blank, np.where(can_skip_out, via_label, NEG_INF))
+            via_blank = beta[t + 1, blank_after]
+            via_label = np.where(idx < n - 1, beta[t + 1, np.minimum(label_after, 2 * n)], NEG_INF)
+            leave = np.empty((n, n_alt))
+            leave[:] = np.logaddexp(via_blank, via_label)[:, None]
+            leave[n - 1] = via_blank[n - 1]  # the last position has no label after it
+            leave[rows_out, cols_out] = via_blank[:-1]
         sub = np.logaddexp(sub, gamma + leave)
 
     deletion = np.array([_deletion_log_likelihood(i, labels, alpha, beta, blank) for i in range(n)])
