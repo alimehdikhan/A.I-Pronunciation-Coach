@@ -97,6 +97,8 @@ class Settings:
     # How many transcriptions run at once, and how many may wait before 503s.
     asr_concurrency: int = field(default_factory=lambda: max(1, _int("PRONUNCIATION_COACH_ASR_CONCURRENCY", 1)))
     asr_queue_limit: int = field(default_factory=lambda: max(0, _int("PRONUNCIATION_COACH_ASR_QUEUE_LIMIT", 8)))
+    # Speech waiting to be rendered (one renders at a time); beyond this the server says it is busy.
+    tts_queue_limit: int = field(default_factory=lambda: max(0, _int("PRONUNCIATION_COACH_TTS_QUEUE_LIMIT", 16)))
     language: str = field(default_factory=lambda: os.getenv("PRONUNCIATION_LANGUAGE", "eng-Latn"))
     load_models_on_startup: bool = field(default_factory=lambda: _flag("PRONUNCIATION_COACH_LOAD_MODELS_ON_STARTUP", "1"))
 
