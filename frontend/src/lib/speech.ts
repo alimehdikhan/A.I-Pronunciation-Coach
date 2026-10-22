@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react'
 import { useSettings } from '@/store/settings'
-import { audioEngine, useVoiceStore } from './audioEngine'
+import { audioEngine, useVoiceStore, type SpeechStore } from './audioEngine'
 
 /**
  * The coach's voice. By default speech comes from the server's neural voice
@@ -86,8 +86,9 @@ function packWords(sentence: string, max: number): string[] {
 }
 
 /**
- * Text as sentences, each short enough for one request to the voice. One sentence renders much faster
- * than a paragraph, so the first can play while the next is still being rendered.
+ * Text in pieces short enough for one request to the voice, made of whole sentences. A line that fits is one
+ * piece: split into sentences, the next sentence could still be rendering when the first ends, and the
+ * speaker would stop mid-question.
  */
 export function splitForSpeech(text: string, max = MAX_SPOKEN): string[] {
   // A sentence ends at . ! or ? followed by a space and a capital or a digit, so "3.5 years" and "e.g. this" stay whole.
@@ -99,12 +100,23 @@ export function splitForSpeech(text: string, max = MAX_SPOKEN): string[] {
     start = stop
   }
   sentences.push(text.slice(start).trim())
-  return sentences.filter(Boolean).flatMap((sentence) => (sentence.length > max ? packWords(sentence, max) : [sentence]))
+  const chunks: string[] = []
+  let current = ''
+  for (const sentence of sentences.filter(Boolean)) {
+    for (const piece of sentence.length > max ? packWords(sentence, max) : [sentence]) {
+      if (current && current.length + 1 + piece.length > max) {
+        chunks.push(current)
+        current = piece
+      } else current = current ? `${current} ${piece}` : piece
+    }
+  }
+  if (current) chunks.push(current)
+  return chunks
 }
 
 /** Render pieces one after another, in speaking order: the server renders one clip at a time. */
-function renderInOrder(chunks: string[], rate: number, voice: string, once: boolean): Promise<void> {
-  return chunks.reduce<Promise<void>>((ready, chunk) => ready.then(() => audioEngine.prefetch(chunk, rate, voice, once)), Promise.resolve())
+function renderInOrder(chunks: string[], rate: number, voice: string, store: SpeechStore): Promise<void> {
+  return chunks.reduce<Promise<void>>((ready, chunk) => ready.then(() => audioEngine.prefetch(chunk, rate, voice, store)), Promise.resolve())
 }
 
 /** Browser speechSynthesis (fallback). Its audio can't be analysed. Resolves true when it was all said. */
@@ -139,8 +151,8 @@ function speakWithBrowser(text: string, key: string, rate: number, voiceURI: str
 
 /**
  * Speak text with the user's voice settings. `speakingKey` identifies which
- * control started playback so it can show an active state. `once`: one-off text (the
- * learner's own words, a live reply), which the server never stores.
+ * control started playback so it can show an active state. `store`: where the server may keep the
+ * clip (`none` for the learner's own words or a live reply).
  */
 export function useSpeaker() {
   const voiceURI = useSettings((s) => s.voiceURI)
@@ -153,14 +165,14 @@ export function useSpeaker() {
   const stop = useCallback(() => audioEngine.stop(), [])
 
   const speak = useCallback(
-    (text: string, opts: { key?: string; rate?: number; once?: boolean } = {}) => {
+    (text: string, opts: { key?: string; rate?: number; store?: SpeechStore } = {}) => {
       const clean = text.trim()
       if (!clean) return
       const key = opts.key ?? clean
       const rate = clampRate((opts.rate ?? 1) * settingsRate)
       lastKey.current = key
       if (usesNeuralVoice(voiceURI)) {
-        audioEngine.speak(clean, { key, rate, voice: coachVoice, once: opts.once }).catch(() => {
+        audioEngine.speak(clean, { key, rate, voice: coachVoice, store: opts.store }).catch(() => {
           // Server voice unavailable: still speak, just without the analyser.
           if (lastKey.current === key) void speakWithBrowser(clean, key, rate, voiceURI)
         })
@@ -178,22 +190,22 @@ export function useSpeaker() {
    * another control started speaking.
    */
   const say = useCallback(
-    async (text: string, opts: { key?: string; rate?: number; voice?: string; once?: boolean } = {}): Promise<boolean> => {
+    async (text: string, opts: { key?: string; rate?: number; voice?: string; store?: SpeechStore } = {}): Promise<boolean> => {
       const clean = text.trim()
       if (!clean) return true
       const key = opts.key ?? clean
       const rate = clampRate((opts.rate ?? 1) * settingsRate)
       // Another person in the room (a group discussion) speaks with their own neural voice.
       const voice = opts.voice ?? coachVoice
-      const once = opts.once ?? false
+      const store = opts.store ?? 'disk'
       lastKey.current = key
       if (usesNeuralVoice(voiceURI)) {
         const chunks = splitForSpeech(clean)
         // The first piece is requested by `speak` straight away; the rest follow it in order.
-        void renderInOrder(chunks, rate, voice, once)
+        void renderInOrder(chunks, rate, voice, store)
         try {
           for (const chunk of chunks) {
-            if (!(await audioEngine.speak(chunk, { key, rate, voice, once }))) return false
+            if (!(await audioEngine.speak(chunk, { key, rate, voice, store }))) return false
           }
           return true
         } catch {
@@ -210,13 +222,13 @@ export function useSpeaker() {
 
   /**
    * Start fetching a clip before it is asked for, so the click that follows plays at once. `voice` overrides the
-   * coach voice; `once` marks one-off text, which the server never stores.
+   * coach voice; `store` says where the server may keep the clip.
    */
   const prefetch = useCallback(
-    (text: string, rate = 1, voice?: string, once = false): Promise<void> => {
+    (text: string, rate = 1, voice?: string, store: SpeechStore = 'disk'): Promise<void> => {
       const clean = text.trim()
       if (!clean || !usesNeuralVoice(voiceURI)) return Promise.resolve()
-      return renderInOrder(splitForSpeech(clean), clampRate(rate * settingsRate), voice ?? coachVoice, once)
+      return renderInOrder(splitForSpeech(clean), clampRate(rate * settingsRate), voice ?? coachVoice, store)
     },
     [voiceURI, settingsRate, coachVoice],
   )
