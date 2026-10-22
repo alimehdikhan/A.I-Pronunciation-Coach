@@ -123,8 +123,15 @@ async def pronunciation_hint(samples: np.ndarray, heard_text: str, level: str) -
     asr, scorer, phonemes = runtime.asr, runtime.scorer, runtime.phonemes
     if asr is None or scorer is None or not phonetics.tokenize(heard_text):
         return None
+    heard: dict[str, Any] | None = None
+    if getattr(asr, "remote", False):  # hosted: no need to hold the ASR slot while it works
+        try:
+            heard = await run_in_threadpool(asr.transcribe, samples)
+        except Exception:
+            return None  # busy: no hint this time
     async with runtime.asr_gate.slot():
-        heard = await run_in_threadpool(asr.transcribe, samples)
+        if heard is None:
+            heard = await run_in_threadpool(asr.transcribe, samples)
         log_probs = None
         if phonemes is not None and str(heard.get("text", "")).strip():
             with contextlib.suppress(Exception):
