@@ -102,8 +102,9 @@ class CoachVoice:
             TTS_CACHE.labels("hit").inc()
         return clip
 
-    def synthesize(self, text: str, rate: float = 1.0, keep: bool = True) -> bytes:
-        """Render `text` as 16-bit mono WAV. `rate` > 1 speaks faster. `keep`: cache it (False for one-off text)."""
+    def synthesize(self, text: str, rate: float = 1.0, keep: bool = True, persist: bool | None = None) -> bytes:
+        """Render `text` as 16-bit mono WAV. `rate` > 1 speaks faster. `keep`: cache it (False for one-off text).
+        `persist` is accepted for the same interface as KokoroVoice; Piper's cache is in memory only."""
         from piper import SynthesisConfig
 
         rate = round(min(MAX_RATE, max(MIN_RATE, rate)), 2)
@@ -231,9 +232,13 @@ class KokoroVoice:
             TTS_CACHE.labels("hit").inc()
         return clip
 
-    def synthesize(self, text: str, rate: float = 1.0, voice: str | None = None, keep: bool = True) -> bytes:
-        """`keep`: cache the clip in memory and on disk. False for one-off text (an interviewer's live
-        reaction, which quotes the candidate): it is rendered for that moment and never stored."""
+    def synthesize(
+        self, text: str, rate: float = 1.0, voice: str | None = None, keep: bool = True, persist: bool | None = None
+    ) -> bytes:
+        """`keep`: cache the clip in memory. False for one-off text (an interviewer's live reaction, which
+        quotes the candidate): it is rendered for that moment and never stored. `persist` (default: `keep`):
+        also keep it on disk, for text any learner may hear again; False keeps it in memory only, for text
+        reused within one session (a question worded for one interview)."""
         import numpy as np
 
         rate = round(min(MAX_RATE, max(MIN_RATE, rate)), 2)
@@ -259,7 +264,7 @@ class KokoroVoice:
                     wav_file.setframerate(int(sample_rate))
                     wav_file.writeframes(pcm.tobytes())
                 audio = buffer.getvalue()
-                if keep:
+                if keep and (persist is None or persist):
                     tmp = path.with_suffix(f".{threading.get_ident()}.tmp")
                     tmp.write_bytes(audio)
                     tmp.replace(path)  # atomic: a half-written clip is never served
