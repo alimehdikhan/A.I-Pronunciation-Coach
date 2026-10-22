@@ -38,8 +38,8 @@ class _VoiceChoice:
     def cached(self, text: str, rate: float) -> bytes | None:
         return self.engine.cached(text, rate, self.voice)
 
-    def synthesize(self, text: str, rate: float, keep: bool = True) -> bytes:
-        return self.engine.synthesize(text, rate, self.voice, keep=keep)
+    def synthesize(self, text: str, rate: float, keep: bool = True, persist: bool | None = None) -> bytes:
+        return self.engine.synthesize(text, rate, self.voice, keep=keep, persist=persist)
 
 audio_rate_limiter = RateLimiter(settings.rate_limit_per_minute, name="audio")
 # Speech is cheap to serve (cached) and requested often by listen buttons.
@@ -90,7 +90,8 @@ async def transcribe_upload(
     result as ``phoneme_log_probs`` (when the recogniser is loaded and speech
     was heard). ``max_seconds`` overrides the recording limit (free speaking only);
     ``prompt`` is passed to Whisper (never the target sentence). ``background`` work (a mock interview's
-    answers, scored while the interview goes on) lets the interviewer's voice render first.
+    answers, scored while the interview goes on) lets the interviewer's voice render first. A hosted
+    recogniser (backend.groq_asr) works outside the ASR slot: the slot is only held for this server's own work.
     """
     suffix = validate_upload(audio)
     if background:
@@ -100,8 +101,16 @@ async def transcribe_upload(
             data = await read_upload(audio, settings.max_upload_bytes)
         with timer.stage("decode"):
             samples, gain_db, cleanup = await run_in_threadpool(_prepare, data, suffix, max_seconds)
+    hosted = getattr(asr, "remote", False)
+
+    async def transcribe() -> dict[str, Any]:
         with timer.stage("asr"):
-            result = await (run_in_threadpool(asr.transcribe, samples, prompt=prompt) if prompt else run_in_threadpool(asr.transcribe, samples))
+            return await (run_in_threadpool(asr.transcribe, samples, prompt=prompt) if prompt else run_in_threadpool(asr.transcribe, samples))
+
+    result = await transcribe() if hosted else None
+    async with runtime.asr_gate.slot():
+        if result is None:
+            result = await transcribe()
         if phonemes and runtime.phonemes is not None and str(result.get("text", "")).strip():
             if background:
                 await runtime.voice_first.wait()
@@ -365,13 +374,16 @@ async def text_to_speech(
     rate: float = Query(1.0, ge=MIN_RATE, le=MAX_RATE),
     voice_id: str | None = Query(None, alias="voice", pattern=r"^[a-z0-9_]{2,24}$"),
     once: bool = Query(False, description="One-off text (a live reply): rendered, never cached"),
+    store: str = Query("disk", pattern="^(disk|memory|none)$", description="Where the clip may be kept"),
 ) -> Response:
     """The coach's voice as real audio (WAV), so the UI can analyse what it plays.
 
     Clips already rendered come straight back. A new one waits its turn to render (runtime.tts_gate,
     503 when the queue is full) and goes before background scoring (runtime.VoiceFirst). Only reusable
-    text is kept: `once` text is rendered for that moment and stored nowhere, and no clip may be kept
-    by a shared cache, since the text can be the learner's own.
+    text is kept: `store=disk` (the default) for text any learner may hear again, `store=memory` for text
+    reused within one session (an interview's questions, worded for its job), and `store=none` (or `once`)
+    for one-off text, which is rendered for that moment and stored nowhere. No clip may be kept by a
+    shared cache, since the text can be the learner's own.
     """
     voice = runtime.voice
     if voice is None:
@@ -385,13 +397,16 @@ async def text_to_speech(
     if not phonetics.tokenize(clean):
         raise HTTPException(status_code=400, detail="text must contain at least one word.")
     tts_rate_limiter.check(client_key(request))
-    headers = {"Cache-Control": "private, no-store" if once else "private, max-age=604800"}
+    if once:
+        store = "none"
+    keep, persist = store != "none", store == "disk"
+    headers = {"Cache-Control": "private, max-age=604800" if keep else "private, no-store"}
     audio = voice.cached(clean, rate)
     if audio is not None:
         return Response(content=audio, media_type="audio/wav", headers=headers)
     try:
         async with runtime.tts_gate.slot(), runtime.voice_first.speaking():
-            audio = await run_in_threadpool(voice.synthesize, clean, rate, keep=not once)
+            audio = await run_in_threadpool(voice.synthesize, clean, rate, keep=keep, persist=persist)
     except HTTPException:
         raise  # busy: the browser tries again shortly
     except Exception as exc:
@@ -400,7 +415,7 @@ async def text_to_speech(
         if fallback is None:
             raise HTTPException(status_code=500, detail="Speech synthesis failed.") from exc
         try:
-            audio = await run_in_threadpool(fallback.synthesize, clean, rate, keep=not once)
+            audio = await run_in_threadpool(fallback.synthesize, clean, rate, keep=keep, persist=persist)
         except Exception as fallback_exc:
             logger.exception("Fallback voice failed too")
             raise HTTPException(status_code=500, detail="Speech synthesis failed.") from fallback_exc
