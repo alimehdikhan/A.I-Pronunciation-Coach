@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { AudioFrame } from '@/components/orb/SiriOrb'
 
 /** How long a pause means "I'm done", in milliseconds. */
-export const PATIENCE_MS = { short: 1800, normal: 2800, long: 4500 } as const
+export const PATIENCE_MS = { short: 1300, normal: 2000, long: 4500 } as const
 export type Patience = keyof typeof PATIENCE_MS
 
 const TICK_MS = 100
