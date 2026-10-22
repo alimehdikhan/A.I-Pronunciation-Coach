@@ -1,3 +1,4 @@
+import type { SmallTalkMood } from './interviewer'
 export type Level = 'beginner' | 'intermediate' | 'advanced'
 
 export type WordStatus = 'correct' | 'unclear' | 'mispronounced' | 'missing' | 'extra'
@@ -688,6 +689,8 @@ export interface InterviewTurn {
   question: string | null
   /** At the end: the interviewer's answer to the candidate's own questions. */
   reply: string | null
+  /** The reply to the greeting: how the candidate answered "How are you doing?". */
+  mood?: SmallTalkMood
 }
 
 export interface InterviewQuestion {
