@@ -1,14 +1,15 @@
 import {
-  AirplaneTiltIcon,
+  AirplaneTakeoffIcon,
   BriefcaseIcon,
-  ChatTeardropTextIcon,
+  CaretRightIcon,
+  ChatsCircleIcon,
+  FireIcon,
   GraduationCapIcon,
-  HandshakeIcon,
+  IdentificationCardIcon,
   InfoIcon,
-  LightningIcon,
   PencilSimpleIcon,
-  PhoneIcon,
-  WrenchIcon,
+  PhoneCallIcon,
+  ToolboxIcon,
   type Icon,
 } from '@phosphor-icons/react'
 import { useMutation, useQuery } from '@tanstack/react-query'
@@ -33,19 +34,22 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { api } from '@/lib/api'
 import { showError } from '@/lib/errors'
 import type { InterviewStart, InterviewType } from '@/lib/types'
+import { cn } from '@/lib/utils'
 import { useInterviewPrefs } from '@/store/interview'
 import { useSettings } from '@/store/settings'
 
-const TYPE_ICON: Partial<Record<InterviewType, Icon>> = {
-  full: BriefcaseIcon,
-  hr: HandshakeIcon,
-  behavioural: ChatTeardropTextIcon,
-  technical: WrenchIcon,
-  tough: LightningIcon,
-  phone: PhoneIcon,
-  university: GraduationCapIcon,
-  visa: AirplaneTiltIcon,
+/** Each kind of interview: an app-style icon (a white symbol on its own colour) and one short line. */
+const KIND: Partial<Record<InterviewType, { icon: Icon; tile: string; line: string }>> = {
+  full: { icon: BriefcaseIcon, tile: 'from-[#4fa3ff] to-[#0a6cff]', line: 'The complete interview, start to finish' },
+  hr: { icon: IdentificationCardIcon, tile: 'from-[#5fe08a] to-[#22a95a]', line: 'Background, motivation and salary' },
+  behavioural: { icon: ChatsCircleIcon, tile: 'from-[#ffb340] to-[#ff8a00]', line: 'Real stories, told step by step' },
+  technical: { icon: ToolboxIcon, tile: 'from-[#b18cff] to-[#7a4dff]', line: 'How you do the work in your field' },
+  tough: { icon: FireIcon, tile: 'from-[#ff7a85] to-[#ff2d55]', line: 'Gaps, layoffs and hard questions' },
+  phone: { icon: PhoneCallIcon, tile: 'from-[#4fe0d0] to-[#13a89e]', line: 'A short first call with a recruiter' },
+  university: { icon: GraduationCapIcon, tile: 'from-[#8c8dff] to-[#5856d6]', line: 'Why this programme, and your goals' },
+  visa: { icon: AirplaneTakeoffIcon, tile: 'from-[#5ac8fa] to-[#1e8ee0]', line: 'Study plans, funding and what comes next' },
 }
+const STUDY: InterviewType[] = ['university', 'visa']
 
 type Step = 'kind' | 'about' | 'how'
 type TypeOption = { id: InterviewType; label: string; description: string; role: boolean; level: boolean }
@@ -102,16 +106,20 @@ export function InterviewSetup({ onStart }: { onStart: (session: InterviewStart)
       job_title: forJob ? prefs.jobTitle.trim() || undefined : undefined,
     })
 
-  // Picking a kind with the pointer moves straight on; keyboard users (arrow keys change the choice) press Continue.
-  const pick = (t: TypeOption, moveOn: boolean) => {
+  // Picking a kind moves straight on: one tap, no separate Continue.
+  const pick = (t: TypeOption) => {
     prefs.set({ type: t.id })
-    if (moveOn) setStep(stepsFor(t)[1])
+    setStep(stepsFor(t)[1])
   }
+  const groups = [
+    { title: 'Job interviews', items: types.filter((t) => !STUDY.includes(t.id)) },
+    { title: 'Study abroad', items: types.filter((t) => STUDY.includes(t.id)) },
+  ].filter((g) => g.items.length > 0)
 
   return (
     <Panel className="p-5 sm:p-8">
       {current === 'kind' && (
-        <StepHeader index={at} total={steps.length} title="What are you preparing for?" hint="Pick the interview you have coming up." />
+        <StepHeader index={at} total={steps.length} title="What are you preparing for?" />
       )}
       {current === 'about' && (
         <StepHeader
@@ -155,27 +163,61 @@ export function InterviewSetup({ onStart }: { onStart: (session: InterviewStart)
 
       <StepBody step={current}>
         {current === 'kind' && (
-          <>
-            <div role="radiogroup" aria-label="Kind of interview" className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
-              {types.map((t) => {
-                const IconComp = TYPE_ICON[t.id] ?? BriefcaseIcon
-                const selected = t.id === type.id
-                return (
-                  <div key={t.id} onPointerUp={() => pick(t, true)}>
-                    <Choice name="interview-type" checked={selected} onChange={() => pick(t, false)} className="block h-full p-3.5 sm:p-4">
-                      <IconComp size={24} weight={selected ? 'fill' : 'regular'} className="text-primary" />
-                      <span className="mt-2 block text-[15px] leading-tight font-semibold sm:mt-2.5">{t.label}</span>
-                      <span className="mt-0.5 hidden text-[13px] leading-snug text-muted-foreground sm:block">{t.description}</span>
-                    </Choice>
-                  </div>
-                )
-              })}
-            </div>
-            <ContinueBar onContinue={() => setStep(steps[1])}>
-              Selected: <span className="font-medium text-foreground">{type.label}</span>
-              <span className="mt-1 block leading-snug sm:hidden">{type.description}</span>
-            </ContinueBar>
-          </>
+          <div className="space-y-7">
+            {groups.map((group) => (
+              <section key={group.title} aria-label={group.title}>
+                <h3 className="mb-2.5 text-[13px] font-semibold text-muted-foreground">{group.title}</h3>
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {group.items.map((t) => {
+                    const kind = KIND[t.id]
+                    const IconComp = kind?.icon ?? BriefcaseIcon
+                    const last = t.id === type.id
+                    return (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => pick(t)}
+                        className={cn(
+                          'group flex items-center gap-3.5 rounded-2xl bg-fill p-3 text-left outline-none',
+                          'transition-[background-color,box-shadow,transform] duration-150 ease-out hover:bg-fill-strong active:scale-[0.98]',
+                          'focus-visible:ring-2 focus-visible:ring-primary',
+                          last && 'shadow-[inset_0_0_0_1.5px_var(--primary)]',
+                        )}
+                      >
+                        <span
+                          aria-hidden
+                          className={cn(
+                            'grid size-11 shrink-0 place-items-center rounded-[13px] bg-gradient-to-b text-white',
+                            'shadow-[inset_0_1px_0_rgb(255_255_255/0.35),0_4px_10px_-4px_rgb(0_0_0/0.35)]',
+                            kind?.tile ?? 'from-[#4fa3ff] to-[#0a6cff]',
+                          )}
+                        >
+                          <IconComp size={22} weight="fill" />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="flex items-center gap-2">
+                            <span className="truncate text-[15px] leading-tight font-semibold">{t.label}</span>
+                            {t.id === 'full' && (
+                              <span className="shrink-0 rounded-full bg-primary-soft px-2 py-0.5 text-[11px] font-semibold text-primary">
+                                Recommended
+                              </span>
+                            )}
+                          </span>
+                          <span className="mt-0.5 block truncate text-[13px] text-muted-foreground">{kind?.line ?? t.description}</span>
+                        </span>
+                        {last && <span className="sr-only">(your last choice)</span>}
+                        <CaretRightIcon
+                          aria-hidden
+                          weight="bold"
+                          className="shrink-0 text-subtle transition-transform duration-150 ease-out group-hover:translate-x-0.5"
+                        />
+                      </button>
+                    )
+                  })}
+                </div>
+              </section>
+            ))}
+          </div>
         )}
 
         {current === 'about' && (
