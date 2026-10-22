@@ -14,7 +14,7 @@ from backend import mailer, oauth, phonetics
 from backend.config import settings
 from backend.database import check_db
 from backend.observability import metrics_response
-from backend.runtime import runtime
+from backend.runtime import asr_engine, runtime
 
 router = APIRouter()
 
@@ -42,7 +42,8 @@ async def health_check(request: Request) -> dict[str, Any]:
     return {
         "status": "healthy" if models_loaded else "loading",
         "models_loaded": models_loaded,
-        "model_size": settings.whisper_model_size,
+        "model_size": settings.groq_asr_model if asr_engine() == "groq" else settings.whisper_model_size,
+        "asr_engine": asr_engine(),
         "language": settings.language,
         "phoneme_backend": "cmudict" if phonetics.dictionary_available() else "spelling",
         "tts_ready": runtime.voice is not None,
