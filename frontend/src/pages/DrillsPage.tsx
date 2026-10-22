@@ -1,5 +1,5 @@
 import { describeSound } from '@/lib/plain'
-import { ArrowRightIcon, BarbellIcon, CheckCircleIcon, MicrophoneIcon, SparkleIcon, XCircleIcon } from '@phosphor-icons/react'
+import { ArrowRightIcon, BarbellIcon, CheckCircleIcon, SparkleIcon, XCircleIcon } from '@phosphor-icons/react'
 import { useMutation } from '@tanstack/react-query'
 import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -9,6 +9,7 @@ import { Panel, Pill, Segmented, SectionLabel } from '@/components/common'
 import { ListenDrill } from '@/components/drills/ListenDrill'
 import { RealListeners } from '@/components/listeners/RealListeners'
 import { PageHeader } from '@/components/layout/AppShell'
+import { MicDisc } from '@/components/practice/MicDisc'
 import { LazySiriOrb as SiriOrb } from '@/components/orb/LazySiriOrb'
 import { PhonemeGuide } from '@/components/tutor/PhonemeGuide'
 import { SpeakChip } from '@/components/tutor/SpeakButton'
@@ -62,12 +63,9 @@ function MicButton({
       onClick={onClick}
       disabled={disabled || busy}
       aria-label={recording ? 'Stop recording' : 'Record this word'}
-      className={cn(
-        'relative grid size-10 shrink-0 place-items-center rounded-full transition-[background-color,color,transform,opacity] duration-150 ease-out active:scale-95 disabled:opacity-40',
-        'bg-primary text-white',
-      )}
+      className="group shrink-0 rounded-full outline-none transition-[transform,opacity] duration-150 ease-out active:scale-95 focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-40"
     >
-      <MicrophoneIcon size={18} weight="fill" />
+      <MicDisc size={40} />
     </button>
   )
 }
